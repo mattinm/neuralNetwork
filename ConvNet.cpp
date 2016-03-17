@@ -19,9 +19,27 @@
  *		each layer finishes the derivatives for the layer before it
  *		layers never need to know what layer comes after??? even in backprop??? I think so.
  *
+ *
+ *	If you want to add a new layer, in Net you need to update:
+ *		add a new layer type in the .h file. static const int NEW_LAYER = 1+whatever the last one is
+ *		search for that layer in the save and load functions. Prob make a getHyperparameters function
+ *		make a new add function. bool addNewLayer(Layer&, hyperparameters needed)
+ *
+ *
+ * 	Todo: Make Load/Save Net and ConvLayer
+ *
+ *	Todo: Make constructor for ConvLayer that takes in a weights string
+ *
+ *	Todo: Test each layer separately to verify it works.
+ *
  *	Todo: make it so the i_dneurons for InputLayer can be added or deleted only when we are doing 
  *		the computation with that InputLayer. This should reduce size of n_trainingData by like 2.
  *
+ *	Todo: implement a gradient check using numerical gradients.
+ *
+ * 	Todo: make a special forwardprop and backprop for ConvLayer for when padding = 0.
+ *	
+ *	Todo: Threads!
  *
  *************************************************************************************************/
 
@@ -31,6 +49,9 @@
 #include <vector>
 #include <math.h>
 #include <limits>
+#include <string>
+#include <fstream>
+#include <random>
 
 #define GETMAX(x,y) (x > y) ? x: y
 
@@ -48,7 +69,17 @@ double Net::stepSize = 1e-5;
 
 int Net::n_activationType = 0;
 
+Net::Net(const char* filename)
+{
+	load(filename);
+}
+
 Net::Net(int inputWidth, int inputHeight, int inputDepth)
+{
+	init(inputWidth,inputHeight,inputDepth);
+}
+
+void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
 	vector<vector<vector<double> > > blankVector;
 	resize3DVector(blankVector,inputWidth,inputHeight,inputDepth);
@@ -122,7 +153,7 @@ void Net::train(int epochs)
 
 void Net::run()
 {
-	for(int r=0; r< n_realData.size(); r++)
+	for(int r=0; r < n_realData.size(); r++)
 	{
 		n_layers[0] = n_realData[r];
 
@@ -135,7 +166,7 @@ void Net::run()
 
 int Net::numLayers() 
 {
-	return n_layers.size();
+	return n_layers.size()-1; // subtract one because the input layer doesn't count as a real layer.
 }
 
 bool Net::addActivLayer()
@@ -171,6 +202,20 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad)
 	try
 	{
 		ConvLayer *conv = new ConvLayer(*(n_layers.back()),numFilters,stride,filterSize,pad);
+		n_layers.push_back(conv);
+		return true;
+	}
+	catch(...)
+	{
+		return false;
+	}
+}
+
+bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, string weightsAndBiases)
+{
+	try
+	{
+		ConvLayer *conv = new ConvLayer(*(n_layers.back()),numFilters,stride,filterSize,pad, weightsAndBiases);
 		n_layers.push_back(conv);
 		return true;
 	}
@@ -257,9 +302,279 @@ int Net::getPredictedClass()
 	return maxLoc;
 }
 
+bool Net::load(const char* filename)
+{
+	ifstream file;
+	file.open(filename);
+	string line;
+	int loc;
+	
+	int lineNum = 0;
+
+	if(!file.is_open())
+		return false;
+
+	getline(file, line);
+	if(line == "NET1.0")
+	{
+		int inputWidth, inputHeight, inputDepth, activationType;
+		int netArgsFound = 0;
+		getline(file, line); lineNum++;
+		while(line != "END_NET")
+		{
+			if(line.find("activationType") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				activationType = stoi(line.substr(loc));
+				netArgsFound++;
+			}
+			else if(line.find("inputWidth") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				inputWidth = stoi(line.substr(loc));
+				netArgsFound++;
+			}
+			else if(line.find("inputHeight") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				inputHeight = stoi(line.substr(loc));
+				netArgsFound++;
+			}
+			else if(line.find("inputDepth") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				inputHeight = stoi(line.substr(loc));
+				netArgsFound++;
+			}
+			else
+			{
+				cout << "Improper file structure while getting Net args at line " << lineNum << ". Exiting load.";
+				return false;
+			}
+			getline(file,line); lineNum++;
+		}
+
+		//check and make sure all 4 args were found
+		if(netArgsFound != 4)
+		{
+			cout << "4 Net args needed. " << netArgsFound << " found. Exiting load.";
+			return false;
+		}
+		//Lets init the Net.
+
+
+		//Now we get all the layers
+		getline(file,line); lineNum++;
+		while(line != "END_ALL")
+		{
+			if(line == "ACTIV_LAYER")
+			{
+				int numActivArgs = 0, layer_activationType;
+				getline(file,line); lineNum++;
+				while(line != "END_ACTIV_LAYER")
+				{
+					if(line.find("activationType") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						layer_activationType = stoi(line.substr(loc));
+						numActivArgs++;
+					}
+					else
+					{
+						cout << "Improper file structure while getting ActivLayer args at line " << lineNum << ". Exiting load.";
+						return false;
+					}
+					getline(file,line); lineNum++;
+				}
+
+				if(numActivArgs != 1)
+				{
+					cout << "1 ActivLayer arg needed. " << numActivArgs << " found. Line " << lineNum << ". Exiting load.";
+					return false;
+				}
+
+				//make layer
+				addActivLayer(layer_activationType);
+			}
+			else if(line == "MAX_POOL_LAYER")
+			{
+				int numPoolArgs = 0, pool_stride, pool_size;
+				getline(file,line); lineNum++;
+				while(line != "END_MAX_POOL_LAYER")
+				{
+					if(line.find("stride") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						pool_stride = stoi(line.substr(loc));
+						numPoolArgs++;
+					}
+					else if(line.find("poolSize") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						pool_size = stoi(line.substr(loc));
+						numPoolArgs++;
+					}
+					else
+					{
+						cout << "Improper file structure while getting MaxPoolLayer args at line " << lineNum << ". Exiting load.";
+						return false;
+					}
+					getline(file,line); lineNum++;
+				}
+				if(numPoolArgs != 2)
+				{
+					cout << "2 ActivLayer args needed. " << numPoolArgs << " found. Line " << lineNum << ". Exiting load.";
+					return false;
+				}
+
+				addMaxPoolLayer(pool_size,pool_stride);
+			}
+			else if(line == "CONV_LAYER")
+			{
+				int conv_stride, conv_pad, conv_numFilters, conv_filterSize, convArgs = 0;
+				string conv_weights;
+				getline(file,line); lineNum++;
+				while(line != "END_CONV_LAYER")
+				{
+					if(line.find("stride") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						conv_stride = stoi(line.substr(loc));
+						convArgs++;
+					}
+					else if(line.find("padding") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						conv_pad = stoi(line.substr(loc));
+						convArgs++;
+					}
+					else if(line.find("numFilters") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						conv_numFilters = stoi(line.substr(loc));
+						convArgs++;
+					}
+					else if(line.find("filterSize") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						conv_filterSize = stoi(line.substr(loc));
+						convArgs++;
+					}
+					else if(line.find("weights") != string::npos)
+					{
+						loc = line.find("=") + 1;
+						conv_weights = line.substr(loc);
+						convArgs++;
+					}
+					else
+					{
+						cout << "Improper file structure while getting ConvLayer args at line " << lineNum << ". Exiting load.";
+						return false;
+					}
+					getline(file,line); lineNum++;
+				}
+				if(convArgs != 5)
+				{
+					cout << "5 ConvLayer args needed. " << convArgs << " found. Line " << lineNum << ". Exiting load.";
+					return false;
+				}
+				addConvLayer(conv_numFilters,conv_stride,conv_filterSize,conv_pad,conv_weights);
+			}
+			else
+			{
+				cout << "Improper file structure while getting layers at line " << lineNum << ". Exiting load.";
+				return false;
+			}
+			getline(file,line); lineNum++;
+		}
+		return true;
+	}
+
+	return false;
+}
+
+bool Net::save(const char* filename)
+{
+	//get file stuff
+	ofstream file;
+	file.open(filename);
+
+	if(!file.is_open())
+		return false;
+
+	char data[50];
+	//need to save in such a way that it can load dynamically
+	string out = "NET1.0\n";
+
+	//put in Net hyperparameters. NOT TRAINING OR REAL DATA
+	sprintf(data,"%d", n_activationType);
+	out += "activationType=";
+	out += data;
+	out += '\n';
+
+	vector<vector<vector<double> > > blankVector = n_blankInput.getNeurons();
+
+	sprintf(data,"%lu",blankVector.size());
+	out += "inputWidth=";
+	out += data;
+	out += '\n';
+
+	sprintf(data,"%lu",blankVector[0].size());
+	out += "inputHeight=";
+	out += data;
+	out += '\n';
+
+	sprintf(data,"%lu",blankVector[0][0].size());
+	out += "inputDepth=";
+	out += data;
+	out += '\n';
+
+	out += "END_NET";
+
+	for(int l=1; l < n_layers.size(); l++)
+	{
+		int type = n_layers[l]->getType();
+		if(type == Net::MAX_POOL_LAYER)
+		{
+			MaxPoolLayer *pool = (MaxPoolLayer*)n_layers[l];
+			out += "MAX_POOL_LAYER\n";
+
+			out += pool->getHyperParameters();
+
+			out += "END_MAX_POOL_LAYER\n";
+		}
+		else if(type == Net::ACTIV_LAYER)
+		{
+			ActivLayer *act = (ActivLayer*)n_layers[l];
+			out += "ACTIV_LAYER\n";
+
+			out += act->getHyperParameters();
+
+			out += "END_ACTIV_LAYER\n";
+
+		}
+		else if(type == Net::CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)n_layers[l];
+			out += "CONV_LAYER\n";
+
+			out += conv->getHyperParameters();
+
+			out += "END_CONV_LAYER\n";
+		}
+	}
+	out += "END_ALL";
+	file << out;
+	file.close();
+
+	return true;
+}
+
 /**********************
  * InputLayer
  **********************/
+
+const int InputLayer::i_type = Net::INPUT_LAYER;
 
 InputLayer::InputLayer()
 {
@@ -274,6 +589,11 @@ InputLayer::InputLayer(const vector<vector<vector<double> > >& trainingImage)
 	i_neurons = &trainingImage;
 	resize3DVector(i_dneurons,t.size(),t[0].size(),t[0][0].size());
 	i_resizeable = false;
+}
+
+int InputLayer::getType() const
+{
+	return i_type;
 }
 
 void InputLayer::forwardprop(const Layer& prevLayer){};
@@ -305,7 +625,25 @@ bool InputLayer::setImage(const vector<vector<vector<double> > >& trainingImage)
  * ConvLayer
  **********************/
 
+const int ConvLayer::c_type = Net::CONV_LAYER;
+
 ConvLayer::ConvLayer(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad)
+{
+	init(prevLayer,numFilters,stride,filterSize,pad);
+
+	//need some way to initialize, save, and load weights and biases
+	initRandomWeights();
+}
+
+ConvLayer::ConvLayer(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad, string weightsAndBiases)
+{
+	init(prevLayer,numFilters,stride,filterSize,pad);
+
+	//need some way to initialize, save, and load weights and biases
+	initWeights(weightsAndBiases);
+}
+
+void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad)
 {
 	// need to set size of neurons, dneurons, weights, dweights. Also make sure that the sizes and such match
 	// up with the amount of padding and stride. If padding is greater than 0 will need to make new 3d vector 
@@ -346,11 +684,63 @@ ConvLayer::ConvLayer(const Layer& prevLayer, int numFilters, int stride, int fil
 	}
 
 	c_biases.resize(numFilters);
-
-	//need some way to initialize, save, and load weights and biases
 }
 
 ConvLayer::~ConvLayer(){}
+
+int ConvLayer::getType() const
+{
+	return c_type;
+}
+
+void ConvLayer::initRandomWeights()
+{
+	default_random_engine gen(time(0));
+	uniform_real_distribution<double> distr(0.0001,1.0);
+	for(int f = 0;f<c_weights.size(); f++)
+	{
+		for(int i=0; i< c_weights[0].size(); i++)
+		{
+			for(int j=0; j< c_weights[0][0].size(); j++)
+			{
+				for(int k=0; k< c_weights[0][0][0].size(); k++)
+				{
+					c_weights[f][i][j][k] = distr(gen);
+				}
+			}
+		}
+	}
+}
+
+void ConvLayer::initWeights(string weights)
+{
+	double weight;
+	int startIndex = 0, endIndex;
+	for(int f = 0;f<c_weights.size(); f++)
+	{
+		for(int i=0; i< c_weights[0].size(); i++)
+		{
+			for(int j=0; j< c_weights[0][0].size(); j++)
+			{
+				for(int k=0; k< c_weights[0][0][0].size(); k++)
+				{
+					endIndex = weights.find(',',startIndex);
+					weight = stod(weights.substr(startIndex,endIndex));
+					c_weights[f][i][j][k] = weight;
+					startIndex = endIndex + 1;
+				}
+			}
+		}
+	}
+	// now do the biases
+	startIndex = weights.find('_') + 1;
+	for(int b=0; b < c_biases.size(); b++)
+	{
+		endIndex = weights.find(',',startIndex);
+		c_biases[b] = stod(weights.substr(startIndex,endIndex));
+		startIndex = endIndex + 1;
+	}
+}
 
 void ConvLayer::forwardprop(const Layer& prevLayer)
 {
@@ -394,8 +784,7 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 	}
 }
 
-//todo: make a special forwardprop and backprop for when padding = 0.
-//todo: update weight and bias values
+
 
 void ConvLayer::backprop(Layer& prevLayer)
 {
@@ -492,9 +881,65 @@ vector<vector<vector<double> > >& ConvLayer::getdNeurons()
 	return c_dneurons;
 }
 
+string ConvLayer::getHyperParameters() const
+{
+	char data[50];
+	string out = "";
+
+	sprintf(data,"%d",c_stride);
+	out += "stride=";
+	out += data;
+	out += '\n';
+
+	sprintf(data,"%d",c_padding);
+	out += "padding=";
+	out += data;
+	out += '\n';
+
+	sprintf(data,"%lu",c_weights.size());
+	out += "numFilters=";
+	out += data;
+	out += '\n';
+
+	sprintf(data,"%lu",c_weights[0].size());
+	out += "filterSize=";
+	out += data;
+	out += '\n';
+
+	out += "weights=";
+	for(int f=0; f < c_weights.size(); f++)
+	{
+		for(int i=0; i< c_weights[0].size(); i++)
+		{
+			for(int j=0; j< c_weights[0][0].size(); j++)
+			{
+				for(int k=0; k< c_weights[0][0][0].size(); k++)
+				{
+					sprintf(data,"%lf,",c_weights[f][i][j][k]);
+					out += data;
+				}
+			}
+		}
+	}
+	//out += '\n';
+
+	//out += "biases=";
+	out += "_";
+	for(int b=0; b< c_biases.size(); b++)
+	{
+		sprintf(data,"%lf,",c_biases[b]);
+		out += data;
+	}
+	out += '\n';
+
+	return out;
+}
+
 /**********************
  * MaxPoolLayer
  **********************/
+
+const int MaxPoolLayer::m_type = Net::MAX_POOL_LAYER;
 
  MaxPoolLayer::MaxPoolLayer(const Layer& prevLayer, int poolSize, int stride)
  {
@@ -522,13 +967,14 @@ vector<vector<vector<double> > >& ConvLayer::getdNeurons()
 
 	resize3DVector(m_neurons,newWidth,newHeight,newDepth);
 	resize3DVector(m_dneurons,newWidth,newHeight,newDepth);
-
-	//set size of m_dprevLayerMap
-	//resize3DVector(m_dprevLayerMap,pWidth,pHeight,pDepth);
-
  }
 
 MaxPoolLayer::~MaxPoolLayer(){}
+
+int MaxPoolLayer::getType() const
+{
+	return m_type;
+}
 
 void MaxPoolLayer::forwardprop(const Layer& prevLayer)
 {
@@ -611,10 +1057,29 @@ vector<vector<vector<double> > >& MaxPoolLayer::getdNeurons()
 	return m_dneurons;
 }
 
+string MaxPoolLayer::getHyperParameters() const
+{
+	string out = "";
+	char data[50];
+
+	sprintf(data,"%d",m_stride);
+	out += "stride=";
+	out += data;
+	out += '\n';
+
+	sprintf(data,"%d",m_poolSize);
+	out += "poolSize=";
+	out += data;
+	out += '\n';
+
+	return out;
+}
+
 /**********************
  * ActivLayer
  **********************/
 
+const int ActivLayer::a_type = Net::ACTIV_LAYER;
 
 ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 {
@@ -640,6 +1105,11 @@ ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 }
 
 ActivLayer::~ActivLayer(){}
+
+int ActivLayer::getType() const
+{
+	return a_type;
+}
 
 void ActivLayer::forwardprop(const Layer& prevLayer)
 {
@@ -695,6 +1165,19 @@ const vector<vector<vector<double> > >& ActivLayer::getNeurons() const
 vector<vector<vector<double> > >& ActivLayer::getdNeurons()
 {
 	return a_dneurons;
+}
+
+string ActivLayer::getHyperParameters() const
+{
+	string out = "";
+	char data[50];
+
+	sprintf(data,"%d",a_activationType);
+	out += "activationType=";
+	out += data;
+	out += '\n';
+
+	return out;
 }
 
 /***********************************
@@ -852,27 +1335,3 @@ int main(void)
 {
 	
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
