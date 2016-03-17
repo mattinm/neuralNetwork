@@ -66,6 +66,12 @@ double Net::stepSize = 1e-5;
 
 int Net::n_activationType = 0;
 
+void Net::debug()
+{
+	cout << "n_blankInput.getNeurons().size() = " << n_blankInput.getNeurons().size() << endl;
+	cout << "n_blankInput.getdNeurons().size() = " << n_blankInput.getdNeurons().size() << endl;
+}
+
 Net::Net(const char* filename)
 {
 	load(filename);
@@ -80,7 +86,8 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
 	vector<vector<vector<double> > > blankVector;
 	resize3DVector(blankVector,inputWidth,inputHeight,inputDepth);
-	n_blankInput.setImage(blankVector);
+	cout << "inputWidth in Net: " << blankVector.size() << endl;
+	n_blankInput.setImage(&blankVector);
 	n_layers.push_back(&n_blankInput);
 }
 
@@ -346,6 +353,7 @@ bool Net::load(const char* filename)
 			else
 			{
 				cout << "Improper file structure while getting Net args at line " << lineNum << ". Exiting load.";
+				file.close();
 				return false;
 			}
 			getline(file,line); lineNum++;
@@ -355,6 +363,7 @@ bool Net::load(const char* filename)
 		if(netArgsFound != 4)
 		{
 			cout << "4 Net args needed. " << netArgsFound << " found. Exiting load.";
+			file.close();
 			return false;
 		}
 		//Lets init the Net.
@@ -379,6 +388,7 @@ bool Net::load(const char* filename)
 					else
 					{
 						cout << "Improper file structure while getting ActivLayer args at line " << lineNum << ". Exiting load.";
+						file.close();
 						return false;
 					}
 					getline(file,line); lineNum++;
@@ -387,6 +397,7 @@ bool Net::load(const char* filename)
 				if(numActivArgs != 1)
 				{
 					cout << "1 ActivLayer arg needed. " << numActivArgs << " found. Line " << lineNum << ". Exiting load.";
+					file.close();
 					return false;
 				}
 
@@ -414,6 +425,7 @@ bool Net::load(const char* filename)
 					else
 					{
 						cout << "Improper file structure while getting MaxPoolLayer args at line " << lineNum << ". Exiting load.";
+						file.close();
 						return false;
 					}
 					getline(file,line); lineNum++;
@@ -421,6 +433,7 @@ bool Net::load(const char* filename)
 				if(numPoolArgs != 2)
 				{
 					cout << "2 ActivLayer args needed. " << numPoolArgs << " found. Line " << lineNum << ". Exiting load.";
+					file.close();
 					return false;
 				}
 
@@ -466,6 +479,7 @@ bool Net::load(const char* filename)
 					else
 					{
 						cout << "Improper file structure while getting ConvLayer args at line " << lineNum << ". Exiting load.";
+						file.close();
 						return false;
 					}
 					getline(file,line); lineNum++;
@@ -473,6 +487,7 @@ bool Net::load(const char* filename)
 				if(convArgs != 5)
 				{
 					cout << "5 ConvLayer args needed. " << convArgs << " found. Line " << lineNum << ". Exiting load.";
+					file.close();
 					return false;
 				}
 				addConvLayer(conv_numFilters,conv_stride,conv_filterSize,conv_pad,conv_weights);
@@ -480,13 +495,15 @@ bool Net::load(const char* filename)
 			else
 			{
 				cout << "Improper file structure while getting layers at line " << lineNum << ". Exiting load.";
+				file.close();
 				return false;
 			}
 			getline(file,line); lineNum++;
 		}
+		file.close();
 		return true;
 	}
-
+	file.close();
 	return false;
 }
 
@@ -598,6 +615,7 @@ void InputLayer::backprop(Layer& prevLayer){};
 
 const vector<vector<vector<double> > >& InputLayer::getNeurons() const
 {
+	cout << "getNeurons: " << i_neurons->size() << endl;
 	return *i_neurons;
 }
 
@@ -606,13 +624,17 @@ vector<vector<vector<double> > >& InputLayer::getdNeurons()
 	return i_dneurons;
 }
 
-bool InputLayer::setImage(const vector<vector<vector<double> > >& trainingImage)
+bool InputLayer::setImage(const vector<vector<vector<double> > >* trainingImage)
 {
 	if(i_resizeable)
 	{
-		const vector<vector<vector<double> > >& t = trainingImage;
-		i_neurons = &trainingImage;
-		resize3DVector(i_dneurons,t.size(),t[0].size(),t[0][0].size());
+		cout << "In setImage.\ntrainingImage.size() = " <<trainingImage->size() << endl;
+		//const vector<vector<vector<double> > >& t = trainingImage;
+		i_neurons = trainingImage;
+		//vectorClone(trainingImage,*i_neurons);
+		cout << "i_neurons.size() = " << i_neurons->size() << endl;
+		resize3DVector(i_dneurons,trainingImage->size(),trainingImage[0].size(),trainingImage[0][0].size());
+		i_resizeable = false;
 		return true;
 	}
 	return false;
@@ -947,6 +969,7 @@ const int MaxPoolLayer::m_type = Net::MAX_POOL_LAYER;
  {
  	// need to set size of neurons and dneurons and make sure it goes evenly across new neurons
  	const vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
+ 	cout << "got neurons\n" << prevNeurons[0][0][0] << endl;
  	int pWidth = prevNeurons.size();
  	int pHeight = prevNeurons[0].size();
  	int pDepth = prevNeurons[0][0].size();
@@ -1319,6 +1342,22 @@ double vectorESum(const vector<double> &source)
 	return sum;
 }
 
+void vectorClone(const vector<vector<vector<double> > > &source, vector<vector<vector<double> > > &dest)
+{
+	resize3DVector(dest,source.size(),source[0].size(),source[0][0].size());
+	for(int i=0; i< dest.size(); i++)
+	{
+		for(int j=0; j< dest[0].size(); j++)
+		{
+			for(int k=0; k< dest[0][0].size(); k++)
+			{
+				dest[i][j][k] = source[i][j][k];
+			}
+		}
+	}
+	
+}
+
 void meanSubtraction(vector<double>& vect)
 {
 	double mean = 0;
@@ -1331,9 +1370,4 @@ void meanSubtraction(vector<double>& vect)
 	{
 		vect[i] -= mean;
 	}
-}
-
-int main(void)
-{
-	
 }

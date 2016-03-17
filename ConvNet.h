@@ -36,7 +36,7 @@ public:
 	void backprop(Layer& prevLayer);
 	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
-	bool setImage(const std::vector<std::vector<std::vector<double> > >& trainingImage);
+	bool setImage(const std::vector<std::vector<std::vector<double> > >* trainingImage);
 private:
 	static const int i_type;
 	bool i_resizeable;
@@ -125,6 +125,8 @@ public:
 	static const int ACTIV_LAYER = 2;
 	static const int INPUT_LAYER = 3;
 
+	void debug();
+
 
 	int numLayers();
 	bool addActivLayer();
@@ -174,6 +176,9 @@ void softmax(const std::vector<std::vector<std::vector<double> > > &vect, std::v
 void meanSubtraction(std::vector<double>& vect);
 
 double vectorESum(const std::vector<double> &source);
+
+void vectorClone(const std::vector<std::vector<std::vector<double> > > &source, std::vector<std::vector<std::vector<double> > > &dest);
+
 
 
 
