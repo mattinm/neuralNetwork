@@ -26,9 +26,6 @@
  *		make a new add function. bool addNewLayer(Layer&, hyperparameters needed)
  *
  *
- * 	Todo: Make Load/Save Net and ConvLayer
- *
- *	Todo: Make constructor for ConvLayer that takes in a weights string
  *
  *	Todo: Test each layer separately to verify it works.
  *
@@ -709,6 +706,11 @@ void ConvLayer::initRandomWeights()
 				}
 			}
 		}
+	}
+
+	for(int b=0; b< c_biases.size(); b++)
+	{
+		c_biases[b] = distr(gen);
 	}
 }
 
