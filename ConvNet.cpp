@@ -10,7 +10,9 @@
  *		Layer - Abstract
  *			ConvLayer
  *			MaxPoolLayer
- *			FullyConnectedLayer???
+ *			ActivLayer - does the activation function. Defaults to RELU.
+ *			InputLayer
+ *			FullyConnectedLayer??? - not currently implemented.
  *
  *	Each Layer needs forwardprop and backprop
  *		Can we build in local dneurons in forwardprop? No?
@@ -28,6 +30,10 @@
  *
  *
  *	Todo: Test each layer separately to verify it works.
+ *		- Forward seems to work on all 3 layers
+ * 		- Backprop "works"?
+ *
+ *	Todo: loss based on size of weights
  *
  *	Todo: make it so the i_dneurons for InputLayer can be added or deleted only when we are doing 
  *		the computation with that InputLayer. This should reduce size of n_trainingData by like 2.
@@ -49,6 +55,7 @@
 #include <string>
 #include <fstream>
 #include <random>
+#include <cassert>
 
 #define GETMAX(x,y) (x > y) ? x: y
 
@@ -62,14 +69,14 @@ using namespace std;
  * Net
  **********************/
 
-double Net::stepSize = 1e-5;
+double Net::stepSize = 1e-3;
 
 int Net::n_activationType = 0;
 
 void Net::debug()
 {
-	cout << "n_blankInput.getNeurons().size() = " << n_blankInput.getNeurons().size() << endl;
-	cout << "n_blankInput.getdNeurons().size() = " << n_blankInput.getdNeurons().size() << endl;
+	//cout << "n_blankInput.getNeurons().size() = " << n_blankInput.getNeurons().size() << endl;
+	//cout << "n_blankInput.getdNeurons().size() = " << n_blankInput.getdNeurons().size() << endl;
 }
 
 Net::Net(const char* filename)
@@ -84,16 +91,15 @@ Net::Net(int inputWidth, int inputHeight, int inputDepth)
 
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
-	vector<vector<vector<double> > > blankVector;
-	resize3DVector(blankVector,inputWidth,inputHeight,inputDepth);
-	cout << "inputWidth in Net: " << blankVector.size() << endl;
-	n_blankInput.setImage(&blankVector);
+	resize3DVector(n_blankVector,inputWidth,inputHeight,inputDepth);
+	n_blankInput.setImage(&n_blankVector);
 	n_layers.push_back(&n_blankInput);
 }
 
 Net::~Net()
 {
 	//do I need to run delete on the vectors in the layers????????
+	/*
 	for(int i=0; i< n_layers.size(); i++)
 	{
 		delete n_layers[i];
@@ -103,6 +109,7 @@ Net::~Net()
 	{
 		delete n_trainingData[i];
 	}
+	*/
 }
 
 void Net::forwardprop()
@@ -125,6 +132,8 @@ void Net::train(int epochs)
 {
 	//set 1 in the d_neurons in the last layer
 			//or do we need to set it to the error? -> I don't think so.
+	string ep = to_string(epochs);
+
 	vector<vector<vector<double> > > lastLayerGradients = n_layers.back()->getdNeurons();
 	setAll3DVector(lastLayerGradients,1);
 	int numCorrect;
@@ -151,7 +160,9 @@ void Net::train(int epochs)
 			backprop();
 
 		}
-		cout << "Epoch: " << e << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+		cout << "Epoch: " ;
+		cout << setw(ep.size()) << e+1;
+		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
 	}
 }
 
@@ -303,6 +314,7 @@ int Net::getPredictedClass()
 			maxLoc = i;
 		}
 	}
+	//cout << maxLoc << endl;
 	return maxLoc;
 }
 
@@ -599,9 +611,8 @@ InputLayer::~InputLayer(){}
 
 InputLayer::InputLayer(const vector<vector<vector<double> > >& trainingImage)
 {
-	const vector<vector<vector<double> > >& t = trainingImage;
 	i_neurons = &trainingImage;
-	resize3DVector(i_dneurons,t.size(),t[0].size(),t[0][0].size());
+	resize3DVector(i_dneurons,trainingImage.size(),trainingImage[0].size(),trainingImage[0][0].size());
 	i_resizeable = false;
 }
 
@@ -615,7 +626,8 @@ void InputLayer::backprop(Layer& prevLayer){};
 
 const vector<vector<vector<double> > >& InputLayer::getNeurons() const
 {
-	cout << "getNeurons: " << i_neurons->size() << endl;
+	//cout << "getNeurons: " << i_neurons->size() << endl;
+	//cout << "neuron mem: " << i_neurons << endl;
 	return *i_neurons;
 }
 
@@ -628,11 +640,12 @@ bool InputLayer::setImage(const vector<vector<vector<double> > >* trainingImage)
 {
 	if(i_resizeable)
 	{
-		cout << "In setImage.\ntrainingImage.size() = " <<trainingImage->size() << endl;
+		//cout << "In setImage.\ntrainingImage.size() = " <<trainingImage->size() << endl;
 		//const vector<vector<vector<double> > >& t = trainingImage;
 		i_neurons = trainingImage;
+		//cout << "trainingImage mem " << trainingImage  << endl;
 		//vectorClone(trainingImage,*i_neurons);
-		cout << "i_neurons.size() = " << i_neurons->size() << endl;
+		//cout << "i_neurons.size() = " << i_neurons->size() << endl;
 		resize3DVector(i_dneurons,trainingImage->size(),trainingImage[0].size(),trainingImage[0][0].size());
 		i_resizeable = false;
 		return true;
@@ -668,6 +681,8 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 	// up with the amount of padding and stride. If padding is greater than 0 will need to make new 3d vector 
 	// to hold padded array (or use if statements?) DO IN FORWARD PROP AND MAKE LOCAL VARIABLE.
 	
+	//cout << "prevLayer.getNeurons().size() = " << prevLayer.getNeurons().size() << endl;
+
 	const vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
 	int prevWidth = prevNeurons.size();
 	int prevHeight = prevNeurons[0].size();
@@ -703,6 +718,7 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 	}
 
 	c_biases.resize(numFilters);
+	c_dbiases.resize(numFilters);
 }
 
 ConvLayer::~ConvLayer(){}
@@ -715,7 +731,7 @@ int ConvLayer::getType() const
 void ConvLayer::initRandomWeights()
 {
 	default_random_engine gen(time(0));
-	uniform_real_distribution<double> distr(0.0001,1.0);
+	uniform_real_distribution<double> distr(-1.0,1.0);
 	for(int f = 0;f<c_weights.size(); f++)
 	{
 		for(int i=0; i< c_weights[0].size(); i++)
@@ -724,7 +740,9 @@ void ConvLayer::initRandomWeights()
 			{
 				for(int k=0; k< c_weights[0][0][0].size(); k++)
 				{
-					c_weights[f][i][j][k] = distr(gen);
+					//double rnum = distr(gen);
+					c_weights[f][i][j][k] = distr(gen);//rnum;
+					//cout << rnum << endl;
 				}
 			}
 		}
@@ -772,15 +790,15 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 	padZeros(prevLayer.getNeurons(),c_padding,source);
 	double sum;
 	int oX, oY;
-	int subsetWidth = c_weights[0].size();
+	int subsetWidth = c_weights[0].size(); // this is the same as filterSize
 	int subsetHeight = c_weights[0][0].size();
 	for(int f=0; f<c_weights.size(); f++) // which filter we're on
 	{
 		oX = 0;
-		for(int i=0; i < source.size()-1; i+= c_stride) // row in source
+		for(int i=0; i <= source.size()-subsetWidth; i+= c_stride) // row in source   		i < source.size()-1
 		{
 			oY = 0;
-			for(int j=0; j < source[i].size()-1;j+=c_stride) // col in source
+			for(int j=0; j <= source[i].size()-subsetHeight;j+=c_stride) // col in source	j < source[i].size()-1
 			{
 				//now we go into the stride subset
 				sum = 0;
@@ -794,7 +812,7 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 							sum += source[i+s][j+r][k] * c_weights[f][s][r][k];
 							//sum += source.at(i+s).at(j+r).at(k) * weights.at(f).at(s).at(r).at(k);
 
-							//can I set some of the prevLayers.getdNeuron local values at this point???
+							//can I set some of the prevLayer.getdNeuron local values at this point???
 						}
 					}
 				}
@@ -806,16 +824,25 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 			oX++;
 		}
 	}
+
+	//printVector(c_neurons); //Works!
 }
 
 
 
 void ConvLayer::backprop(Layer& prevLayer)
 {
+	//cout << "In ConvLayer backprop" << endl;
+
 	vector<vector<vector<double> > > p_dNeurons = prevLayer.getdNeurons();
 	vector<vector<vector<double> > > padded_dNeurons;
 	resize3DVector(padded_dNeurons,p_dNeurons.size() + 2*c_padding,p_dNeurons[0].size() + 2*c_padding, p_dNeurons[0][0].size());
 	setAll3DVector(p_dNeurons, 0);
+	//setAll1DVector(c_dbiases, 0);
+	for(int b=0; b< c_dbiases.size(); b++)
+	{
+		c_dbiases[b] = 0;
+	}
 	setAll4DVector(c_dweights, 0);
 	vector<vector<vector<double> > > source;
 	padZeros(prevLayer.getNeurons(),c_padding,source);
@@ -823,13 +850,16 @@ void ConvLayer::backprop(Layer& prevLayer)
 	int oX, oY; // outX & outY
 	int subsetWidth = c_weights[0].size();
 	int subsetHeight = c_weights[0][0].size();
+	//cout << "Starting loops" << endl;
+	assert(c_weights.size() == c_dweights.size() && c_weights.size() == c_biases.size() && c_weights.size() == c_dbiases.size());
+	//cout << "c_dneurons[0].size() = " << c_dneurons[0].size() << endl;
 	for(int f=0; f<c_weights.size(); f++) // which filter we're on
 	{
 		oX = 0;
-		for(int i=0; i < source.size()-1; i+= c_stride) // row in source
+		for(int i=0; i < source.size()-subsetWidth; i+= c_stride) // row in source
 		{
 			oY = 0;
-			for(int j=0; j < source[i].size()-1;j+=c_stride) // col in source
+			for(int j=0; j < source[i].size()-subsetHeight;j+=c_stride) // col in source
 			{
 				//now we go into the stride subset
 				sum = 0;
@@ -844,20 +874,26 @@ void ConvLayer::backprop(Layer& prevLayer)
 
 							// out[oX][oY][f] <- source[i+s][j+r][k] * weights[f][s][r][k]
 							// dout[oX][oY][f] -> source & weights 
-							padded_dNeurons[i+s][j+r][k] += c_dneurons[oX][oY][f] * c_weights[f][s][r][k];
-							c_dweights[f][s][r][k]  	 += c_dneurons[oX][oY][f] * source[i+s][j+r][k];
+
+							//padded_dNeurons[i+s][j+r][k] += c_dneurons[oX][oY][f] * c_weights[f][s][r][k];
+							//c_dweights[f][s][r][k]  	 += c_dneurons[oX][oY][f] * source[i+s][j+r][k];
+							//cout << oY << endl;
+							padded_dNeurons.at(i+s).at(j+r).at(k) += c_dneurons.at(oX)[oY][f] * c_weights.at(f).at(s).at(r).at(k);
+							c_dweights.at(f).at(s).at(r).at(k) += c_dneurons.at(oX)[oY][f] * source.at(i+s).at(j+r).at(k);
 						}
 					}
 				}
 				// add bias
 				//sum += c_biases[f];
-				c_dbiases[f] = c_dneurons[oX][oY++][f];
+				c_dbiases.at(f) += c_dneurons.at(oX).at(oY++).at(f);
 				// add into c_neurons[i%stride, j%stride, f]
 				//oY++;
 			}
 			oX++;
 		}
 	}
+
+	//cout << "Into second nested for" << endl;
 
 	//put the padded_dNeurons into the real p_dNeurons
 	for(int i=c_padding; i < padded_dNeurons.size() - c_padding; i++)
@@ -969,7 +1005,7 @@ const int MaxPoolLayer::m_type = Net::MAX_POOL_LAYER;
  {
  	// need to set size of neurons and dneurons and make sure it goes evenly across new neurons
  	const vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
- 	cout << "got neurons\n" << prevNeurons[0][0][0] << endl;
+ 	//cout << "prevLayer.getNeurons().size() = " << prevNeurons.size() << endl;
  	int pWidth = prevNeurons.size();
  	int pHeight = prevNeurons[0].size();
  	int pDepth = prevNeurons[0][0].size();
@@ -1029,10 +1065,14 @@ void MaxPoolLayer::forwardprop(const Layer& prevLayer)
 			oX++;
 		}
 	}
+
+	//printVector(m_neurons);
 }
 
 void MaxPoolLayer::backprop(Layer& prevLayer)
 {
+	//cout << "In MaxPoolLayer backprop" << endl;
+
 	//m_dneurons should have been set at this point by the next layer's backprop
 	//set all prev dNeurons to 0
 	vector<vector<vector<double> > > p_dNeurons = prevLayer.getdNeurons();
@@ -1106,13 +1146,15 @@ string MaxPoolLayer::getHyperParameters() const
 
 const int ActivLayer::a_type = Net::ACTIV_LAYER;
 
+const double ActivLayer::LEAKY_RELU_CONST = .01;
+
 ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 {
-	int notFound = 1;
+	int notFound = true;
 	//check if valid activation Type
 	if(0 <= activationType && activationType < ActivLayer::NUM_ACTIV_TYPES)
 	{ 
-		notFound = 0;
+		notFound = false;
 	}
 	
 	if(notFound)
@@ -1120,6 +1162,9 @@ ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 		cout << "The activationType was not valid. Please use a valid activationType. Exp: ActivLayer::RELU";
 		throw "Invalid activationType";
 	}
+
+	//cout << "prevLayer.getNeurons().size() = " << prevLayer.getNeurons().size() << endl;
+
 	a_activationType = activationType;
 	vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
 	int w = prevNeurons.size();
@@ -1153,10 +1198,30 @@ void ActivLayer::forwardprop(const Layer& prevLayer)
 			}
 		}
 	}
+	else if (a_activationType == ActivLayer::LEAKY_RELU)
+	{
+		for(int i=0; i< prevNeurons.size(); i++)
+		{
+			for(int j=0; j< prevNeurons[0].size(); j++)
+			{
+				for(int k=0; k< prevNeurons[0][0].size(); k++)
+				{
+					if(prevNeurons[i][j][k] < 0)
+						a_neurons[i][j][k] = LEAKY_RELU_CONST * prevNeurons[i][j][k];
+					else
+						a_neurons[i][j][k] = prevNeurons[i][j][k];
+				}
+			}
+		}
+	}
+
+	//printVector(a_neurons);
 }
 
 void ActivLayer::backprop(Layer& prevLayer)
 {
+	//cout << "In ActivLayer backprop" << endl;
+
 	vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
 	vector<vector<vector<double> > > p_dNeurons = prevLayer.getdNeurons();
 	if(a_activationType == ActivLayer::RELU)
@@ -1175,6 +1240,27 @@ void ActivLayer::backprop(Layer& prevLayer)
 					else
 					{
 						p_dNeurons[i][j][k] = 0;
+					}
+				}
+			}
+		}
+	}
+	else if(a_activationType == ActivLayer::LEAKY_RELU)
+	{
+		for(int i=0; i< prevNeurons.size(); i++)
+		{
+			for(int j=0; j< prevNeurons[0].size(); j++)
+			{
+				for(int k=0; k< prevNeurons[0][0].size(); k++)
+				{
+					//a_neurons[i][j][k] = GETMAX(0,prevNeurons[i][j][k]);
+					if(prevNeurons[i][j][k] >= 0)
+					{
+						p_dNeurons[i][j][k] = a_dneurons[i][j][k];
+					}
+					else
+					{
+						p_dNeurons[i][j][k] = LEAKY_RELU_CONST * a_dneurons[i][j][k];
 					}
 				}
 			}
@@ -1270,6 +1356,17 @@ void printVector(const vector<vector<vector<double> > > &vect)
 	}
 }
 
+void printVector(const vector<double>& vect)
+{
+	cout << "|";
+	for(int i=0; i< vect.size(); i++)
+	{
+		cout << setw(4) << vect[i];
+		if(i != vect.size()-1) cout << ",";
+	}
+	cout << "|" << endl;
+}
+
 /*********************
  *
  * padZeros pads the outer edges of the array with the specified number of 0s.
@@ -1295,9 +1392,10 @@ void padZeros(const vector<vector<vector<double> > > &source, int numZeros, vect
 	}
 }
 
-void softmax(const vector<vector<vector<double> > >& vect, vector<double>& normedPredictionsContainer)
+void softmax(const vector<vector<vector<double> > >& vect, vector<double>& out)
 {
-	vector<double>& out = normedPredictionsContainer;
+	//cout << "orig vector";
+	//printVector(vect);
 	int numDirs = 0;
 	int i,j,k, *dir;
 	int width = vect.size();
@@ -1310,11 +1408,14 @@ void softmax(const vector<vector<vector<double> > >& vect, vector<double>& norme
 	{
 		throw "Incorrect dimensions";
 	}
+	//if(dir == &i) cout << "i" << endl;
+	//if(dir == &j) cout << "j" << endl;
+	//if(dir == &k) cout << "k" << endl;
 	for(i=0;i<width;i++)
 	{
 		for(j=0;j<height;j++)
 		{
-			for(k=0;k<height;k++)
+			for(k=0;k<depth;k++)
 			{
 				out[*dir] = vect[i][j][k];
 			}
@@ -1324,12 +1425,17 @@ void softmax(const vector<vector<vector<double> > >& vect, vector<double>& norme
 	//now its in a 1D array
 
 	//subtract the mean
-	meanSubtraction(out);
+	maxSubtraction(out);
+	//cout << "Pre exp" << endl;
+	//printVector(out);
 	double denom = vectorESum(out);
+	//cout << "denom " << denom << endl;
 	for(int n=0; n< out.size(); n++)
 	{
-		out[i] = exp(out[i])/denom;
+		out[n] = exp(out[n])/denom;
 	}
+	//cout << "Final array ";
+	//printVector(out);
 }
 
 double vectorESum(const vector<double> &source)
@@ -1356,6 +1462,55 @@ void vectorClone(const vector<vector<vector<double> > > &source, vector<vector<v
 		}
 	}
 	
+}
+
+void maxSubtraction(vector<double>& vect)
+{
+	double max = vect[0];
+	for(int i=1;i<vect.size();i++)
+	{
+		if(vect[i] > max)
+			max = vect[i];
+	}
+	for(int i=0; i< vect.size(); i++)
+	{
+		vect[i] -= max;
+	}
+}
+
+void meanSubtraction(vector<vector<vector<vector<double> > > >& vect)
+{
+	for(int n=0; n< vect.size(); n++)
+	{
+		meanSubtraction(vect[n]);
+	}
+}
+
+void meanSubtraction(vector<vector<vector<double> > >& vect)
+{
+	double mean = 0;
+	for(int i=0; i< vect.size(); i++)
+	{
+		for(int j=0; j< vect[0].size(); j++)
+		{
+			for(int k=0; k< vect[0][0].size(); k++)
+			{
+				mean += vect[i][j][k];
+			}
+		}
+	}
+	mean /= vect.size() * vect[0].size() * vect[0][0].size();
+
+	for(int i=0; i< vect.size(); i++)
+	{
+		for(int j=0; j< vect[0].size(); j++)
+		{
+			for(int k=0; k< vect[0][0].size(); k++)
+			{
+				vect[i][j][k] -= mean;;
+			}
+		}
+	}
 }
 
 void meanSubtraction(vector<double>& vect)

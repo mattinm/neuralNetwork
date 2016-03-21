@@ -1,6 +1,6 @@
 // ImageSplitter takes an image or all images in a folder and makes each possible 32x32 image from it/them.
 // only takes jpeg, jpg, png
-// use by ./ImageSplitter imageOrFolderName outputDirectory baseOutputName extension
+// use by ./ImageSplitter imageOrFolderName outputDirectory baseOutputName extension (stride)
 
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
@@ -18,6 +18,7 @@ using namespace std;
 string baseOutputName,extension;
 char *inPath, *outPath;
 int imageNum = 0;
+int stride = 1;
 
 void breakUpImage(char* imageName)
 {
@@ -31,9 +32,9 @@ void breakUpImage(char* imageName)
 		printf("The image %s is too small in at least one dimension. Minimum size is 32x32.\n",imageName);
 		return;
 	}
-	for(int i=0; i < numrows-32; i++)
+	for(int i=0; i < numrows-32; i+=stride)
 	{
-		for(int j=0; j< numcols-32; j++)
+		for(int j=0; j< numcols-32; j+=stride)
 		{
 			//Mat out = image.create(i+96, j+32, CV_8UC3);
 			Mat out = image(Range(i,i+32),Range(j,j+32));
@@ -66,15 +67,19 @@ int checkExtensions(char* filename)
 
 int main(int argc, char** argv)
 {
-	if(argc != 5)
+	if(argc != 5 && argc != 6)
 	{
-		printf("use format: ./ImageSplitter imageOrFolderPath outputFolderPath baseOutputName extension\n");
+		printf("use format: ./ImageSplitter imageOrFolderPath outputFolderPath baseOutputName extension (stride=1)\n");
 		return -1;
 	}
 	baseOutputName = argv[3];
 	extension = argv[4];
 	inPath = argv[1];
 	outPath = argv[2];
+	if(argc == 6)
+	{
+		stride = atoi(argv[5]);
+	}
 	bool isDirectory;
 	struct stat s;
 	if(stat(inPath,&s) == 0)

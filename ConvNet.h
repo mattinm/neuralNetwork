@@ -40,7 +40,7 @@ public:
 private:
 	static const int i_type;
 	bool i_resizeable;
-	const std::vector<std::vector<std::vector<double> > >* i_neurons;
+	const std::vector<std::vector<std::vector<double> > >  *i_neurons;
 	std::vector<std::vector<std::vector<double> > > i_dneurons;
 };
 
@@ -96,7 +96,8 @@ public:
 	//ACTIV_TYPES (exp. RELU) must start at 0 and go up by one. The check to see if a type is valid is
 	// if(0 <= type && type < ACTIV_NUM_TYPES) then Valid
 	static const int RELU = 0;
-	static const int NUM_ACTIV_TYPES = 1;
+	static const int LEAKY_RELU = 1;
+	static const int NUM_ACTIV_TYPES = 2;
 	int getType() const;
 	int getActivationType() const;
 	void forwardprop(const Layer& prevLayer);
@@ -106,6 +107,7 @@ public:
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
 	static const int a_type;
+	static const double LEAKY_RELU_CONST;
 	int a_activationType;
 	std::vector<std::vector<std::vector<double> > > a_neurons;
 	std::vector<std::vector<std::vector<double> > > a_dneurons;
@@ -150,6 +152,7 @@ private:
 	std::vector<Layer*> n_realData;
 	std::vector<double> n_results;
 	std::vector<double> n_trainingDataTrueVals;
+	std::vector<std::vector<std::vector<double> > > n_blankVector;
 	InputLayer n_blankInput;
 	std::vector<Layer*> n_layers;
 
@@ -165,6 +168,8 @@ void printVector(const std::vector<std::vector<std::vector<std::vector<double> >
 
 void printVector(const std::vector<std::vector<std::vector<double> > > &vect);
 
+void printVector(const std::vector<double>& vect);
+
 void resize3DVector(std::vector<std::vector<std::vector<double> > > &vect, int width, int height, int depth);
 
 void setAll3DVector(std::vector<std::vector<std::vector<double> > > &vect, double val);
@@ -173,7 +178,13 @@ void setAll4DVector(std::vector<std::vector<std::vector<std::vector<double> > > 
 
 void softmax(const std::vector<std::vector<std::vector<double> > > &vect, std::vector<double>& normedPredictionsContainer);
 
+void maxSubtraction(std::vector<double>& vect);
+
 void meanSubtraction(std::vector<double>& vect);
+
+void meanSubtraction(std::vector<std::vector<std::vector<double> > >& vect);
+
+void meanSubtraction(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
 
 double vectorESum(const std::vector<double> &source);
 
