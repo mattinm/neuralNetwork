@@ -9,10 +9,8 @@
 #ifndef ____ConvNet__
 #define ____ConvNet__
 
-#include <stdio.h>
+//#include <stdio.h>
 #include <vector>
-
-//using namespace std;
 
 // Classes
 
@@ -107,12 +105,20 @@ public:
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
 	static const int a_type;
+	static const double RELU_CAP;
 	static const double LEAKY_RELU_CONST;
 	int a_activationType;
 	std::vector<std::vector<std::vector<double> > > a_neurons;
 	std::vector<std::vector<std::vector<double> > > a_dneurons;
 };
+/*
+class SoftmaxLayer : public Layer{
+public:
+	SoftmaxLayer(const Layer& prevLayer);
 
+private:
+};
+*/
 class Net{
 public:
 	Net(const char* filename);
@@ -126,9 +132,10 @@ public:
 	static const int MAX_POOL_LAYER = 1;
 	static const int ACTIV_LAYER = 2;
 	static const int INPUT_LAYER = 3;
+	static const int SOFTMAX_LAYER = 4;
+	static const bool walkthrough = false;
 
 	void debug();
-
 
 	int numLayers();
 	bool addActivLayer();

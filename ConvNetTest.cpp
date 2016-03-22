@@ -257,7 +257,7 @@ int firstCNN(int argc, char** argv)
 	net.addTrainingData(trainingImages,trueVals);
 
 	cout << "Training Neural Network" << endl;
-	net.train(100);
+	net.train(10000);
 
 	cout << "Done" << endl;
 	return 0;
