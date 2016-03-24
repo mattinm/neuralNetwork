@@ -111,14 +111,30 @@ private:
 	std::vector<std::vector<std::vector<double> > > a_neurons;
 	std::vector<std::vector<std::vector<double> > > a_dneurons;
 };
-/*
+
 class SoftmaxLayer : public Layer{
 public:
 	SoftmaxLayer(const Layer& prevLayer);
-
+	~SoftmaxLayer();
+	int getPredictedClass();
+	std::vector<double> getError();
+	void setError(std::vector<double> error);
+	int getType() const;
+	void forwardprop(const Layer& prevLayer);
+	void backprop(Layer& prevLayer);
+	void setTrueVal(int trueVal);
+	void gradientCheck(Layer& prevLayer);
+	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
+	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
+	static const int s_type;
+	std::vector<double> s_neurons;
+	std::vector<std::vector<std::vector<double> > > s_3neurons;
+	std::vector<double> s_dneurons;
+	std::vector<std::vector<std::vector<double> > > s_3dneurons;
+	int s_trueVal;
 };
-*/
+
 class Net{
 public:
 	Net(const char* filename);
@@ -134,6 +150,9 @@ public:
 	static const int INPUT_LAYER = 3;
 	static const int SOFTMAX_LAYER = 4;
 	static const bool walkthrough = false;
+	static const bool showErrors = false;
+	static bool gradCheck;
+	static const double GRADCHECK_H;
 
 	void debug();
 
@@ -143,14 +162,19 @@ public:
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad);
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad, std::string weightsAndBiases);
 	bool addMaxPoolLayer(int poolSize, int stride);
+	bool addSoftmaxLayer();
 	void addTrainingData(const std::vector<std::vector<std::vector<std::vector<double> > > >& trainingData, std::vector<double>& trueVals);
 	void clear();
 	bool setActivType(int activationType);
 	void train(int epochs);
+	void runTrainingData();
+	void batchTrain(int epochs);
 	void addRealData(const std::vector<std::vector<std::vector<std::vector<double> > > >& realData);
 	void run();
 	int getPredictedClass();
+	void gradientCheck();
 	double calcLoss(int indexOfTrueVal);
+	void shuffleTrainingData();
 
 	bool save(const char* filename);
 private:
@@ -192,6 +216,10 @@ void meanSubtraction(std::vector<double>& vect);
 void meanSubtraction(std::vector<std::vector<std::vector<double> > >& vect);
 
 void meanSubtraction(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
+
+void compressImage(std::vector<std::vector<std::vector<std::vector<double> > > >& vect, double newMin, double newMax);
+
+void compressImage(std::vector<std::vector<std::vector<double> > >& vect, double newMin, double newMax);
 
 double vectorESum(const std::vector<double> &source);
 

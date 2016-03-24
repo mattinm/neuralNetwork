@@ -201,7 +201,9 @@ int firstCNN(int argc, char** argv)
 		cout << "A trainingImagesConfig file is needed. See the readMe for format." << endl;
 		return -1;
 	}
+	cout << "Building NeuralNet" << endl;
 	//set up CNN
+	/*
 	Net net(32,32,3);
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(6,1,5,0);
@@ -212,6 +214,9 @@ int firstCNN(int argc, char** argv)
 	net.addMaxPoolLayer(3,3);
 	net.addConvLayer(2,1,4,0);
 	net.addActivLayer();
+	net.addSoftmaxLayer();
+	*/
+	Net net("oneEpoch.txt");
 
 	cout << "NeuralNet set up" << endl;
 	
@@ -249,6 +254,10 @@ int firstCNN(int argc, char** argv)
 		cout << "No training images found. Exiting." << endl;
 		return 0;
 	}
+	// do (val - mean)/stdDeviation
+
+	//cout << "Doing image preprocessing (compress vals from -1 to 1)" << endl;
+	//compressImage(trainingImages,-1,1);
 	
 	cout << "Doing image preprocessing (mean subtraction)." << endl;
 	meanSubtraction(trainingImages);
@@ -256,8 +265,19 @@ int firstCNN(int argc, char** argv)
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);
 
-	cout << "Training Neural Network" << endl;
-	net.train(10000);
+	net.shuffleTrainingData();
+
+	//cout << "Doing gradient check" << endl;
+	//net.gradientCheck();
+
+	//cout << "Training Neural Network" << endl;
+	//net.train(1);
+
+	cout << "Doing a run without learning on training images" << endl;
+	net.runTrainingData();
+
+	cout << "Saving CNN to oneEpoch.txt" << endl;
+	net.save("oneEpoch.txt");
 
 	cout << "Done" << endl;
 	return 0;

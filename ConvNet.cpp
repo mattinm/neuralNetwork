@@ -31,20 +31,18 @@
  *
  *	Todo: Test each layer separately to verify it works.
  *		- Forward seems to work on all 3 layers
- * 		- Backprop "works"? No updating results?
+ * 		- Backprop kinda works
  *
  *	Todo: init random weights on Gaussian distr. w = np.random.randn(n) * sqrt(2.0/n) where n is number of inputs to neuron
  *
  *	Todo: loss based on size of weights
  *
- *	Todo: Don't bring in all training data at once.
+ *	Todo: shuffle training images every epoch
  *
- *	Todo: Minibatch Gradient Descent?
- *
- *	Todo: implement Gradient on softmax??? If so make it its own layer.
+ *	Todo: Minibatch Gradient Descent
  *
  *	Todo: make it so the i_dneurons for InputLayer can be added or deleted only when we are doing 
- *		the computation with that InputLayer. This should reduce size of n_trainingData by like 2.
+ *		the computation with that InputLayer. This should reduce size of n_trainingData by like 2. Maybe
  *
  *	Todo: implement a gradient check using numerical gradients.
  *
@@ -77,9 +75,13 @@ using namespace std;
  * Net
  **********************/
 
-double Net::stepSize = 1e-5;
+double Net::stepSize = 1e-3;
 
 int Net::n_activationType = 0;
+
+const double Net::GRADCHECK_H = .01;
+
+bool Net::gradCheck = false;
 
 void Net::debug()
 {
@@ -106,17 +108,21 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 Net::~Net()
 {
 	//do I need to run delete on the vectors in the layers????????
-	/*
+	Layer *point;
+	
 	for(int i=0; i< n_layers.size(); i++)
 	{
-		delete n_layers[i];
+		point = n_layers.back();
+		n_layers.pop_back();
+		delete point;
 	}
-
+	/*
 	for(int i=0; i< n_trainingData.size(); i++)
 	{
 		delete n_trainingData[i];
 	}
 	*/
+	
 }
 
 void Net::forwardprop()
@@ -135,15 +141,40 @@ void Net::backprop()
 	}
 }
 
+void Net::runTrainingData()
+{
+	int numCorrect = 0;
+	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+	//set the next training image as the InputLayer for the net
+	for(int t=0; t< n_trainingData.size(); t++)
+	{
+		n_layers[0] = n_trainingData[t];
+
+		//run forward pass
+		forwardprop();
+
+		//set trueVal
+		soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+		int predictedClass = soft->getPredictedClass();
+		if(predictedClass == n_trainingDataTrueVals[t])
+			numCorrect++;
+	}
+	cout << "Run on Training data: " <<  "Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+
+}
+
 void Net::train(int epochs)
 {
 	//set 1 in the d_neurons in the last layer
 			//or do we need to set it to the error? -> I don't think so.
 	string ep = to_string(epochs);
 
-	vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
-	setAll3DVector(lastLayerGradients,1);
+	gradCheck = false;
+	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//setAll3DVector(lastLayerGradients,1);
 	int numCorrect;
+	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
 	for(int e=0; e< epochs; e++)
 	{
 		numCorrect = 0;
@@ -155,8 +186,10 @@ void Net::train(int epochs)
 			//run forward pass
 			forwardprop();
 
-			//get error
-			int predictedClass = getPredictedClass();
+			//set trueVal
+			soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+			int predictedClass = soft->getPredictedClass();
 			if(predictedClass == n_trainingDataTrueVals[t])
 				numCorrect++;
 
@@ -172,11 +205,97 @@ void Net::train(int epochs)
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
 		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+
 	}
+
+}
+
+void Net::batchTrain(int epochs)
+{
+	string ep = to_string(epochs);
+
+	gradCheck = false;
+	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//setAll3DVector(lastLayerGradients,1);
+	int numCorrect;
+	vector<double> errors(2);
+	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+	for(int e=0; e< epochs; e++)
+	{
+		numCorrect = 0;
+		//set the next training image as the InputLayer for the net
+		for(int t=0; t< n_trainingData.size(); t++)
+		{
+			n_layers[0] = n_trainingData[t];
+
+			//run forward pass
+			forwardprop();
+
+			//set trueVal
+			soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+			//get error
+			vector<double> curError = soft->getError();
+			for(int i=0; i< curError.size(); i++)
+			{
+				errors[i] += curError[i];
+			}
+
+			int predictedClass = soft->getPredictedClass();
+			//cout << "Pred: "<<predictedClass << " True: "<< n_trainingDataTrueVals[t] << "\n";
+			if(predictedClass == n_trainingDataTrueVals[t])
+				numCorrect++;
+
+			//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
+			//and print for each epoch?
+
+			//run backward pass beside the weight no
+
+			//
+
+		}
+		cout << "Epoch: " ;
+		cout << setw(ep.size()) << e+1;
+		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+
+		for(int i=0; i< errors.size(); i++)
+		{
+			errors[i] /= n_trainingData.size();
+		}
+		soft->setError(errors);
+		backprop();
+		for(int i=0; i< errors.size(); i++)
+			errors[i] = 0;
+
+	}
+}
+
+void Net::gradientCheck()
+{
+	gradCheck = true;
+	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+	for(int t=0; t< n_trainingData.size(); t++)
+	{
+		n_layers[0] = n_trainingData[t];
+
+		forwardprop();
+
+		soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+		backprop();
+		cout << "Image "<<t << endl;
+		soft->gradientCheck(*n_layers[n_layers.size()-2]);
+	}
+	
+
+	//for layers other than softmax do
+	//vector<...> prevNeurons = prevLayer.getNeurons
+	//without putting an & before prevNeurons. then you can change it.
 }
 
 void Net::run()
 {
+	gradCheck = false;
 	for(int r=0; r < n_realData.size(); r++)
 	{
 		n_layers[0] = n_realData[r];
@@ -245,6 +364,7 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, stri
 	}
 	catch(...)
 	{
+		cout << "in catch" << endl;
 		return false;
 	}
 }
@@ -255,6 +375,20 @@ bool Net::addMaxPoolLayer(int poolSize, int stride)
 	{
 		MaxPoolLayer *pool = new MaxPoolLayer(*(n_layers.back()),poolSize, stride);
 		n_layers.push_back(pool);
+		return true;
+	}
+	catch(...)
+	{
+		return false;
+	}
+}
+
+bool Net::addSoftmaxLayer()
+{
+	try
+	{
+		SoftmaxLayer *soft = new SoftmaxLayer(*(n_layers.back()));
+		n_layers.push_back(soft);
 		return true;
 	}
 	catch(...)
@@ -327,6 +461,26 @@ int Net::getPredictedClass()
 	return maxLoc;
 }
 
+void Net::shuffleTrainingData()
+{
+	default_random_engine gen(time(0));
+	uniform_int_distribution<int> distr(0,n_trainingData.size()-1);
+	cout << "Shuffling training images" << endl;
+	for(int i=0; i< n_trainingData.size(); i++)
+	{
+		int swapIndex = distr(gen);
+		Layer* temp  = n_trainingData[i];
+		int tempTrue = n_trainingDataTrueVals[i];
+
+		n_trainingData[i] 		  = n_trainingData[swapIndex];
+		n_trainingDataTrueVals[i] = n_trainingDataTrueVals[swapIndex];
+
+		n_trainingData[swapIndex] 		  = temp;
+		n_trainingDataTrueVals[swapIndex] = tempTrue;
+	}
+	cout << "Done shuffling" << endl;
+}
+
 bool Net::load(const char* filename)
 {
 	ifstream file;
@@ -368,7 +522,7 @@ bool Net::load(const char* filename)
 			else if(line.find("inputDepth") != string::npos)
 			{
 				loc = line.find("=") + 1;
-				inputHeight = stoi(line.substr(loc));
+				inputDepth = stoi(line.substr(loc));
 				netArgsFound++;
 			}
 			else
@@ -388,6 +542,10 @@ bool Net::load(const char* filename)
 			return false;
 		}
 		//Lets init the Net.
+		//cout << "Net params loaded" << endl;
+
+		init(inputWidth,inputHeight,inputDepth);
+		setActivType(activationType);
 
 
 		//Now we get all the layers
@@ -424,6 +582,7 @@ bool Net::load(const char* filename)
 
 				//make layer
 				addActivLayer(layer_activationType);
+				//cout << "ActivLayer added" << endl;
 			}
 			else if(line == "MAX_POOL_LAYER")
 			{
@@ -459,6 +618,7 @@ bool Net::load(const char* filename)
 				}
 
 				addMaxPoolLayer(pool_size,pool_stride);
+				//cout << "MaxPoolLayer added" << endl;
 			}
 			else if(line == "CONV_LAYER")
 			{
@@ -511,7 +671,14 @@ bool Net::load(const char* filename)
 					file.close();
 					return false;
 				}
+				//cout << "At addConvLayer" << endl;
 				addConvLayer(conv_numFilters,conv_stride,conv_filterSize,conv_pad,conv_weights);
+				//cout << "ConvLayer added" << endl;
+			}
+			else if(line == "SOFTMAX_LAYER")
+			{
+				addSoftmaxLayer();
+				//cout << "SoftmaxLayer added" << endl;
 			}
 			else
 			{
@@ -564,7 +731,7 @@ bool Net::save(const char* filename)
 	out += data;
 	out += '\n';
 
-	out += "END_NET";
+	out += "END_NET\n";
 
 	for(int l=1; l < n_layers.size(); l++)
 	{
@@ -596,6 +763,10 @@ bool Net::save(const char* filename)
 			out += conv->getHyperParameters();
 
 			out += "END_CONV_LAYER\n";
+		}
+		else if(type == Net::SOFTMAX_LAYER)
+		{
+			out += "SOFTMAX_LAYER\n";
 		}
 	}
 	out += "END_ALL";
@@ -678,6 +849,7 @@ ConvLayer::ConvLayer(const Layer& prevLayer, int numFilters, int stride, int fil
 
 ConvLayer::ConvLayer(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad, string weightsAndBiases)
 {
+	//cout << "Init ConvLayer with loaded weights" << endl;
 	init(prevLayer,numFilters,stride,filterSize,pad);
 
 	//need some way to initialize, save, and load weights and biases
@@ -740,7 +912,7 @@ int ConvLayer::getType() const
 void ConvLayer::initRandomWeights()
 {
 	default_random_engine gen(time(0));
-	uniform_real_distribution<double> distr(-1.0,1.0);
+	uniform_real_distribution<double> distr(-.005,.005);
 	for(int f = 0;f<c_weights.size(); f++)
 	{
 		for(int i=0; i< c_weights[0].size(); i++)
@@ -935,29 +1107,33 @@ void ConvLayer::backprop(Layer& prevLayer)
 		}
 	}
 
-	//we need to substract the gradient * the stepSize from the weights and biases
+	//end here if doing gradient check cause we don't want to update the weights
 
-	//update the weights
-	for(int f=0;f<c_weights.size();f++)
+	//we need to substract the gradient * the stepSize from the weights and biases
+	if(!Net::gradCheck)
 	{
-		for(int i=0; i< c_weights[0].size(); i++)
+		//update the weights
+		for(int f=0;f<c_weights.size();f++)
 		{
-			for(int j=0; j< c_weights[0][0].size(); j++)
+			for(int i=0; i< c_weights[0].size(); i++)
 			{
-				for(int k=0; k< c_weights[0][0][0].size(); k++)
+				for(int j=0; j< c_weights[0][0].size(); j++)
 				{
-					//if(c_dweights[f][i][j][k] != 0)
-						//cout << c_dweights[f][i][j][k] << endl;
-					c_weights[f][i][j][k] -= Net::stepSize * c_dweights[f][i][j][k];
+					for(int k=0; k< c_weights[0][0][0].size(); k++)
+					{
+						//if(c_dweights[f][i][j][k] != 0)
+							//cout << c_dweights[f][i][j][k] << endl;
+						c_weights[f][i][j][k] -= Net::stepSize * c_dweights[f][i][j][k];
+					}
 				}
 			}
 		}
-	}
 
-	//update the biases
-	for(int i=0; i< c_biases.size(); i++)
-	{
-		c_biases[i] -= Net::stepSize * c_dbiases[i];
+		//update the biases
+		for(int i=0; i< c_biases.size(); i++)
+		{
+			c_biases[i] -= Net::stepSize * c_dbiases[i];
+		}	
 	}
 }
 
@@ -1355,9 +1531,294 @@ string ActivLayer::getHyperParameters() const
 	return out;
 }
 
+/**********************
+ * SoftmaxLayer
+ **********************/
+
+ const int SoftmaxLayer::s_type = Net::SOFTMAX_LAYER;
+
+ SoftmaxLayer::SoftmaxLayer(const Layer& prevLayer)
+ {
+ 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+ 	int numDirs = 0;
+	int i,j,k, *dir;
+	int width = prevNeurons.size();
+	int height = prevNeurons[0].size();
+	int depth = prevNeurons[0][0].size();
+	if(width  > 1) {numDirs++; dir = &i; s_neurons.resize(width);}
+	if(height > 1) {numDirs++; dir = &j; s_neurons.resize(height);}
+	if(depth  > 1) {numDirs++; dir = &k; s_neurons.resize(depth);}
+	if(numDirs != 1 || width < 1 || height < 1 || depth < 1)
+	{
+		throw "Incorrect dimensions";
+	}
+	s_dneurons.resize(s_neurons.size());
+
+	s_3neurons.resize(1);
+	s_3neurons[0].resize(1);
+	s_3neurons[0][0] = s_neurons;
+
+	s_3dneurons.resize(1);
+	s_3dneurons[0].resize(1);
+	s_3dneurons[0][0] = s_dneurons;
+ }
+
+ SoftmaxLayer::~SoftmaxLayer(){}
+
+ void SoftmaxLayer::forwardprop(const Layer& prevLayer)
+ {
+ 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+	int i,j,k, *dir;
+	int width = prevNeurons.size();
+	int height = prevNeurons[0].size();
+	int depth = prevNeurons[0][0].size();
+	if(width  > 1) {dir = &i;}
+	else if(height > 1) {dir = &j;}
+	else {dir = &k;}
+
+	for(i=0;i<width;i++)
+	{
+		for(j=0;j<height;j++)
+		{
+			for(k=0;k<depth;k++)
+			{
+				s_neurons[*dir] = prevNeurons[i][j][k];
+			}
+		}
+	}
+
+	maxSubtraction(s_neurons);
+	double denom = vectorESum(s_neurons);
+	for(int n=0; n < s_neurons.size(); n++)
+	{
+		s_neurons[n] = exp(s_neurons[n])/denom;
+	}
+
+	if(Net::walkthrough)
+	{
+		cout << "In SoftmaxLayer forwardprop" << endl;
+		printVector(s_neurons);
+		getchar();
+	}
+
+ }
+
+ void SoftmaxLayer::setTrueVal(int trueVal)
+ {
+ 	if(trueVal < 0 || s_neurons.size() <= trueVal)
+ 		throw "Invalid trueVal";
+ 	s_trueVal = trueVal;
+ }
+
+ void SoftmaxLayer::gradientCheck(Layer& prevLayer)
+ {
+ 	vector<vector<vector<double> > >& prevdNeurons = prevLayer.getdNeurons();
+ 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+ 	cout << "\n\n";
+ 	int i,j,k, *dir;
+	int width = prevNeurons.size();
+	int height = prevNeurons[0].size();
+	int depth = prevNeurons[0][0].size();
+	if(width  > 1) {dir = &i;}
+	else if(height > 1) {dir = &j;}
+	else {dir = &k;}
+ 	for(i = 0; i< width; i++)
+ 	{
+ 		for(j=0; j< height; j++)
+ 		{
+ 			for(k=0; k < depth; k++)
+ 			{
+ 				cout << "Softmax prevNeurons["<<i<<"]["<<j<<"]["<<k<<"]:\n";
+ 				cout << "Analytical Gradient:\t" << prevdNeurons[i][j][k]<< endl;
+ 				cout << "old s_neurons: ";
+ 				printVector(s_neurons);
+
+ 				vector<double> oldError = getError();
+ 				s_neurons[*dir] += Net::GRADCHECK_H;
+
+ 				//from forwardprop
+ 				maxSubtraction(s_neurons);
+				double denom = vectorESum(s_neurons);
+				for(int n=0; n < s_neurons.size(); n++)
+				{
+					s_neurons[n] = exp(s_neurons[n])/denom;
+				}
+
+				if(Net::walkthrough)
+				{
+					cout << "In Gradient SoftmaxLayer forwardprop" << endl;
+					printVector(s_neurons);
+					getchar();
+				}
+				//end from forwardprop
+
+				cout << "new s_neurons: ";
+				printVector(s_neurons);
+
+				vector<double> newError = getError();
+				double numericalGradient = 0;
+				for(int e=0; e<newError.size(); e++)
+				{
+					cout << (newError[e] - oldError[e])/Net::GRADCHECK_H << endl;
+					numericalGradient += (newError[e] - oldError[e])/Net::GRADCHECK_H;
+				}
+				cout << "Numberical Gradient:\t" << numericalGradient << endl;
+
+ 				s_neurons[*dir] -= Net::GRADCHECK_H;
+
+ 				cout <<"\n\n";
+ 			}
+ 		}
+ 	}
+ }
+
+ void SoftmaxLayer::backprop(Layer& prevLayer)
+ {
+ 	for(int i=0; i< s_neurons.size(); i++)
+ 	{
+ 		if(i == s_trueVal)
+ 		{
+ 			//s_dneurons[i] = 1 - s_neurons[i];
+ 			s_dneurons[i] = s_neurons[i] - 1;
+ 		}
+ 		else
+ 		{
+ 			//s_dneurons[i] = -s_neurons[i];
+ 			s_dneurons[i] = s_neurons[i];
+ 		}
+ 	}
+
+ 	if(Net::walkthrough || Net::showErrors)
+	{
+		cout << "In SoftmaxLayer backprop" << endl;
+		//printVector(s_neurons);
+		printVector(s_dneurons);
+		if(Net::walkthrough)
+			getchar();
+	}
+
+ 	vector<vector<vector<double> > >& prevdNeurons = prevLayer.getdNeurons();
+ 	int n = 0;
+ 	for(int i=0; i< prevdNeurons.size(); i++)
+ 	{
+ 		for(int j=0; j< prevdNeurons[i].size(); j++)
+ 		{
+ 			for(int k=0; k< prevdNeurons[i][j].size(); k++)
+ 			{
+ 				prevdNeurons[i][j][k] = s_dneurons[n++];
+ 			}
+ 		}
+ 	}
+ }
+
+ int SoftmaxLayer::getPredictedClass()
+ {
+ 	int maxLoc = 0;
+	for(int i=1; i<s_neurons.size();i++)
+	{
+		if(s_neurons[i] > s_neurons[maxLoc])
+		{
+			maxLoc = i;
+		}
+	}
+	//cout << maxLoc << endl;
+	return maxLoc;
+ }
+
+ vector<double> SoftmaxLayer::getError() 
+ {
+ 	for(int i=0; i< s_neurons.size(); i++)
+ 	{
+ 		if(i == s_trueVal)
+ 		{
+ 			s_dneurons[i] = 1 - s_neurons[i];
+ 		}
+ 		else
+ 		{
+ 			s_dneurons[i] = -s_neurons[i];
+ 		}
+ 	}
+ 	if(Net::showErrors)
+ 		printVector(s_dneurons);
+ 	return s_dneurons;
+ }
+
+ void SoftmaxLayer::setError(vector<double> error)
+ {
+ 	if(error.size() != s_dneurons.size())
+ 	{
+ 		throw "Incorrect error vector size";
+ 	}
+ 	for(int i=0;i<error.size(); i++)
+ 	{
+ 		s_dneurons[i] = error[i];
+ 	}
+ }
+
+ int SoftmaxLayer::getType() const 
+ {
+ 	return s_type;
+ }
+
+ const vector<vector<vector<double> > >& SoftmaxLayer::getNeurons() const
+ {
+ 	return s_3neurons;
+ } 
+
+ vector<vector<vector<double> > >& SoftmaxLayer::getdNeurons()
+ {
+ 	return s_3dneurons;
+ }
+
 /***********************************
  * Functions
  ***********************************/
+void softmax(const vector<vector<vector<double> > >& vect, vector<double>& out)
+{
+	//cout << "orig vector";
+	//printVector(vect);
+	int numDirs = 0;
+	int i,j,k, *dir;
+	int width = vect.size();
+	int height = vect[0].size();
+	int depth = vect[0][0].size();
+	if(width  > 1) {numDirs++; dir = &i; out.resize(width);}
+	if(height > 1) {numDirs++; dir = &j; out.resize(height);}
+	if(depth  > 1) {numDirs++; dir = &k; out.resize(depth);}
+	if(numDirs != 1 || width < 1 || height < 1 || depth < 1)
+	{
+		throw "Incorrect dimensions";
+	}
+	//if(dir == &i) cout << "i" << endl;
+	//if(dir == &j) cout << "j" << endl;
+	//if(dir == &k) cout << "k" << endl;
+	for(i=0;i<width;i++)
+	{
+		for(j=0;j<height;j++)
+		{
+			for(k=0;k<depth;k++)
+			{
+				out[*dir] = vect[i][j][k];
+			}
+		}
+	}
+
+	//now its in a 1D array
+
+	//subtract the max for numerical stability
+	maxSubtraction(out);
+	//cout << "Pre exp" << endl;
+	//printVector(out);
+	double denom = vectorESum(out);
+	//cout << "denom " << denom << endl;
+	for(int n=0; n< out.size(); n++)
+	{
+		out[n] = exp(out[n])/denom;
+	}
+	//cout << "Final array ";
+	//printVector(out);
+}
+
 void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
 {
 	vect.resize(width);
@@ -1456,51 +1917,6 @@ void padZeros(const vector<vector<vector<double> > > &source, int numZeros, vect
 	}
 }
 
-void softmax(const vector<vector<vector<double> > >& vect, vector<double>& out)
-{
-	//cout << "orig vector";
-	//printVector(vect);
-	int numDirs = 0;
-	int i,j,k, *dir;
-	int width = vect.size();
-	int height = vect[0].size();
-	int depth = vect[0][0].size();
-	if(width  > 1) {numDirs++; dir = &i; out.resize(width);}
-	if(height > 1) {numDirs++; dir = &j; out.resize(height);}
-	if(depth  > 1) {numDirs++; dir = &k; out.resize(depth);}
-	if(numDirs != 1 || width < 1 || height < 1 || depth < 1)
-	{
-		throw "Incorrect dimensions";
-	}
-	//if(dir == &i) cout << "i" << endl;
-	//if(dir == &j) cout << "j" << endl;
-	//if(dir == &k) cout << "k" << endl;
-	for(i=0;i<width;i++)
-	{
-		for(j=0;j<height;j++)
-		{
-			for(k=0;k<depth;k++)
-			{
-				out[*dir] = vect[i][j][k];
-			}
-		}
-	}
-
-	//now its in a 1D array
-
-	//subtract the max for numerical stability
-	maxSubtraction(out);
-	//cout << "Pre exp" << endl;
-	//printVector(out);
-	double denom = vectorESum(out);
-	//cout << "denom " << denom << endl;
-	for(int n=0; n< out.size(); n++)
-	{
-		out[n] = exp(out[n])/denom;
-	}
-	//cout << "Final array ";
-	//printVector(out);
-}
 
 double vectorESum(const vector<double> &source)
 {
@@ -1526,6 +1942,28 @@ void vectorClone(const vector<vector<vector<double> > > &source, vector<vector<v
 		}
 	}
 	
+}
+
+void compressImage(vector<vector<vector<vector<double> > > >& vect, double newMin, double newMax)
+{
+	for(int n=0; n< vect.size(); n++)
+	{
+		compressImage(vect[n],newMin, newMax);
+	}
+}
+
+void compressImage(vector<vector<vector<double> > >& vect, double newMin, double newMax)
+{
+	for(int i=0; i< vect.size(); i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				vect[i][j][k] = vect[i][j][k]/255 * (newMax-newMin) + newMin;
+			}
+		}
+	}
 }
 
 void maxSubtraction(vector<double>& vect)
