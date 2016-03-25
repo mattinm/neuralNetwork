@@ -4,6 +4,9 @@
  *
  * 	Created by Connor Bowley on 3/16/15
  *
+ *
+ *	Get the image vectors made without using Mat
+ *
  *********************************************/
 
 #include <iostream>
@@ -194,29 +197,17 @@ void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vec
 	}
 }
 
-int firstCNN(int argc, char** argv)
+int runTrainedCNN(int argc, char** argv)
 {
-	if(argc != 2)
+	if(argc != 3)
 	{
-		cout << "A trainingImagesConfig file is needed. See the readMe for format." << endl;
+		cout << "Use: ./ConvNetTest trainingImagesConfig.txt nnConfig.txt. A trainingImagesConfig file is needed. See the readMe for format." << endl;
 		return -1;
 	}
 	cout << "Building NeuralNet" << endl;
 	//set up CNN
-	/*
-	Net net(32,32,3);
-	net.setActivType(ActivLayer::LEAKY_RELU);
-	net.addConvLayer(6,1,5,0);
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);
-	net.addConvLayer(10,1,3,0);
-	net.addActivLayer();
-	net.addMaxPoolLayer(3,3);
-	net.addConvLayer(2,1,4,0);
-	net.addActivLayer();
-	net.addSoftmaxLayer();
-	*/
-	Net net("oneEpoch.txt");
+	
+	Net net(argv[2]);
 
 	cout << "NeuralNet set up" << endl;
 	
@@ -265,19 +256,108 @@ int firstCNN(int argc, char** argv)
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);
 
-	net.shuffleTrainingData();
-
-	//cout << "Doing gradient check" << endl;
-	//net.gradientCheck();
-
-	//cout << "Training Neural Network" << endl;
-	//net.train(1);
+	//shuffling shouldnt matter if there is no backprop
+	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
 	net.runTrainingData();
 
-	cout << "Saving CNN to oneEpoch.txt" << endl;
-	net.save("oneEpoch.txt");
+	cout << "Done" << endl;
+	return 0;
+}
+
+int trainCNN(int argc, char** argv)
+{
+	if(argc != 2 && argc != 3)
+	{
+		cout << "Uses: ./ConvNetTest trainingImagesConfig.txt\n"<<
+		"./ConvNetTest trainingImagesConfig.txt outputFilename.txt\nA trainingImagesConfig file is needed. See the readMe for format." << endl;
+		return -1;
+	}
+	cout << "Building NeuralNet" << endl;
+	//set up CNN
+	
+	Net net(32,32,3);
+	net.setActivType(ActivLayer::LEAKY_RELU);
+	net.addConvLayer(6,1,5,0);
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);
+	net.addConvLayer(10,1,3,0);
+	net.addActivLayer();
+	net.addMaxPoolLayer(3,3);
+	net.addConvLayer(2,1,4,0);
+	net.addActivLayer();
+	net.addSoftmaxLayer();
+	
+	//Net net("oneEpoch.txt");
+
+	cout << "NeuralNet set up" << endl;
+	
+	cout << "Getting training images" << endl;
+
+	vector<vector<vector<vector<double> > > > trainingImages;
+	vector<double> trueVals;
+
+	ifstream tiConfig;
+	string line;
+	tiConfig.open(argv[1]);
+	if(!tiConfig.is_open())
+	{
+		cout << "Could not open the trainingImagesConfig file " << argv[1];
+		return -1;
+	}
+	while(getline(tiConfig,line))
+	{
+		int loc = line.find(",");
+		if(loc != string::npos)
+		{
+			cout << "Adding folder" << line.substr(0,loc) << endl;
+			getTrainingImages(line.substr(0,loc).c_str(),stoi(line.substr(loc+1)),trainingImages,trueVals);
+		}
+		else
+			cout << "Error in trainingImagesConfig at line:\n" << line << endl;
+	}
+	tiConfig.close();
+
+	cout << trainingImages.size() << " training images added." << endl;
+
+	assert(trainingImages.size() == trueVals.size());
+	if(trainingImages.size() == 0)
+	{
+		cout << "No training images found. Exiting." << endl;
+		return 0;
+	}
+	// do (val - mean)/stdDeviation
+
+	//cout << "Doing image preprocessing (compress vals from -1 to 1)" << endl;
+	//compressImage(trainingImages,-1,1);
+	
+	cout << "Doing image preprocessing (mean subtraction)." << endl;
+	meanSubtraction(trainingImages);
+
+	cout << "Adding training images to Network" << endl;
+	net.addTrainingData(trainingImages,trueVals);
+
+	net.shuffleTrainingData(10);
+
+	//cout << "Doing gradient check" << endl;
+	//net.gradientCheck();
+
+	cout << "Split Training Neural Network" << endl;
+	net.splitTrain(100);
+
+	//int batchSize = 10;
+	//cout << "MiniBatch Training Neural Network. Batch Size = "<< batchSize << endl;
+	//net.miniBatchTrain(100, batchSize);
+
+	//cout << "Doing a run without learning on training images" << endl;
+	//net.runTrainingData();
+
+	if(argc == 3)
+	{
+		cout << "Saving CNN to " << argv[2] << endl;
+		net.save(argv[2]);
+	}
 
 	cout << "Done" << endl;
 	return 0;
@@ -285,7 +365,8 @@ int firstCNN(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-	firstCNN(argc,argv);
+	trainCNN(argc, argv);
+	//runTrainedCNN(argc, argv);
 	//cout << "back in main" << endl;
 	return 0;
 }

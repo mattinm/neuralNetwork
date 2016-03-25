@@ -29,17 +29,17 @@ public:
 	InputLayer();
 	~InputLayer();
 	int getType() const;
-	InputLayer(const std::vector<std::vector<std::vector<double> > >& trainingImage);
+	InputLayer(const std::vector<std::vector<std::vector<double> > >& trainingImage, std::vector<std::vector<std::vector<double> > >* blankdNeurons);
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
 	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
-	bool setImage(const std::vector<std::vector<std::vector<double> > >* trainingImage);
+	bool setImage(const std::vector<std::vector<std::vector<double> > >* trainingImage,std::vector<std::vector<std::vector<double> > >* blankdNeurons);
 private:
 	static const int i_type;
 	bool i_resizeable;
 	const std::vector<std::vector<std::vector<double> > >  *i_neurons;
-	std::vector<std::vector<std::vector<double> > > i_dneurons;
+	std::vector<std::vector<std::vector<double> > > *i_dneurons;
 };
 
 class ConvLayer : public Layer{
@@ -167,14 +167,16 @@ public:
 	void clear();
 	bool setActivType(int activationType);
 	void train(int epochs);
+	void splitTrain(int epochs);
 	void runTrainingData();
-	void batchTrain(int epochs);
+	void miniBatchTrain(int epochs, int batchSize);
 	void addRealData(const std::vector<std::vector<std::vector<std::vector<double> > > >& realData);
 	void run();
+	std::vector<std::vector<std::vector<double> > >* getBlankVectorPointer();
 	int getPredictedClass();
 	void gradientCheck();
 	double calcLoss(int indexOfTrueVal);
-	void shuffleTrainingData();
+	void shuffleTrainingData(int times=1);
 
 	bool save(const char* filename);
 private:
@@ -212,6 +214,14 @@ void softmax(const std::vector<std::vector<std::vector<double> > > &vect, std::v
 void maxSubtraction(std::vector<double>& vect);
 
 void meanSubtraction(std::vector<double>& vect);
+
+double mean(const std::vector<std::vector<std::vector<double> > >& vect);
+
+double stddev(const std::vector<std::vector<std::vector<double> > >& vect);
+
+double stddev(const std::vector<std::vector<std::vector<double> > >& vect, double mean);
+
+void preprocess(std::vector<std::vector<std::vector<double> > >& vect);
 
 void meanSubtraction(std::vector<std::vector<std::vector<double> > >& vect);
 

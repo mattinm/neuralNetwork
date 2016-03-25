@@ -29,20 +29,13 @@
  *
  *
  *
- *	Todo: Test each layer separately to verify it works.
- *		- Forward seems to work on all 3 layers
- * 		- Backprop kinda works
+ *	Todo: Fix batch gradient descent?
  *
  *	Todo: init random weights on Gaussian distr. w = np.random.randn(n) * sqrt(2.0/n) where n is number of inputs to neuron
  *
  *	Todo: loss based on size of weights
  *
- *	Todo: shuffle training images every epoch
- *
- *	Todo: Minibatch Gradient Descent
- *
- *	Todo: make it so the i_dneurons for InputLayer can be added or deleted only when we are doing 
- *		the computation with that InputLayer. This should reduce size of n_trainingData by like 2. Maybe
+ *	Todo: test miniBatchTrain
  *
  *	Todo: implement a gradient check using numerical gradients.
  *
@@ -101,7 +94,7 @@ Net::Net(int inputWidth, int inputHeight, int inputDepth)
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
 	resize3DVector(n_blankVector,inputWidth,inputHeight,inputDepth);
-	n_blankInput.setImage(&n_blankVector);
+	n_blankInput.setImage(&n_blankVector, &n_blankVector);
 	n_layers.push_back(&n_blankInput);
 }
 
@@ -164,6 +157,73 @@ void Net::runTrainingData()
 
 }
 
+void Net::splitTrain(int epochs)
+{
+	//set 1 in the d_neurons in the last layer
+			//or do we need to set it to the error? -> I don't think so.
+	string ep = to_string(epochs);
+
+	int startValidationIndex = n_trainingData.size() * 0.9;
+
+	gradCheck = false;
+	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//setAll3DVector(lastLayerGradients,1);
+	int numCorrect;
+	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+	for(int e=0; e< epochs; e++)
+	{
+		numCorrect = 0;
+		//set the next training image as the InputLayer for the net
+		for(int t=0; t< startValidationIndex; t++)
+		{
+			n_layers[0] = n_trainingData[t];
+
+			//run forward pass
+			forwardprop();
+
+			//set trueVal
+			soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+			int predictedClass = soft->getPredictedClass();
+			if(predictedClass == n_trainingDataTrueVals[t])
+				numCorrect++;
+
+			//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
+			//and print for each epoch?
+
+			//run backward pass beside the weight no
+			backprop();
+
+			//
+
+		}
+		cout << "Epoch: " ;
+		cout << setw(ep.size()) << e+1;
+		cout << ", Accuracy: " << (double)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
+
+		shuffleTrainingData();
+	}
+
+	cout << "Running Validation set" << endl;
+	numCorrect = 0;
+	for(int t=startValidationIndex; t< n_trainingData.size(); t++)
+	{
+		n_layers[0] = n_trainingData[t];
+
+		//run forward pass
+		forwardprop();
+
+		//set trueVal
+		soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+		int predictedClass = soft->getPredictedClass();
+		if(predictedClass == n_trainingDataTrueVals[t])
+			numCorrect++;
+	}
+	cout << "Validation run on Training data: " <<  "Accuracy: " << (double)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
+
+}
+
 void Net::train(int epochs)
 {
 	//set 1 in the d_neurons in the last layer
@@ -210,9 +270,10 @@ void Net::train(int epochs)
 
 }
 
-void Net::batchTrain(int epochs)
+void Net::miniBatchTrain(int epochs, int batchSize)
 {
 	string ep = to_string(epochs);
+	int origBatchSize = batchSize;
 
 	gradCheck = false;
 	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
@@ -220,52 +281,56 @@ void Net::batchTrain(int epochs)
 	int numCorrect;
 	vector<double> errors(2);
 	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+	int numFullBatches = n_trainingData.size()/batchSize;
+	int remain = n_trainingData.size() % batchSize;
+	int curBatch = 0;
 	for(int e=0; e< epochs; e++)
 	{
 		numCorrect = 0;
+		batchSize = origBatchSize;
 		//set the next training image as the InputLayer for the net
-		for(int t=0; t< n_trainingData.size(); t++)
+		for(int t=0; t< n_trainingData.size(); t+=batchSize)
 		{
-			n_layers[0] = n_trainingData[t];
-
-			//run forward pass
-			forwardprop();
-
-			//set trueVal
-			soft->setTrueVal(n_trainingDataTrueVals[t]);
-
-			//get error
-			vector<double> curError = soft->getError();
-			for(int i=0; i< curError.size(); i++)
+			if(curBatch >= numFullBatches)
+				batchSize = remain;
+			for(int b=0; b<batchSize; b++)
 			{
-				errors[i] += curError[i];
+				n_layers[0] = n_trainingData[t+b];
+
+				//run forward pass
+				forwardprop();
+
+				//set trueVal
+				soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+				//get error
+				vector<double> curError = soft->getError();
+				for(int i=0; i< curError.size(); i++)
+				{
+					errors[i] += curError[i];
+				}
+
+				int predictedClass = soft->getPredictedClass();
+				//cout << "Pred: "<<predictedClass << " True: "<< n_trainingDataTrueVals[t] << "\n";
+				if(predictedClass == n_trainingDataTrueVals[t])
+					numCorrect++;
 			}
 
-			int predictedClass = soft->getPredictedClass();
-			//cout << "Pred: "<<predictedClass << " True: "<< n_trainingDataTrueVals[t] << "\n";
-			if(predictedClass == n_trainingDataTrueVals[t])
-				numCorrect++;
-
-			//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
-			//and print for each epoch?
-
-			//run backward pass beside the weight no
-
-			//
+			for(int i=0; i< errors.size(); i++)
+			{
+				errors[i] /= n_trainingData.size();
+			}
+			soft->setError(errors);
+			backprop();
+			for(int i=0; i< errors.size(); i++)
+				errors[i] = 0;
 
 		}
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
 		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
 
-		for(int i=0; i< errors.size(); i++)
-		{
-			errors[i] /= n_trainingData.size();
-		}
-		soft->setError(errors);
-		backprop();
-		for(int i=0; i< errors.size(); i++)
-			errors[i] = 0;
+		
 
 	}
 }
@@ -403,7 +468,7 @@ void Net::addTrainingData(const vector<vector<vector<vector<double> > > >& train
 	const vector<vector<vector<vector<double> > > >& t = trainingData;	
 	for(int n=0; n< t.size(); n++)
 	{
-		InputLayer *in = new InputLayer(t[n]);
+		InputLayer *in = new InputLayer(t[n],&n_blankVector);
 		n_trainingData.push_back(in);
 		n_trainingDataTrueVals.push_back(trueVals[n]);
 	}
@@ -415,7 +480,7 @@ void Net::addRealData(const vector<vector<vector<vector<double> > > >& realData)
 	n_results.resize(r.size());	
 	for(int n=0; n< r.size(); n++)
 	{
-		InputLayer *in = new InputLayer(r[n]);
+		InputLayer *in = new InputLayer(r[n],&n_blankVector);
 		n_realData.push_back(in);
 	}
 }
@@ -423,6 +488,11 @@ void Net::addRealData(const vector<vector<vector<vector<double> > > >& realData)
 void Net::clear()
 {
 	n_layers.clear();
+}
+
+vector<vector<vector<double> > >* Net::getBlankVectorPointer()
+{
+	return &n_blankVector;
 }
 
 bool Net::setActivType(int activationType)
@@ -461,24 +531,32 @@ int Net::getPredictedClass()
 	return maxLoc;
 }
 
-void Net::shuffleTrainingData()
+void Net::shuffleTrainingData(int times)
 {
+	if(times < 1)
+		return;
 	default_random_engine gen(time(0));
 	uniform_int_distribution<int> distr(0,n_trainingData.size()-1);
-	cout << "Shuffling training images" << endl;
-	for(int i=0; i< n_trainingData.size(); i++)
+	if(times == 1)
+		cout << "Shuffling training images 1 time... ";
+	else
+		cout << "Shuffling training images " << times << " times... ";
+	for(int t=0; t< times; t++)
 	{
-		int swapIndex = distr(gen);
-		Layer* temp  = n_trainingData[i];
-		int tempTrue = n_trainingDataTrueVals[i];
+		for(int i=0; i< n_trainingData.size(); i++)
+		{
+			int swapIndex = distr(gen);
+			Layer* temp  = n_trainingData[i];
+			int tempTrue = n_trainingDataTrueVals[i];
 
-		n_trainingData[i] 		  = n_trainingData[swapIndex];
-		n_trainingDataTrueVals[i] = n_trainingDataTrueVals[swapIndex];
+			n_trainingData[i] 		  = n_trainingData[swapIndex];
+			n_trainingDataTrueVals[i] = n_trainingDataTrueVals[swapIndex];
 
-		n_trainingData[swapIndex] 		  = temp;
-		n_trainingDataTrueVals[swapIndex] = tempTrue;
+			n_trainingData[swapIndex] 		  = temp;
+			n_trainingDataTrueVals[swapIndex] = tempTrue;
+		}
 	}
-	cout << "Done shuffling" << endl;
+	cout << "Done" << endl;
 }
 
 bool Net::load(const char* filename)
@@ -789,10 +867,11 @@ InputLayer::InputLayer()
 
 InputLayer::~InputLayer(){}
 
-InputLayer::InputLayer(const vector<vector<vector<double> > >& trainingImage)
+InputLayer::InputLayer(const vector<vector<vector<double> > >& trainingImage, vector<vector<vector<double> > >* blankdNeurons)
 {
 	i_neurons = &trainingImage;
-	resize3DVector(i_dneurons,trainingImage.size(),trainingImage[0].size(),trainingImage[0][0].size());
+	//resize3DVector(i_dneurons,trainingImage.size(),trainingImage[0].size(),trainingImage[0][0].size());
+	i_dneurons = blankdNeurons;
 	i_resizeable = false;
 }
 
@@ -801,8 +880,8 @@ int InputLayer::getType() const
 	return i_type;
 }
 
-void InputLayer::forwardprop(const Layer& prevLayer){};
-void InputLayer::backprop(Layer& prevLayer){};
+void InputLayer::forwardprop(const Layer& prevLayer){}
+void InputLayer::backprop(Layer& prevLayer){}
 
 const vector<vector<vector<double> > >& InputLayer::getNeurons() const
 {
@@ -813,20 +892,20 @@ const vector<vector<vector<double> > >& InputLayer::getNeurons() const
 
 vector<vector<vector<double> > >& InputLayer::getdNeurons()
 {
-	return i_dneurons;
+	return *i_dneurons;
 }
 
-bool InputLayer::setImage(const vector<vector<vector<double> > >* trainingImage)
+bool InputLayer::setImage(const vector<vector<vector<double> > >* trainingImage, vector<vector<vector<double> > >* blankdNeurons)
 {
 	if(i_resizeable)
 	{
 		//cout << "In setImage.\ntrainingImage.size() = " <<trainingImage->size() << endl;
 		//const vector<vector<vector<double> > >& t = trainingImage;
 		i_neurons = trainingImage;
+		i_dneurons = blankdNeurons;
 		//cout << "trainingImage mem " << trainingImage  << endl;
 		//vectorClone(trainingImage,*i_neurons);
 		//cout << "i_neurons.size() = " << i_neurons->size() << endl;
-		resize3DVector(i_dneurons,trainingImage->size(),trainingImage[0].size(),trainingImage[0][0].size());
 		i_resizeable = false;
 		return true;
 	}
@@ -967,8 +1046,15 @@ void ConvLayer::initWeights(string weights)
 
 void ConvLayer::forwardprop(const Layer& prevLayer)
 {
-	vector<vector<vector<double> > > source;
-	padZeros(prevLayer.getNeurons(),c_padding,source);
+	vector<vector<vector<double> > > padSource;
+	const vector<vector<vector<double> > > *source;
+	if(c_padding != 0)
+	{
+		padZeros(prevLayer.getNeurons(),c_padding,padSource);
+		source = &padSource;
+	}
+	else
+		source = &prevLayer.getNeurons();
 	double sum;
 	int oX, oY;
 	int subsetWidth = c_weights[0].size(); // this is the same as filterSize
@@ -976,10 +1062,10 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 	for(int f=0; f<c_weights.size(); f++) // which filter we're on
 	{
 		oX = 0;
-		for(int i=0; i <= source.size()-subsetWidth; i+= c_stride) // row in source   		i < source.size()-1
+		for(int i=0; i <= source->size()-subsetWidth; i+= c_stride) // row in source   		i < source.size()-1
 		{
 			oY = 0;
-			for(int j=0; j <= source[i].size()-subsetHeight;j+=c_stride) // col in source	j < source[i].size()-1
+			for(int j=0; j <= (*source)[i].size()-subsetHeight;j+=c_stride) // col in source	j < source[i].size()-1
 			{
 				//now we go into the stride subset
 				sum = 0;
@@ -988,9 +1074,9 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 				{
 					for(int r=0; r < subsetHeight; r++) // col in stride subset of source
 					{
-						for(int k=0; k < source[i][j].size(); k++) // depth in source
+						for(int k=0; k < (*source)[i][j].size(); k++) // depth in source
 						{
-							sum += source[i+s][j+r][k] * c_weights[f][s][r][k];
+							sum += (*source)[i+s][j+r][k] * c_weights[f][s][r][k];
 							//sum += source.at(i+s).at(j+r).at(k) * weights.at(f).at(s).at(r).at(k);
 
 							//can I set some of the prevLayer.getdNeuron local values at this point???
@@ -1035,51 +1121,41 @@ void ConvLayer::backprop(Layer& prevLayer)
 		c_dbiases[b] = 0;
 	}
 	setAll4DVector(c_dweights, 0);
-	vector<vector<vector<double> > > source;
-	padZeros(prevLayer.getNeurons(),c_padding,source);
-	//cout << "padded source" << endl;
-	//printVector(source);
-	//cout << "Source dims: " << source.size() << " x " << source[0].size() << " x " << source[0][0].size() << endl;
+
+	vector<vector<vector<double> > > padSource;
+	const vector<vector<vector<double> > > *source;
+	if(c_padding != 0)
+	{
+		padZeros(prevLayer.getNeurons(),c_padding,padSource);
+		source = &padSource;
+	}
+	else
+		source = &prevLayer.getNeurons();
+
+	//vector<vector<vector<double> > > source;
+	//padZeros(prevLayer.getNeurons(),c_padding,source);
+
 	int oX, oY; // outX & outY
 	int subsetWidth = c_weights[0].size();
 	int subsetHeight = c_weights[0][0].size();
-	//cout << "Starting loops" << endl;
-	assert(c_weights.size() == c_dweights.size() && c_weights.size() == c_biases.size() && c_weights.size() == c_dbiases.size());
-	//cout << "c_dneurons[0].size() = " << c_dneurons[0].size() << endl;
 	for(int f=0; f<c_weights.size(); f++) // which filter we're on
 	{
 		oX = 0;
-		//cout << "f" << endl;
-		for(int i=0; i <= source.size()-subsetWidth; i+= c_stride) // row in source
+		for(int i=0; i <= source->size()-subsetWidth; i+= c_stride) // row in source
 		{
 			oY = 0;
-			//cout << "i" << endl;
-			for(int j=0; j <= source[i].size()-subsetHeight;j+=c_stride) // col in source
+			for(int j=0; j <= (*source)[i].size()-subsetHeight;j+=c_stride) // col in source
 			{
-				//cout << "j" << endl;
 				//now we go into the stride subset				
 				for(int s=0; s < subsetWidth; s++) // row in stride subset of source
 				{
-					//cout << "s" << endl;
 					for(int r=0; r < subsetHeight; r++) // col in stride subset of source
 					{
-						//cout << "r" << endl;
-						for(int k=0; k < source[i][j].size(); k++) // depth in source
+						for(int k=0; k < (*source)[i][j].size(); k++) // depth in source
 						{
-							//cout << "k" << endl;
-							//sum += source[i+s][j+r][k] * c_weights[f][s][r][k];
-
-							// out[oX][oY][f] <- source[i+s][j+r][k] * weights[f][s][r][k]
-							// dout[oX][oY][f] -> source & weights
-							//cout << c_dneurons[oX][oY][f] << "*" << c_weights[f][s][r][k] << endl;
-							//cout << c_dneurons[oX][oY][f] << "*" << source[i+s][j+r][k]   << endl;
-
 							padded_dNeurons[i+s][j+r][k] += c_dneurons[oX][oY][f] * c_weights[f][s][r][k];
-							c_dweights[f][s][r][k]  	 += c_dneurons[oX][oY][f] * source[i+s][j+r][k];
-							//if(padded_dNeurons[i+s][j+r][k] != 0)
-								//cout << padded_dNeurons[i+s][j+r][k] << endl;
-							//if(c_dweights[f][s][r][k] != 0)
-								//cout << c_dweights[f][s][r][k] << endl;
+							c_dweights[f][s][r][k]  	 += c_dneurons[oX][oY][f] * (*source)[i+s][j+r][k];
+
 							//padded_dNeurons.at(i+s).at(j+r).at(k) += c_dneurons.at(oX)[oY][f] * c_weights.at(f).at(s).at(r).at(k);
 							//c_dweights.at(f).at(s).at(r).at(k) += c_dneurons.at(oX)[oY][f] * source.at(i+s).at(j+r).at(k);
 						}
@@ -1093,7 +1169,6 @@ void ConvLayer::backprop(Layer& prevLayer)
 		}
 	}
 
-	//cout << "Into second nested for" << endl;
 
 	//put the padded_dNeurons into the real p_dNeurons
 	for(int i=c_padding; i < padded_dNeurons.size() - c_padding; i++)
@@ -1978,6 +2053,65 @@ void maxSubtraction(vector<double>& vect)
 	{
 		vect[i] -= max;
 	}
+}
+
+void preprocess(vector<vector<vector<double> > > & vect)
+{
+	//preprocess using (val - mean)/stdDeviation for all elements
+	double m = mean(vect);
+	double stddv = stddev(vect,m);
+	for(int i=0; i< vect.size();i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				vect[i][j][k] = (vect[i][j][k] - m)/stddv;
+			}
+		}
+	}
+}
+
+double mean(const vector<vector<vector<double> > > & vect)
+{
+	double mean = 0;
+	for(int i=0; i< vect.size(); i++)
+	{
+		for(int j=0; j< vect[0].size(); j++)
+		{
+			for(int k=0; k< vect[0][0].size(); k++)
+			{
+				mean += vect[i][j][k];
+			}
+		}
+	}
+	mean /= vect.size() * vect[0].size() * vect[0][0].size();
+	return mean;
+}
+
+double stddev(const vector<vector<vector<double> > > & vect) 
+{
+	double m = mean(vect);
+	return stddev(vect,m);
+}
+
+double stddev(const vector<vector<vector<double> > > & vect, double mean) 
+{
+	double sqdiffs = 0;
+	double temp;
+	for(int i=0; i< vect.size();i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				temp = (vect[i][j][k] - mean);
+				sqdiffs += temp * temp;
+			}
+		}
+	}
+	double sqdiffMean = sqdiffs / (vect.size() * vect[0].size() * vect[0][0].size());
+	return sqrt(sqdiffMean);
 }
 
 void meanSubtraction(vector<vector<vector<vector<double> > > >& vect)
