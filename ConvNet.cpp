@@ -31,7 +31,8 @@
  *
  *	Todo: Fix batch gradient descent?
  *
- *	Todo: init random weights on Gaussian distr. w = np.random.randn(n) * sqrt(2.0/n) where n is number of inputs to neuron
+ *	Todo: init random weights on Gaussian distr. w = np.random.randn(n) * sqrt(2.0/n)
+ *		  where n is number of inputs to neuron
  *
  *	Todo: loss based on size of weights
  *
@@ -40,8 +41,11 @@
  *	Todo: implement a gradient check using numerical gradients.
  *
  * 	Todo: make a special forwardprop and backprop for ConvLayer for when padding = 0.
+ *
+ * 	Todo: make a semi-shallow copy of net (and layers?) that has it's own neurons but all point to the 
+ *		  same weights?
  *	
- *	Todo: Threads!
+ *	Todo: Threads! and GPUs!
  *
  *************************************************************************************************/
 
@@ -55,6 +59,15 @@
 #include <fstream>
 #include <random>
 #include <cassert>
+
+
+#ifdef __APPLE__
+ 	#include "OpenCL/opencl.h"
+#else
+ 	#include "CL/cl.h"
+#endif
+
+//#include "ConvNet_kernel.cl.h"
 
 #define GETMAX(x,y) (x > y) ? x: y
 
@@ -2162,3 +2175,19 @@ void meanSubtraction(vector<double>& vect)
 		vect[i] -= mean;
 	}
 }
+
+//static void print_device_info()
+
+
+
+
+
+
+
+
+
+
+
+
+
+

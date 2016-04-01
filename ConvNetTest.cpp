@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fstream>
+#include <thread>
 
 using namespace std;
 using namespace cv;
@@ -48,7 +49,50 @@ void convert1DArrayTo3DVector(const double *array, int width, int height, int de
 	}
 }
 
-void convertColorMatToVector(Mat m, vector<vector<vector<double> > > &dest)
+void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
+{
+	for(int j=0; j< m.cols; j++)
+	{
+		const Vec3b curPixel = m.at<Vec3b>(row,j);
+		dest[row][j][0] = curPixel[0];
+		dest[row][j][1] = curPixel[1];
+		dest[row][j][2] = curPixel[2];
+	}
+}
+
+void threadTest(vector<vector<vector<double> > > &dest)
+{
+	cout << dest.size() << endl;
+}
+
+void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
+{
+	if(m.type() != CV_8UC3)
+	{
+		throw "Incorrect Mat type. Must be CV_8UC3.";
+	}
+
+	int width2 = m.rows;
+	int height2 = m.cols;
+	int depth2 = 3;
+	//resize dest vector
+	resize3DVector(dest,width2,height2,depth2);
+	thread *t = new thread[width2];
+	
+	for(int i=0; i< width2; i++)
+	{
+		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
+	}
+
+	for(int i=0; i< width2; i++)
+	{
+		t[i].join();
+	}
+
+	delete t;
+}
+/*
+void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
 {
 	if(m.type() != CV_8UC3)
 	{
@@ -79,6 +123,7 @@ void convertColorMatToVector(Mat m, vector<vector<vector<double> > > &dest)
 		}
 	}
 }
+*/
 
 void getImageInVector(const char* filename, vector<vector<vector<double> > >& dest)
 {
@@ -199,6 +244,7 @@ void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vec
 
 int runTrainedCNN(int argc, char** argv)
 {
+	cout << "Running a trained NeuralNet: " << argv[2] << endl;
 	if(argc != 3)
 	{
 		cout << "Use: ./ConvNetTest trainingImagesConfig.txt nnConfig.txt. A trainingImagesConfig file is needed. See the readMe for format." << endl;
@@ -268,6 +314,7 @@ int runTrainedCNN(int argc, char** argv)
 
 int trainCNN(int argc, char** argv)
 {
+	cout << "Training a new Neural Net" << endl;
 	if(argc != 2 && argc != 3)
 	{
 		cout << "Uses: ./ConvNetTest trainingImagesConfig.txt\n"<<
