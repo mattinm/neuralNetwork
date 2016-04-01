@@ -28,6 +28,9 @@
  *		make a new add function. bool addNewLayer(Layer&, hyperparameters needed)
  *
  *
+ *	Todo: For CPU maxPool forward and backprop, have forwardprop create a vector the size of m_neurons
+ *		  and keep track of which indexes feed into each neuron. in backprop set all to 0 and += on the
+ *		  saved indexes whatever m_dneurons is for that element
  *
  *	Todo: Fix batch gradient descent?
  *
@@ -36,7 +39,7 @@
  *
  *	Todo: loss based on size of weights
  *
- *	Todo: test miniBatchTrain
+ *	Todo: fix miniBatchTrain?
  *
  *	Todo: implement a gradient check using numerical gradients.
  *
@@ -89,6 +92,7 @@ const double Net::GRADCHECK_H = .01;
 
 bool Net::gradCheck = false;
 
+
 void Net::debug()
 {
 	
@@ -106,9 +110,17 @@ Net::Net(int inputWidth, int inputHeight, int inputDepth)
 
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
+	n_hasConvLayer = false;
+	n_hasMaxPoolLayer =false;
+	n_hasRELULayer = false;
+	n_hasLeakyRELULayer = false;
+	n_hasSoftmax  = false;
+	//Normal Net init stuff
 	resize3DVector(n_blankVector,inputWidth,inputHeight,inputDepth);
 	n_blankInput.setImage(&n_blankVector, &n_blankVector);
 	n_layers.push_back(&n_blankInput);
+
+	//Init OpenCL stuff
 }
 
 Net::~Net()
@@ -172,6 +184,12 @@ void Net::runTrainingData()
 
 void Net::splitTrain(int epochs)
 {
+
+	if(n_trainingData.size() != n_trainingDataTrueVals.size())
+	{
+		cout << "All the training data needs true values for training" << endl;
+		return;
+	}
 	//set 1 in the d_neurons in the last layer
 			//or do we need to set it to the error? -> I don't think so.
 	string ep = to_string(epochs);
@@ -239,6 +257,12 @@ void Net::splitTrain(int epochs)
 
 void Net::train(int epochs)
 {
+	if(n_trainingData.size() != n_trainingDataTrueVals.size())
+	{
+		cout << "All the training data needs true values for training" << endl;
+		return;
+	}
+
 	//set 1 in the d_neurons in the last layer
 			//or do we need to set it to the error? -> I don't think so.
 	string ep = to_string(epochs);
@@ -285,6 +309,12 @@ void Net::train(int epochs)
 
 void Net::miniBatchTrain(int epochs, int batchSize)
 {
+	if(n_trainingData.size() != n_trainingDataTrueVals.size())
+	{
+		cout << "All the training data needs true values for training" << endl;
+		return;
+	}
+
 	string ep = to_string(epochs);
 	int origBatchSize = batchSize;
 
@@ -371,17 +401,116 @@ void Net::gradientCheck()
 	//without putting an & before prevNeurons. then you can change it.
 }
 
-void Net::run()
+void Net::run() // run only goes forward and will be on the GPU if possible.
 {
-	gradCheck = false;
-	for(int r=0; r < n_realData.size(); r++)
+	cl_int error = CL_SUCCESS;
+	//get num of platforms and we will use the first one
+	cl_uint platformIdCount = 0;
+	clGetPlatformIDs (0, nullptr, &platformIdCount);
+	vector<cl_platform_id> platformIds (platformIdCount);
+	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
+
+	cl_uint gpudeviceIdCount = 0;
+	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_GPU, 0, nullptr, &gpudeviceIdCount);
+
+	//if we have gpus, use them. else run forward like normal.
+	if(gpudeviceIdCount > 0)
 	{
-		n_layers[0] = n_realData[r];
+		cout << "GPU(s) found. Running program on GPU" << endl;
+		vector<cl_device_id> gpudeviceIds(gpudeviceIdCount);
+		clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_GPU, gpudeviceIdCount, gpudeviceIds.data(), nullptr);
 
-		//run forward pass
-		forwardprop();
+		//use all the gpus?
+		//make the context
+		const cl_context_properties contextProperties[] = 
+		{
+			CL_CONTEXT_PLATFORM,
+			reinterpret_cast<cl_context_properties>(platformIds[0]),
+			0,0
+		};
+		cl_context context = clCreateContext(contextProperties, gpudeviceIdCount, gpudeviceIds.data(), 
+		nullptr, nullptr, &error);
+		CheckError(error);
 
-		//get the results and save them into n_results
+		//build the program
+		cl_program CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), context);
+		clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), nullptr, nullptr, nullptr); //this return -11 because it is blocking
+		cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel;
+
+		//Figure out which kernels we need.
+		if(n_hasRELULayer)
+		{
+			reluKernel = clCreateKernel(CNForward, "relu", &error);
+			CheckError(error);
+		}
+		if(n_hasLeakyRELULayer)
+		{
+			leakyReluKernel = clCreateKernel(CNForward, "leakyRelu", &error);
+			CheckError(error);
+		}
+		if(n_hasConvLayer)
+		{
+			convKernel = clCreateKernel(CNForward, "convolve", &error);
+			CheckError(error);
+		}
+		if(n_hasMaxPoolLayer)
+		{
+			maxPoolKernel = clCreateKernel(CNForward, "maxPool", &error);
+			CheckError(error);
+		}
+		if(n_hasSoftmax)
+		{
+			softmaxKernel = clCreateKernel(CNForward, "softmax", &error);
+			CheckError(error);
+		}
+		
+		//make a vector of pointers to kernels that is parallel to n_layers. Use this to make memory
+		//on gpu for the weights and biases. get maxSize of any set of neurons and make two of
+		//those on gpu
+		int numConvLayers = 0;
+
+		vector<cl_kernel*> layers(n_layers.size());
+		layers[0] = nullptr; //because input layer
+		for(int i=1; i< n_layers.size(); i++)
+		{
+			int type = n_layers[i]->getType();
+			if(type == Net::CONV_LAYER)
+			{
+				layers[i] = &convKernel;
+				numConvLayers++;
+			}
+			else if (type == Net::MAX_POOL_LAYER)
+				layers[i] = &maxPoolKernel;
+			else if (type == Net::SOFTMAX_LAYER)
+				layers[i] = &softmaxKernel;
+			else if (type == Net::ACTIV_LAYER)
+			{
+				ActivLayer* act = (ActivLayer*)n_layers[i];
+				if(act->getActivationType() == ActivLayer::RELU)
+					layers[i] = &reluKernel;
+				else if (act->getActivationType() == ActivLayer::LEAKY_RELU)
+					layers[i] = &leakyReluKernel;
+			}
+		}
+
+		vector<cl_mem> weights(numConvLayers);
+		vector<cl_mem> biases(numConvLayers);
+
+
+	}
+	else // if no gpus
+	{
+		//CPU implemenation
+		gradCheck = false;
+		for(int r=0; r < n_trainingData.size(); r++)
+		{
+			n_layers[0] = n_trainingData[r];
+
+			//run forward pass
+			forwardprop();
+
+			//get the results and save them into n_results
+		}
 	}
 }
 
@@ -396,6 +525,14 @@ bool Net::addActivLayer()
 	{
 		ActivLayer *activ = new ActivLayer(*n_layers.back(),n_activationType);
 		n_layers.push_back(activ);
+		if(n_activationType == ActivLayer::RELU)
+		{
+			n_hasRELULayer = true;
+		}
+		else if(n_activationType == ActivLayer::LEAKY_RELU)
+		{
+			n_hasLeakyRELULayer = true;
+		}
 		return true;
 	}
 	catch(...)
@@ -410,6 +547,14 @@ bool Net::addActivLayer(int activationType)
 	{
 		ActivLayer *activ = new ActivLayer(*n_layers.back(),activationType);
 		n_layers.push_back(activ);
+		if(activationType == ActivLayer::RELU)
+		{
+			n_hasRELULayer = true;
+		}
+		else if(activationType == ActivLayer::LEAKY_RELU)
+		{
+			n_hasLeakyRELULayer = true;
+		}
 		return true;
 	}
 	catch(...)
@@ -424,6 +569,7 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad)
 	{
 		ConvLayer *conv = new ConvLayer(*(n_layers.back()),numFilters,stride,filterSize,pad);
 		n_layers.push_back(conv);
+		n_hasConvLayer = true;
 		return true;
 	}
 	catch(...)
@@ -438,6 +584,7 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, stri
 	{
 		ConvLayer *conv = new ConvLayer(*(n_layers.back()),numFilters,stride,filterSize,pad, weightsAndBiases);
 		n_layers.push_back(conv);
+		n_hasConvLayer = true;
 		return true;
 	}
 	catch(...)
@@ -453,6 +600,7 @@ bool Net::addMaxPoolLayer(int poolSize, int stride)
 	{
 		MaxPoolLayer *pool = new MaxPoolLayer(*(n_layers.back()),poolSize, stride);
 		n_layers.push_back(pool);
+		n_hasMaxPoolLayer = true;
 		return true;
 	}
 	catch(...)
@@ -467,6 +615,7 @@ bool Net::addSoftmaxLayer()
 	{
 		SoftmaxLayer *soft = new SoftmaxLayer(*(n_layers.back()));
 		n_layers.push_back(soft);
+		n_hasSoftmax = true;
 		return true;
 	}
 	catch(...)
@@ -494,7 +643,7 @@ void Net::addRealData(const vector<vector<vector<vector<double> > > >& realData)
 	for(int n=0; n< r.size(); n++)
 	{
 		InputLayer *in = new InputLayer(r[n],&n_blankVector);
-		n_realData.push_back(in);
+		n_trainingData.push_back(in);
 	}
 }
 
@@ -1487,6 +1636,11 @@ int ActivLayer::getType() const
 	return a_type;
 }
 
+int ActivLayer::getActivationType() const
+{
+	return a_activationType;
+}
+
 void ActivLayer::forwardprop(const Layer& prevLayer)
 {
 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
@@ -2176,18 +2330,32 @@ void meanSubtraction(vector<double>& vect)
 	}
 }
 
-//static void print_device_info()
+std::string LoadKernel (const char* name)
+{
+	std::ifstream in (name);
+	std::string result (
+		(std::istreambuf_iterator<char> (in)),
+		std::istreambuf_iterator<char> ());
+	cout << result << endl;
+	return result;
+}
 
+void CheckError (cl_int error)
+{
+	if (error != CL_SUCCESS) {
+		std::cerr << "OpenCL call failed with error " << error << std::endl;
+		std::exit (1);
+	}
+}
 
+cl_program CreateProgram (const std::string& source, cl_context context)
+{
+	size_t lengths [1] = { source.size () };
+	const char* sources [1] = { source.data () };
 
+	cl_int error = 0;
+	cl_program program = clCreateProgramWithSource (context, 1, sources, lengths, &error);
+	CheckError (error);
 
-
-
-
-
-
-
-
-
-
-
+	return program;
+}

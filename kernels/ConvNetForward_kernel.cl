@@ -1,14 +1,16 @@
+//numthreads should be size of neurons and prevNeurons (should be same)
 __kernel void relu(__global double* prevNeurons, __global double* neurons)
 {
 	const int i = get_global_id(0);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= 5)
-		neurons[i] = prevNeurons;
+		neurons[i] = prevNeurons[i];
 	else if(prevNeurons < 0)
 		neurons[i] = 0;
 	else
 		neurons[i] = 5;
 }
 
+//numthreads should be size of neurons and prevNeurons (should be same)
 __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons)
 {
 	const int i = get_global_id(0);
@@ -23,12 +25,22 @@ __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons)
 
 
 //num threads should be the size of the neurons after the maxPool
-/*
-__kernel void maxPool(__global double* prevNeurons, __global double* neurons, 
+__kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	int width, int depth, int poolsize, int stride)
 {
+	/*
+	//getting the start index of a flattened 3d array for maxPool
 	int i = get_global_id(0);
-	int j = get_global_id(1);
+	int numBlocksPerRow = (width - poolsize)/stride + 1); 
+	int ourHeight = i/numBlocksPerRow;
+	int ourRowStartIndex = ourHeight * width * stride * depth;
+	int ourRowShift = (i%numBlocksPerRow) * stride * depth;
+	int ourStartIndex = ourRowStartIndex + ourRowShift;
+	*/
+	int x = get_global_id(0);
+	int numBlocksPerRow = (width - poolsize)/stride + 1; // maybe calc once and pass in as param
+	int i = ((x/numBlocksPerRow) * width * stride * depth) + ((x%numBlocksPerRow) * stride * depth); //see large comment above
+
 	double maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
@@ -40,6 +52,15 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 		}
 		i += depth*width;
 	}
+	neurons[x] = maxVal;
+}
 
-*/
+__kernel void convolve()
+{
+
+}
+
+__kernel void softmax()
+{
+
 }

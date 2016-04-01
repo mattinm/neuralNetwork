@@ -12,6 +12,12 @@
 //#include <stdio.h>
 #include <vector>
 
+#ifdef __APPLE__
+ 	#include "OpenCL/opencl.h"
+#else
+ 	#include "CL/cl.h"
+#endif
+
 // Classes
 
 class Layer{
@@ -53,7 +59,6 @@ public:
 	std::string getHyperParameters() const;
 	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
-	void initWeights();
 private:
 	void init(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad);
 	void initRandomWeights();
@@ -139,7 +144,7 @@ class Net{
 public:
 	Net(const char* filename);
 	Net(int inputWidth, int inputHeight, int inputDepth);
-	void init(int, int, int);
+	
 	~Net();
 	void forwardprop();
 	void backprop();
@@ -182,19 +187,28 @@ public:
 private:
 	static int n_activationType;
 	std::vector<Layer*> n_trainingData;
-	std::vector<Layer*> n_realData;
 	std::vector<double> n_results;
 	std::vector<double> n_trainingDataTrueVals;
 	std::vector<std::vector<std::vector<double> > > n_blankVector;
 	InputLayer n_blankInput;
 	std::vector<Layer*> n_layers;
+	bool n_training;
+	bool n_hasConvLayer, n_hasMaxPoolLayer, n_hasRELULayer, n_hasLeakyRELULayer, n_hasSoftmax;
 
 	bool load(const char* filename);
+	void init(int, int, int);
 };
 
 
-// Other Functions
 
+//OpenCL helper functions
+std::string LoadKernel (const char* name);
+
+void CheckError (cl_int error);
+
+cl_program CreateProgram (const std::string& source, cl_context context);
+
+// Other Functions
 void padZeros(const std::vector<std::vector<std::vector<double> > > &source, int numZeros, std::vector<std::vector<std::vector<double> > > &dest);
 
 void printVector(const std::vector<std::vector<std::vector<std::vector<double> > > > &vect);
