@@ -50,6 +50,8 @@
  *	
  *	Todo: Threads! and GPUs!
  *
+ *	Todo: Check build status for each device and run accordingly
+ *
  *************************************************************************************************/
 
 #include "ConvNet.h"
@@ -62,6 +64,7 @@
 #include <fstream>
 #include <random>
 #include <cassert>
+#include <thread>
 
 
 #ifdef __APPLE__
@@ -404,6 +407,8 @@ void Net::gradientCheck()
 void Net::run() // run only goes forward and will be on the GPU if possible.
 {
 	cl_int error = CL_SUCCESS;
+
+	vector<int> calculatedClasses(n_trainingData.size());
 	//get num of platforms and we will use the first one
 	cl_uint platformIdCount = 0;
 	clGetPlatformIDs (0, nullptr, &platformIdCount);
@@ -434,7 +439,8 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 
 		//build the program
 		cl_program CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), context);
-		clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), nullptr, nullptr, nullptr); //this return -11 because it is blocking
+		const char* options = "-cl-single-precision-constant";
+		cout << "Build Program " << clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), options, nullptr, nullptr) << endl;
 		cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel;
 
 		//Figure out which kernels we need.
@@ -463,21 +469,59 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 			softmaxKernel = clCreateKernel(CNForward, "softmax", &error);
 			CheckError(error);
 		}
-		
+
+		cout << "Kernels created" << endl;
+			
+		//make the command queue
+		vector<cl_command_queue> queue(gpudeviceIdCount);
+		for(int q = 0; q < gpudeviceIdCount; q++)
+		{
+			queue[q] = clCreateCommandQueue(context, gpudeviceIds[q], 0, &error);
+			CheckError(error);
+		}
+
 		//make a vector of pointers to kernels that is parallel to n_layers. Use this to make memory
-		//on gpu for the weights and biases. get maxSize of any set of neurons and make two of
+		//on gpu for the weights and biases. get maxSize of every set of neurons and make two of
 		//those on gpu
 		int numConvLayers = 0;
 
+		int maxNeuronSize = n_layers[0]->getNumNeurons();
+
 		vector<cl_kernel*> layers(n_layers.size());
 		layers[0] = nullptr; //because input layer
+		vector<cl_mem> weights;
+		vector<int> weightSizes;
+		vector<cl_mem> biases;
+		vector<int> biasSizes;
 		for(int i=1; i< n_layers.size(); i++)
 		{
 			int type = n_layers[i]->getType();
 			if(type == Net::CONV_LAYER)
 			{
+				//cout << "Conv" << endl;
 				layers[i] = &convKernel;
 				numConvLayers++;
+				ConvLayer *conv = (ConvLayer*) n_layers[i];
+				int numWeights = conv->getNumWeights();
+				//cout << "get some weights" << endl;
+				double* w = conv->getWeights();
+				//cout << "weights got" << endl;
+				weights.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					sizeof(double) * numWeights, w, &error));
+				weightSizes.push_back(numWeights);
+				CheckError(error);
+
+				//get biases too
+				int numBiases = conv->getNumBiases();
+				double *b = conv->getBiases();
+				biases.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+					sizeof(double) * numBiases, b, &error));
+				biasSizes.push_back(numBiases);
+				CheckError(error);
+
+				delete w;
+				delete b;
+				//cout << "End Conv" << endl;
 			}
 			else if (type == Net::MAX_POOL_LAYER)
 				layers[i] = &maxPoolKernel;
@@ -491,10 +535,279 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 				else if (act->getActivationType() == ActivLayer::LEAKY_RELU)
 					layers[i] = &leakyReluKernel;
 			}
+			else
+			{
+				cout << "Unknown layer type for the GPU implemenation. Defaulting to CPU." << endl;
+				gradCheck = false;
+				for(int r=0; r < n_trainingData.size(); r++)
+				{
+					n_layers[0] = n_trainingData[r];
+
+					//run forward pass
+					forwardprop();
+
+					//get the results and save them into n_results
+				}
+				return;
+			}
+			if(n_layers[i]->getNumNeurons() > maxNeuronSize)
+			{
+				maxNeuronSize = n_layers[i]->getNumNeurons();
+			}
 		}
 
-		vector<cl_mem> weights(numConvLayers);
-		vector<cl_mem> biases(numConvLayers);
+		cout << "GPU Layers initialized" << endl;
+		
+		/*
+		cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+			nullptr, &error);
+		CheckError(error);
+		cl_mem pn = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+			nullptr, &error);
+		CheckError(error);
+		*/
+		vector<cl_mem> *neurons = new vector<cl_mem>(gpudeviceIdCount);
+		vector<cl_mem> *prevNeurons = new vector<cl_mem>(gpudeviceIdCount);
+		for(int i=0; i< gpudeviceIdCount; i++)
+		{
+			(*neurons)[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+				nullptr, &error);
+			CheckError(error);
+			(*prevNeurons)[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+				nullptr, &error);
+			CheckError(error);
+		}
+
+		
+		int imageSize = ((InputLayer*)n_layers[0])->getImageSize();
+		vector<double*> images(gpudeviceIdCount);
+		for(int q = 0; q < gpudeviceIdCount; q++)
+		 	images[q] = new double[imageSize];
+
+		int r=0;
+
+		int numGPUsToUse = gpudeviceIdCount;
+
+		/**************************************
+		 *
+		 *	Start going through the images
+		 *
+		 **************************************/
+		cout << "Starting while" << endl;
+		while(r < n_trainingData.size())
+		{
+			//set the new image(s)
+			int startForThisRound = r;
+			for(int q = 0; q < gpudeviceIdCount; q++)
+			{
+				if(r < n_trainingData.size())
+					n_trainingData[r++]->getImage(images[q], imageSize);
+				else
+					numGPUsToUse = q;
+			}
+
+			numGPUsToUse = 1; // so it if it crashes while testing the computer doesn't die
+
+			cout << "copy image(s) into GPU" << endl;
+			for(int q = 0; q < numGPUsToUse; q++)
+			{
+				CheckError(clEnqueueWriteBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0,
+					sizeof(double) * imageSize,
+					images[q], 0, nullptr, nullptr));
+			}
+			for(int q = 0; q < numGPUsToUse; q++)
+			{
+				clFinish(queue[q]);
+			}
+
+
+
+
+
+
+
+			cout  << "trying leakyrelu" << endl;
+
+			for(int q = 0; q < numGPUsToUse; q++)
+			{
+				clSetKernelArg(reluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+				clSetKernelArg(reluKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+
+				const size_t globalWorkSize[] = {(size_t)n_layers[0]->getNumNeurons(),0,0};
+				CheckError(clEnqueueNDRangeKernel(queue[q], leakyReluKernel, 1,
+					nullptr,
+					globalWorkSize,
+					nullptr, 0, nullptr, nullptr));
+			}
+
+			cout << "leakyrelu done" << endl;
+
+
+
+
+
+
+
+			//run kernels from index = 1 to index = end - 1. special stuff needs to be done on 
+			//data before softmax is run
+			cout << "running middle layers" << endl;
+			for(int i=1; i< layers.size() - 1; i++)
+			{
+				int curConvLayer = 0;
+				if(layers[i] == &convKernel)
+				{
+					cout << "running convKernel " << curConvLayer << endl;
+					for(int q = 0; q < numGPUsToUse; q++)
+					{
+						vector<int> hyper = ((ConvLayer*)n_layers[i])->getKernelHyperParameters();
+						//cout << "hyper got" << endl;
+						//cout << "amount gpus: " << gpudeviceIdCount << " numGPUsToUse: " << numGPUsToUse << " q: " << q << endl;
+						clSetKernelArg(convKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+						clSetKernelArg(convKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+						clSetKernelArg(convKernel, 2, sizeof(cl_mem), &weights[curConvLayer]);
+						clSetKernelArg(convKernel, 3, sizeof(cl_mem), &biases[curConvLayer]);
+						int numFilters = biases.size();
+						clSetKernelArg(convKernel, 4, sizeof(int), &numFilters);
+						clSetKernelArg(convKernel, 5, sizeof(int), &(hyper[0]));
+						clSetKernelArg(convKernel, 6, sizeof(int), &(hyper[1]));
+						clSetKernelArg(convKernel, 7, sizeof(int), &(hyper[2]));
+						clSetKernelArg(convKernel, 8, sizeof(int), &(hyper[3]));
+						cout << "args set" << endl;
+
+						const size_t globalWorkSize[] = {(size_t)n_layers[i]->getNumNeurons(),0,0};
+						CheckError(clEnqueueNDRangeKernel(queue[0], convKernel, 1,
+							nullptr,
+							globalWorkSize,
+							nullptr, 0, nullptr, nullptr));
+						cout << "convKernel enqueued" << endl;
+					}
+					curConvLayer++;
+				}
+				else if(layers[i] == &maxPoolKernel)
+				{
+					cout << "running maxPoolKernel " << endl;
+					for(int q = 0; q < numGPUsToUse; q++)
+					{
+						vector<int> hyper = ((MaxPoolLayer*)n_layers[i])->getKernelHyperParameters();
+
+						clSetKernelArg(maxPoolKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+						clSetKernelArg(maxPoolKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+						clSetKernelArg(maxPoolKernel, 2, sizeof(int), &(hyper[0]));
+						clSetKernelArg(maxPoolKernel, 3, sizeof(int), &(hyper[1]));
+						clSetKernelArg(maxPoolKernel, 4, sizeof(int), &(hyper[2]));
+						clSetKernelArg(maxPoolKernel, 5, sizeof(int), &(hyper[3]));
+						
+						const size_t globalWorkSize[] = {(size_t)n_layers[i]->getNumNeurons(),0,0};
+						CheckError(clEnqueueNDRangeKernel(queue[q], maxPoolKernel, 1,
+							nullptr,
+							globalWorkSize,
+							nullptr, 0, nullptr, nullptr));
+					}
+				}
+				else if(layers[i] == &reluKernel)
+				{
+					cout << "running reluKernel " << endl;
+					for(int q = 0; q < numGPUsToUse; q++)
+					{
+						clSetKernelArg(reluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+						clSetKernelArg(reluKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+
+						const size_t globalWorkSize[] = {(size_t)n_layers[i]->getNumNeurons(),0,0};
+						CheckError(clEnqueueNDRangeKernel(queue[q], reluKernel, 1,
+							nullptr,
+							globalWorkSize,
+							nullptr, 0, nullptr, nullptr));
+					}
+				}
+				else if(layers[i] == &leakyReluKernel)
+				{
+					cout << "running leakyReluKernel " << endl;
+					for(int q = 0; q < numGPUsToUse; q++)
+					{
+						clSetKernelArg(leakyReluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+						clSetKernelArg(leakyReluKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+
+						const size_t globalWorkSize[] = {(size_t)n_layers[i]->getNumNeurons(),0,0};
+						CheckError(clEnqueueNDRangeKernel(queue[q], leakyReluKernel, 1,
+							nullptr,
+							globalWorkSize,
+							nullptr, 0, nullptr, nullptr));
+					}
+				}
+
+				for(int q = 0; q < numGPUsToUse; q++)
+				{
+					clFinish(queue[q]);
+				}
+
+				//swap prev and cur neuron pointers
+				vector<cl_mem> *temp = neurons;
+				neurons = prevNeurons;
+				prevNeurons = temp;
+			}
+
+			cout << "starting softmaxKernel" <<  endl;
+			//end of forward through normal layers. now softmax is all that is left
+			// the current neurons are in prevNeurons due to the pointer swap
+			int softSize = n_layers.back()->getNumNeurons();
+			vector<vector<double>> neur(numGPUsToUse, vector<double>(softSize));
+			for(int q = 0; q < numGPUsToUse; q++)
+			{
+				
+				CheckError(clEnqueueReadBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0, sizeof(double) * softSize, 
+					neur[q].data(), 0, nullptr, nullptr));
+				//clFinish(queue[q]);
+				maxSubtraction(neur[q]);
+				double denom = vectorESum(neur[q]);
+				CheckError(clEnqueueWriteBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0, sizeof(double) * softSize,
+					neur[q].data(), 0, nullptr, nullptr));
+
+				//set kernel args
+				clSetKernelArg(softmaxKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+				clSetKernelArg(softmaxKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+				clSetKernelArg(softmaxKernel, 2, sizeof(double), &denom);
+				const size_t globalWorkSize[] = {(size_t)softSize,0,0};
+				CheckError(clEnqueueNDRangeKernel(queue[q], softmaxKernel, 1,
+					nullptr,
+					globalWorkSize,
+					nullptr, 0, nullptr, nullptr));
+			}
+
+			for(int q = 0; q < numGPUsToUse; q++)
+			{
+				clFinish(queue[q]);
+			}
+
+			for(int q = 0; q < numGPUsToUse; q++)
+			{
+				CheckError(clEnqueueReadBuffer(queue[q], (*neurons)[q], CL_TRUE, 0, sizeof(double) * softSize, 
+					neur[q].data(), 0, nullptr, nullptr));
+				calculatedClasses[startForThisRound++] = getMaxElementIndex(neur[q]);
+			}
+		}
+
+		for(int d = 0; d< gpudeviceIdCount; d++)
+			delete images[d];
+
+		if(calculatedClasses.size() == n_trainingDataTrueVals.size())
+		{
+			int numCorrect = 0;
+			for(int i=0; i< calculatedClasses.size(); i++)
+			{
+				if(calculatedClasses[i] == n_trainingDataTrueVals[i])
+					numCorrect++;
+			}
+			cout << "Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(float)calculatedClasses.size() << "%" << endl;
+		}
+		else
+		{
+			for(int i=0; i < calculatedClasses.size(); i++)
+			{
+				cout << calculatedClasses[i] << endl;
+			}
+		}
+
+
 
 
 	}
@@ -708,7 +1021,7 @@ void Net::shuffleTrainingData(int times)
 		for(int i=0; i< n_trainingData.size(); i++)
 		{
 			int swapIndex = distr(gen);
-			Layer* temp  = n_trainingData[i];
+			InputLayer* temp  = n_trainingData[i];
 			int tempTrue = n_trainingDataTrueVals[i];
 
 			n_trainingData[i] 		  = n_trainingData[swapIndex];
@@ -1024,6 +1337,7 @@ const int InputLayer::i_type = Net::INPUT_LAYER;
 
 InputLayer::InputLayer()
 {
+	i_numNeurons = 0;
 	i_resizeable = true;
 }
 
@@ -1035,11 +1349,57 @@ InputLayer::InputLayer(const vector<vector<vector<double> > >& trainingImage, ve
 	//resize3DVector(i_dneurons,trainingImage.size(),trainingImage[0].size(),trainingImage[0][0].size());
 	i_dneurons = blankdNeurons;
 	i_resizeable = false;
+
+	i_numNeurons = trainingImage.size() * trainingImage[0].size() * trainingImage[0][0].size();
 }
 
 int InputLayer::getType() const
 {
 	return i_type;
+}
+
+double* InputLayer::getImage() const
+{
+	double *image = new double[i_numNeurons];
+	int imIndex = 0;
+	for(int i=0; i< i_neurons->size(); i++)
+	{
+		for(int j=0; j< i_neurons[i].size(); j++)
+		{
+			for(int k=0; k< i_neurons[i][j].size(); k++)
+			{
+				image[imIndex++] = (*i_neurons)[i][j][k];
+			}
+		}
+	}
+	return image;
+}
+
+void InputLayer::getImage(double* image, int size) const
+{
+	if(size == i_numNeurons)
+	{
+		for(int i=0; i< i_neurons->size(); i++)
+		{
+			for(int j=0; j< i_neurons[i].size(); j++)
+			{
+				for(int k=0; k< i_neurons[i][j].size(); k++)
+				{
+					*(image++) = (*i_neurons)[i][j][k];
+				}
+			}
+		}
+	}
+}
+
+int InputLayer::getImageSize() const
+{
+	return i_numNeurons;
+}
+
+int InputLayer::getNumNeurons() const
+{
+	return i_numNeurons;
 }
 
 void InputLayer::forwardprop(const Layer& prevLayer){}
@@ -1069,6 +1429,7 @@ bool InputLayer::setImage(const vector<vector<vector<double> > >* trainingImage,
 		//vectorClone(trainingImage,*i_neurons);
 		//cout << "i_neurons.size() = " << i_neurons->size() << endl;
 		i_resizeable = false;
+		i_numNeurons = trainingImage->size() * trainingImage[0].size() * trainingImage[0][0].size();
 		return true;
 	}
 	return false;
@@ -1110,6 +1471,9 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 	int prevHeight = prevNeurons[0].size();
 	int prevDepth = prevNeurons[0][0].size();
 
+	c_prevNeuronWidth = prevWidth;
+	c_prevNeuronDepth = prevDepth;
+
 	//size of new layer (prevWidth - filterSize + 2*pad)/stride+1 x (prevHeight - filterSize + 2pad)/stride+1 
 	// x numFilters
 	float fnewWidth = (prevWidth - filterSize + 2*pad)/((float)stride) + 1;
@@ -1129,6 +1493,7 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 
 	resize3DVector(c_neurons,newWidth,newHeight,newDepth);
 	resize3DVector(c_dneurons,newWidth,newHeight,newDepth);
+	c_numNeurons = newWidth * newHeight * newDepth;
 	
 	//Size of c_weights (and c_dweights) will be numFilters x filterSize x filterSize x numFilters
 	c_weights.resize(numFilters);
@@ -1138,9 +1503,14 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 		resize3DVector(c_weights[i], filterSize, filterSize, prevDepth);
 		resize3DVector(c_dweights[i], filterSize, filterSize, prevDepth);
 	}
+	//cout << numFilters << "x" << filterSize << "x" << filterSize << "x" << prevDepth << endl;
+	c_numWeights = numFilters * filterSize * filterSize * prevDepth;
+	//cout << c_numWeights << endl;
 
 	c_biases.resize(numFilters);
 	c_dbiases.resize(numFilters);
+
+	c_numBiases = numFilters;
 }
 
 ConvLayer::~ConvLayer(){}
@@ -1148,6 +1518,16 @@ ConvLayer::~ConvLayer(){}
 int ConvLayer::getType() const
 {
 	return c_type;
+}
+
+int ConvLayer::getNumNeurons() const
+{
+	return c_numNeurons;
+}
+
+int ConvLayer::getNumWeights() const
+{
+	return c_numWeights;
 }
 
 void ConvLayer::initRandomWeights()
@@ -1174,6 +1554,8 @@ void ConvLayer::initRandomWeights()
 	{
 		c_biases[b] = distr(gen);
 	}
+
+
 }
 
 void ConvLayer::initWeights(string weights)
@@ -1204,6 +1586,80 @@ void ConvLayer::initWeights(string weights)
 		c_biases[b] = stod(weights.substr(startIndex,endIndex));
 		startIndex = endIndex + 1;
 	}
+}
+
+vector<int> ConvLayer::getKernelHyperParameters() const
+{
+	vector<int> hyper(4);
+	hyper[0] = c_weights.size(); // filterSize
+	hyper[1] = c_stride;
+	hyper[2] = c_prevNeuronWidth; // width of prevneurons
+	hyper[3] = c_prevNeuronDepth;
+
+	return hyper;
+}
+
+void ConvLayer::_putWeights(double* weights, int vectIndex) const
+{
+	int start = c_weights[0].size() * c_weights[0][0].size() * c_weights[0][0][0].size() * vectIndex;
+	//printf("%d %d\n", start, vectIndex);
+	for(int i=0; i< c_weights[vectIndex].size(); i++)
+	{
+		for(int j=0; j< c_weights[vectIndex][i].size(); j++)
+		{
+			for(int k=0; k< c_weights[vectIndex][i][j].size(); k++)
+			{
+				weights[start++] = c_weights[vectIndex][i][j][k];
+				//weights[start++] = c_weights.at(vectIndex).at(i).at(j).at(k);
+
+			}
+		}
+	}
+}
+
+double* ConvLayer::getWeights() const 
+{
+	//cout << "allocing " << c_numWeights << " weights" << endl;
+	//cout << c_weights.size() << "x" << c_weights[0].size() << "x" << c_weights[0][0].size() << "x" << c_weights[0][0][0].size() << endl;
+	//int numWeights = c_weights.size() * c_weights[0].size() * c_weights[0][0].size();
+	double *weights = new double[c_numWeights];
+
+	//cout << "allocing threads" << endl;
+	thread *t = new thread[c_weights.size()];
+
+	for(int f=0; f< c_weights.size(); f++)
+	{
+		t[f] = thread(&ConvLayer::_putWeights,this,weights,f);
+	}
+
+	//cout << "joining threads" << endl;
+	for(int f = 0; f < c_weights.size(); f++)
+	{
+		t[f].join();
+	}
+
+	//delete t;
+
+	//cout << "end conv" << endl;
+	return weights;
+
+}
+
+int ConvLayer::getNumBiases() const
+{
+	return c_numBiases;
+}
+
+double* ConvLayer::getBiases() const
+{
+	double *biases = new double[c_numBiases];
+
+	for(int b = 0; b < c_numBiases; b++)
+	{
+		biases[b] = c_biases[b];
+	}
+
+	return biases;
 }
 
 void ConvLayer::forwardprop(const Layer& prevLayer)
@@ -1468,9 +1924,12 @@ MaxPoolLayer::MaxPoolLayer(const Layer& prevLayer, int poolSize, int stride)
 
 	m_stride = stride;
 	m_poolSize = poolSize;
+	m_prevWidth = pWidth;
+	m_prevDepth = pDepth;
 
 	resize3DVector(m_neurons,newWidth,newHeight,newDepth);
 	resize3DVector(m_dneurons,newWidth,newHeight,newDepth);
+	m_numNeurons = newWidth * newHeight * newDepth;
 }
 
 MaxPoolLayer::~MaxPoolLayer(){}
@@ -1478,6 +1937,22 @@ MaxPoolLayer::~MaxPoolLayer(){}
 int MaxPoolLayer::getType() const
 {
 	return m_type;
+}
+
+int MaxPoolLayer::getNumNeurons() const
+{
+	return m_numNeurons;
+}
+
+vector<int> MaxPoolLayer::getKernelHyperParameters() const
+{
+	vector<int> hyper(4);
+	hyper[0] = m_prevWidth;
+	hyper[1] = m_prevDepth;
+	hyper[2] = m_poolSize;
+	hyper[3] = m_stride;
+
+	return hyper;
 }
 
 void MaxPoolLayer::forwardprop(const Layer& prevLayer)
@@ -1627,6 +2102,7 @@ ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 	int d = prevNeurons[0][0].size();
 	resize3DVector(a_neurons,w,h,d);
 	resize3DVector(a_dneurons,w,h,d);
+	a_numNeurons = w * h * d;
 }
 
 ActivLayer::~ActivLayer(){}
@@ -1634,6 +2110,11 @@ ActivLayer::~ActivLayer(){}
 int ActivLayer::getType() const
 {
 	return a_type;
+}
+
+int ActivLayer::getNumNeurons() const
+{
+	return a_numNeurons;
 }
 
 int ActivLayer::getActivationType() const
@@ -1806,6 +2287,11 @@ string ActivLayer::getHyperParameters() const
  }
 
  SoftmaxLayer::~SoftmaxLayer(){}
+
+ int SoftmaxLayer::getNumNeurons() const
+ {
+ 	return s_neurons.size();
+ }
 
  void SoftmaxLayer::forwardprop(const Layer& prevLayer)
  {
@@ -2330,13 +2816,31 @@ void meanSubtraction(vector<double>& vect)
 	}
 }
 
+int getMaxElementIndex(const vector<double>& vect)
+{
+	if(vect.size() < 1)
+		return -1;
+	double max = vect[0];
+	double maxIndex = 0;
+	for(int i=1; i< vect.size(); i++)
+	{
+		if(vect[i] > max)
+		{
+			max = vect[i];
+			maxIndex = i;
+		}
+	}
+
+	return maxIndex;
+}
+
 std::string LoadKernel (const char* name)
 {
 	std::ifstream in (name);
 	std::string result (
 		(std::istreambuf_iterator<char> (in)),
 		std::istreambuf_iterator<char> ());
-	cout << result << endl;
+	//cout << result << endl;
 	return result;
 }
 
@@ -2348,7 +2852,7 @@ void CheckError (cl_int error)
 	}
 }
 
-cl_program CreateProgram (const std::string& source, cl_context context)
+cl_program CreateProgram (const std::string& source, cl_context& context)
 {
 	size_t lengths [1] = { source.size () };
 	const char* sources [1] = { source.data () };

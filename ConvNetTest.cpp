@@ -89,7 +89,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
 		t[i].join();
 	}
 
-	delete t;
+	//delete t;
 }
 /*
 void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
@@ -244,12 +244,13 @@ void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vec
 
 int runTrainedCNN(int argc, char** argv)
 {
-	cout << "Running a trained NeuralNet: " << argv[2] << endl;
+	
 	if(argc != 3)
 	{
 		cout << "Use: ./ConvNetTest trainingImagesConfig.txt nnConfig.txt. A trainingImagesConfig file is needed. See the readMe for format." << endl;
-		return -1;
+		return 0;
 	}
+	cout << "Running a trained NeuralNet: " << argv[2] << endl;
 	cout << "Building NeuralNet" << endl;
 	//set up CNN
 	
@@ -306,7 +307,7 @@ int runTrainedCNN(int argc, char** argv)
 	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
-	net.runTrainingData();
+	net.run();
 
 	cout << "Done" << endl;
 	return 0;
@@ -412,8 +413,8 @@ int trainCNN(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-	trainCNN(argc, argv);
-	//runTrainedCNN(argc, argv);
+	//trainCNN(argc, argv);
+	runTrainedCNN(argc, argv);
 	//cout << "back in main" << endl;
 	return 0;
 }

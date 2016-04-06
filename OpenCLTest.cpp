@@ -18,7 +18,7 @@ std::string LoadKernel (const char* name)
 	std::string result (
 		(std::istreambuf_iterator<char> (in)),
 		std::istreambuf_iterator<char> ());
-	cout << result << endl;
+	//cout << result << endl;
 	return result;
 }
 
@@ -26,11 +26,11 @@ void CheckError (cl_int error)
 {
 	if (error != CL_SUCCESS) {
 		std::cerr << "OpenCL call failed with error " << error << std::endl;
-		std::exit (1);
+		//std::exit (1);
 	}
 }
 
-cl_program CreateProgram (const std::string& source, cl_context context)
+cl_program CreateProgram (const std::string& source, cl_context& context)
 {
 	size_t lengths [1] = { source.size () };
 	const char* sources [1] = { source.data () };
@@ -51,7 +51,7 @@ int main(void)
 	vector<float> x(testDataSize),y(testDataSize),z(testDataSize);
 	for(int i=0; i< testDataSize; i++)
 	{
-		x[i] = 2.0 * i;
+		x[i] = 1.0 * i;
 		y[i] = 3.0 * i;
 	}
 
@@ -90,13 +90,15 @@ int main(void)
 		nullptr, nullptr, &error);
 	cout << "context made" << endl;
 
-	cl_program program = CreateProgram(LoadKernel("../Add_kernel.cl"), context);
+	cl_program program = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), context);
 	cout << "program made" << endl;
 
 	//Note: clBuildProgram returns -11 if the 5th argument is null or nullptr
-	if(clBuildProgram(program, deviceIdCount, deviceIds.data(), nullptr, nullptr, nullptr) != CL_SUCCESS);
+	cl_int buil = clBuildProgram(program, deviceIdCount, deviceIds.data(), nullptr, nullptr, nullptr);
+	cout << "Success = " << CL_SUCCESS <<  endl;
+	if(buil != CL_SUCCESS)
 	{
-		cout << "program build failed" << endl;
+		cout << "program build failed " << buil << endl;
 		size_t length;
 		char buffer[2048];
 		clGetProgramBuildInfo(program, deviceIds[2], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &length);
@@ -105,10 +107,10 @@ int main(void)
 	}
 	cout << "program built" << endl;
 
-	cl_kernel addkernel = clCreateKernel(program, "ADD", &error);
+	cl_kernel convKernel = clCreateKernel(program, "convolve", &error);
 	CheckError(error);
 
-	cl_kernel subkernel = clCreateKernel(program, "SUB", &error);
+	cl_kernel softmaxKernel = clCreateKernel(program, "softmax", &error);
 	CheckError(error);
 	cout << "kernel made" << endl;
 
@@ -120,25 +122,26 @@ int main(void)
 		sizeof(float) * testDataSize, x.data(), &error);
 	CheckError(error);
 
+
 	cl_mem yBuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, 
 		sizeof(float) * testDataSize, y.data(), &error);
 	CheckError(error);
-
+/*
 	cl_mem zBuf = clCreateBuffer(context, CL_MEM_WRITE_ONLY,
 		sizeof(float) * testDataSize, nullptr, &error);
 	CheckError(error);
-
-
-	clSetKernelArg(addkernel, 0, sizeof(cl_mem), &xBuf);
-	clSetKernelArg(addkernel, 1, sizeof(cl_mem), &yBuf);
-	clSetKernelArg(addkernel, 2, sizeof(cl_mem), &zBuf);
-
+*/
+	double denom = 1;
+	clSetKernelArg(softmaxKernel, 0, sizeof(cl_mem), &xBuf);
+	clSetKernelArg(softmaxKernel, 1, sizeof(cl_mem), &yBuf);
+	clSetKernelArg(softmaxKernel, 2, sizeof(double), &denom);
+/*
 	clSetKernelArg(subkernel, 0, sizeof(cl_mem), &xBuf);
 	clSetKernelArg(subkernel, 1, sizeof(cl_mem), &yBuf);
 	clSetKernelArg(subkernel, 2, sizeof(cl_mem), &zBuf);
-
+*/
 	const size_t globalWorkSize[] = {testDataSize, 0, 0};
-	CheckError(clEnqueueNDRangeKernel(queue, addkernel, 1,
+	CheckError(clEnqueueNDRangeKernel(queue, softmaxKernel, 1,
 		nullptr,
 		globalWorkSize,
 		nullptr,
@@ -146,7 +149,7 @@ int main(void)
 
 	clFinish(queue);
 
-	CheckError(clEnqueueReadBuffer(queue, zBuf, CL_TRUE, 0,
+	CheckError(clEnqueueReadBuffer(queue, yBuf, CL_TRUE, 0,
 		sizeof(float) * testDataSize,
 		z.data(), 0, nullptr, nullptr));
 
@@ -155,7 +158,7 @@ int main(void)
 		cout << z[i] << ", ";
 	}
 	cout <<z[testDataSize-1] << endl;
-
+/*
 	CheckError(clEnqueueNDRangeKernel(queue, addkernel, 1,
 		nullptr,
 		globalWorkSize,
@@ -163,10 +166,10 @@ int main(void)
 		0, nullptr, nullptr));
 	clFinish(queue);
 
-	CheckError(clEnqueueReadBuffer(queue, zBuf, CL_TRUE, 0,
+	CheckError(clEnqueueReadBuffer(queue, yBuf, CL_TRUE, 0,
 		sizeof(float) * testDataSize,
 		z.data(), 0, nullptr, nullptr));
-
+*/
 	for(int i=0; i< testDataSize-1; i++)
 	{
 		cout << z[i] << ", ";
@@ -176,10 +179,9 @@ int main(void)
 	clReleaseCommandQueue(queue);
 	clReleaseMemObject(xBuf);
 	clReleaseMemObject(yBuf);
-	clReleaseMemObject(zBuf);
 
-	clReleaseKernel(addkernel);
-	clReleaseKernel(subkernel);
+	clReleaseKernel(convKernel);
+	clReleaseKernel(softmaxKernel);
 	clReleaseProgram(program);
 
 	clReleaseContext(context);

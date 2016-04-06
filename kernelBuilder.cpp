@@ -82,16 +82,24 @@ int main(int argc, char** argv)
 	cl_program program = CreateProgram(LoadKernel(argv[1]), context);
 	//cout << "program made" << endl;
 
-	if(clBuildProgram(program, deviceIdCount, deviceIds.data(), nullptr, nullptr, nullptr) != CL_SUCCESS);
+	cout << "Num devices: " << deviceIdCount << endl;
+	
+	error = clBuildProgram(program, deviceIdCount, deviceIds.data(), nullptr, nullptr, nullptr);
+	if(error != CL_SUCCESS)
 	{
+		cout << "Error: " << error << endl;
 		size_t length;
 		char buffer[2048];
-		clGetProgramBuildInfo(program, deviceIds[2], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &length);
+		clGetProgramBuildInfo(program, deviceIds[0], CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &length);
 
 		cout << "--- Build log ---\n";
-		if(buffer != string("Error getting function data from server"))
+		//if(buffer != string("Error getting function data from server"))
 			cout << buffer << endl;
 		//exit(1);
+	}
+	else
+	{
+		cout << "Build succeeded" << endl;
 	}
 
 	clReleaseProgram(program);

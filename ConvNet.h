@@ -24,6 +24,7 @@ class Layer{
 public:
 	virtual ~Layer(){};
 	virtual int getType() const = 0;
+	virtual int getNumNeurons() const = 0;
 	virtual void forwardprop(const Layer& prevLayer) = 0;
 	virtual void backprop(Layer& prevLayer) = 0;
 	virtual const std::vector<std::vector<std::vector<double> > >& getNeurons() const = 0;
@@ -35,6 +36,10 @@ public:
 	InputLayer();
 	~InputLayer();
 	int getType() const;
+	int getNumNeurons() const;
+	double* getImage() const;
+	void getImage(double* dest, int size) const;
+	int getImageSize() const;
 	InputLayer(const std::vector<std::vector<std::vector<double> > >& trainingImage, std::vector<std::vector<std::vector<double> > >* blankdNeurons);
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
@@ -44,6 +49,7 @@ public:
 private:
 	static const int i_type;
 	bool i_resizeable;
+	int i_numNeurons;
 	const std::vector<std::vector<std::vector<double> > >  *i_neurons;
 	std::vector<std::vector<std::vector<double> > > *i_dneurons;
 };
@@ -54,12 +60,19 @@ public:
 	ConvLayer(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad, std::string weightsAndBiases);
 	~ConvLayer();
 	int getType() const;
+	int getNumNeurons() const;
+	double* getWeights() const;
+	int getNumWeights() const;
+	double* getBiases() const;
+	int getNumBiases() const;
+	std::vector<int> getKernelHyperParameters() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
 	std::string getHyperParameters() const;
 	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
+	void _putWeights(double* weights, int vectIndex) const;
 	void init(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad);
 	void initRandomWeights();
 	void initWeights(std::string weights);
@@ -68,10 +81,15 @@ private:
 	std::vector<std::vector<std::vector<double> > > c_dneurons;
 	std::vector<std::vector<std::vector<std::vector<double> > > > c_weights;
 	std::vector<std::vector<std::vector<std::vector<double> > > > c_dweights;
+	int c_numWeights;
+	int c_numBiases;
+	int c_numNeurons;
 	std::vector<double> c_biases;
 	std::vector<double> c_dbiases;
 	int c_padding;
 	int c_stride;
+	int c_prevNeuronWidth;
+	int c_prevNeuronDepth;
 };
 
 class MaxPoolLayer : public Layer{
@@ -79,8 +97,10 @@ public:
 	MaxPoolLayer(const Layer& prevLayer, int poolSize, int stride);
 	~MaxPoolLayer();
 	int getType() const;
+	int getNumNeurons() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
+	std::vector<int> getKernelHyperParameters() const;
 	std::string getHyperParameters() const;
 	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
 	std::vector<std::vector<std::vector<double> > >& getdNeurons();
@@ -90,6 +110,9 @@ private:
 	std::vector<std::vector<std::vector<double> > > m_dneurons;
 	int m_stride;
 	int m_poolSize;
+	int m_numNeurons;
+	int m_prevWidth;
+	int m_prevDepth;
 };
 
 class ActivLayer : public Layer{
@@ -102,6 +125,7 @@ public:
 	static const int LEAKY_RELU = 1;
 	static const int NUM_ACTIV_TYPES = 2;
 	int getType() const;
+	int getNumNeurons() const;
 	int getActivationType() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
@@ -115,6 +139,7 @@ private:
 	int a_activationType;
 	std::vector<std::vector<std::vector<double> > > a_neurons;
 	std::vector<std::vector<std::vector<double> > > a_dneurons;
+	int a_numNeurons;
 };
 
 class SoftmaxLayer : public Layer{
@@ -125,6 +150,7 @@ public:
 	std::vector<double> getError();
 	void setError(std::vector<double> error);
 	int getType() const;
+	int getNumNeurons() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
 	void setTrueVal(int trueVal);
@@ -186,7 +212,7 @@ public:
 	bool save(const char* filename);
 private:
 	static int n_activationType;
-	std::vector<Layer*> n_trainingData;
+	std::vector<InputLayer*> n_trainingData;
 	std::vector<double> n_results;
 	std::vector<double> n_trainingDataTrueVals;
 	std::vector<std::vector<std::vector<double> > > n_blankVector;
@@ -206,7 +232,7 @@ std::string LoadKernel (const char* name);
 
 void CheckError (cl_int error);
 
-cl_program CreateProgram (const std::string& source, cl_context context);
+cl_program CreateProgram (const std::string& source, cl_context& context);
 
 // Other Functions
 void padZeros(const std::vector<std::vector<std::vector<double> > > &source, int numZeros, std::vector<std::vector<std::vector<double> > > &dest);
@@ -246,6 +272,8 @@ void compressImage(std::vector<std::vector<std::vector<std::vector<double> > > >
 void compressImage(std::vector<std::vector<std::vector<double> > >& vect, double newMin, double newMax);
 
 double vectorESum(const std::vector<double> &source);
+
+int getMaxElementIndex(const std::vector<double> &vect); 
 
 void vectorClone(const std::vector<std::vector<std::vector<double> > > &source, std::vector<std::vector<std::vector<double> > > &dest);
 
