@@ -87,11 +87,11 @@ using namespace std;
  * Net
  **********************/
 
-double Net::stepSize = 1e-3;
+float Net::stepSize = 1e-3;
 
 int Net::n_activationType = 0;
 
-const double Net::GRADCHECK_H = .01;
+const float Net::GRADCHECK_H = .01;
 
 bool Net::gradCheck = false;
 
@@ -181,7 +181,7 @@ void Net::runTrainingData()
 		if(predictedClass == n_trainingDataTrueVals[t])
 			numCorrect++;
 	}
-	cout << "Run on Training data: " <<  "Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+	cout << "Run on Training data: " <<  "Accuracy: " << (float)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
 
 }
 
@@ -200,7 +200,7 @@ void Net::splitTrain(int epochs)
 	int startValidationIndex = n_trainingData.size() * 0.9;
 
 	gradCheck = false;
-	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//vector<vector<vector<float> > >& lastLayerGradients = n_layers.back()->getdNeurons();
 	//setAll3DVector(lastLayerGradients,1);
 	int numCorrect;
 	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
@@ -233,7 +233,7 @@ void Net::splitTrain(int epochs)
 		}
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
-		cout << ", Accuracy: " << (double)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
+		cout << ", Accuracy: " << (float)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
 
 		shuffleTrainingData();
 	}
@@ -254,7 +254,7 @@ void Net::splitTrain(int epochs)
 		if(predictedClass == n_trainingDataTrueVals[t])
 			numCorrect++;
 	}
-	cout << "Validation run on Training data: " <<  "Accuracy: " << (double)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
+	cout << "Validation run on Training data: " <<  "Accuracy: " << (float)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
 
 }
 
@@ -271,7 +271,7 @@ void Net::train(int epochs)
 	string ep = to_string(epochs);
 
 	gradCheck = false;
-	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//vector<vector<vector<float> > >& lastLayerGradients = n_layers.back()->getdNeurons();
 	//setAll3DVector(lastLayerGradients,1);
 	int numCorrect;
 	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
@@ -304,7 +304,7 @@ void Net::train(int epochs)
 		}
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
-		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+		cout << ", Accuracy: " << (float)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
 
 	}
 
@@ -322,10 +322,10 @@ void Net::miniBatchTrain(int epochs, int batchSize)
 	int origBatchSize = batchSize;
 
 	gradCheck = false;
-	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//vector<vector<vector<float> > >& lastLayerGradients = n_layers.back()->getdNeurons();
 	//setAll3DVector(lastLayerGradients,1);
 	int numCorrect;
-	vector<double> errors(2);
+	vector<float> errors(2);
 	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
 	int numFullBatches = n_trainingData.size()/batchSize;
 	int remain = n_trainingData.size() % batchSize;
@@ -350,7 +350,7 @@ void Net::miniBatchTrain(int epochs, int batchSize)
 				soft->setTrueVal(n_trainingDataTrueVals[t]);
 
 				//get error
-				vector<double> curError = soft->getError();
+				vector<float> curError = soft->getError();
 				for(int i=0; i< curError.size(); i++)
 				{
 					errors[i] += curError[i];
@@ -374,7 +374,7 @@ void Net::miniBatchTrain(int epochs, int batchSize)
 		}
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
-		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+		cout << ", Accuracy: " << (float)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
 
 		
 
@@ -404,7 +404,7 @@ void Net::gradientCheck()
 	//without putting an & before prevNeurons. then you can change it.
 }
 
-void Net::run() // run only goes forward and will be on the GPU if possible.
+void Net::run(bool useGPU) // run only goes forward and will be on the GPU if possible.
 {
 	cl_int error = CL_SUCCESS;
 
@@ -419,7 +419,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_GPU, 0, nullptr, &gpudeviceIdCount);
 
 	//if we have gpus, use them. else run forward like normal.
-	if(gpudeviceIdCount > 0)
+	if(gpudeviceIdCount > 0 && useGPU)
 	{
 		cout << "GPU(s) found. Running program on GPU" << endl;
 		vector<cl_device_id> gpudeviceIds(gpudeviceIdCount);
@@ -504,18 +504,18 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 				ConvLayer *conv = (ConvLayer*) n_layers[i];
 				int numWeights = conv->getNumWeights();
 				//cout << "get some weights" << endl;
-				double* w = conv->getWeights();
+				float* w = conv->getWeights();
 				//cout << "weights got" << endl;
 				weights.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-					sizeof(double) * numWeights, w, &error));
+					sizeof(float) * numWeights, w, &error));
 				weightSizes.push_back(numWeights);
 				CheckError(error);
 
 				//get biases too
 				int numBiases = conv->getNumBiases();
-				double *b = conv->getBiases();
+				float *b = conv->getBiases();
 				biases.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-					sizeof(double) * numBiases, b, &error));
+					sizeof(float) * numBiases, b, &error));
 				biasSizes.push_back(numBiases);
 				CheckError(error);
 
@@ -559,10 +559,10 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 		cout << "GPU Layers initialized" << endl;
 		
 		/*
-		cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+		cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxNeuronSize,
 			nullptr, &error);
 		CheckError(error);
-		cl_mem pn = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+		cl_mem pn = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxNeuronSize,
 			nullptr, &error);
 		CheckError(error);
 		*/
@@ -570,19 +570,19 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 		vector<cl_mem> *prevNeurons = new vector<cl_mem>(gpudeviceIdCount);
 		for(int i=0; i< gpudeviceIdCount; i++)
 		{
-			(*neurons)[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+			(*neurons)[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxNeuronSize,
 				nullptr, &error);
 			CheckError(error);
-			(*prevNeurons)[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
+			(*prevNeurons)[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxNeuronSize,
 				nullptr, &error);
 			CheckError(error);
 		}
 
 		
 		int imageSize = ((InputLayer*)n_layers[0])->getImageSize();
-		vector<double*> images(gpudeviceIdCount);
+		vector<float*> images(gpudeviceIdCount);
 		for(int q = 0; q < gpudeviceIdCount; q++)
-		 	images[q] = new double[imageSize];
+		 	images[q] = new float[imageSize];
 
 		int r=0;
 
@@ -593,7 +593,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 		 *	Start going through the images
 		 *
 		 **************************************/
-		cout << "Starting while" << endl;
+		cout << "Starting run on GPU(s)" << endl;
 		while(r < n_trainingData.size())
 		{
 			//set the new image(s)
@@ -608,11 +608,11 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 
 			numGPUsToUse = 1; // so it if it crashes while testing the computer doesn't die
 
-			cout << "copy image(s) into GPU" << endl;
+			//cout << "copy image(s) into GPU" << endl;
 			for(int q = 0; q < numGPUsToUse; q++)
 			{
 				CheckError(clEnqueueWriteBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0,
-					sizeof(double) * imageSize,
+					sizeof(float) * imageSize,
 					images[q], 0, nullptr, nullptr));
 			}
 			for(int q = 0; q < numGPUsToUse; q++)
@@ -625,14 +625,14 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 
 
 
-
+			/*
 			cout  << "trying leakyrelu" << endl;
 
 			for(int q = 0; q < numGPUsToUse; q++)
 			{
-				clSetKernelArg(reluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
-				clSetKernelArg(reluKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
-
+				clSetKernelArg(leakyReluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
+				clSetKernelArg(leakyReluKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
+				cout << "args set" << endl;
 				const size_t globalWorkSize[] = {(size_t)n_layers[0]->getNumNeurons(),0,0};
 				CheckError(clEnqueueNDRangeKernel(queue[q], leakyReluKernel, 1,
 					nullptr,
@@ -641,7 +641,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 			}
 
 			cout << "leakyrelu done" << endl;
-
+			*/
 
 
 
@@ -650,13 +650,13 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 
 			//run kernels from index = 1 to index = end - 1. special stuff needs to be done on 
 			//data before softmax is run
-			cout << "running middle layers" << endl;
+			//cout << "running middle layers" << endl;
 			for(int i=1; i< layers.size() - 1; i++)
 			{
 				int curConvLayer = 0;
 				if(layers[i] == &convKernel)
 				{
-					cout << "running convKernel " << curConvLayer << endl;
+					//cout << "running convKernel " << curConvLayer << endl;
 					for(int q = 0; q < numGPUsToUse; q++)
 					{
 						vector<int> hyper = ((ConvLayer*)n_layers[i])->getKernelHyperParameters();
@@ -672,20 +672,20 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 						clSetKernelArg(convKernel, 6, sizeof(int), &(hyper[1]));
 						clSetKernelArg(convKernel, 7, sizeof(int), &(hyper[2]));
 						clSetKernelArg(convKernel, 8, sizeof(int), &(hyper[3]));
-						cout << "args set" << endl;
+						//cout << "args set" << endl;
 
 						const size_t globalWorkSize[] = {(size_t)n_layers[i]->getNumNeurons(),0,0};
 						CheckError(clEnqueueNDRangeKernel(queue[0], convKernel, 1,
 							nullptr,
 							globalWorkSize,
 							nullptr, 0, nullptr, nullptr));
-						cout << "convKernel enqueued" << endl;
+						//cout << "convKernel enqueued" << endl;
 					}
 					curConvLayer++;
 				}
 				else if(layers[i] == &maxPoolKernel)
 				{
-					cout << "running maxPoolKernel " << endl;
+					//cout << "running maxPoolKernel " << endl;
 					for(int q = 0; q < numGPUsToUse; q++)
 					{
 						vector<int> hyper = ((MaxPoolLayer*)n_layers[i])->getKernelHyperParameters();
@@ -706,7 +706,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 				}
 				else if(layers[i] == &reluKernel)
 				{
-					cout << "running reluKernel " << endl;
+					//cout << "running reluKernel " << endl;
 					for(int q = 0; q < numGPUsToUse; q++)
 					{
 						clSetKernelArg(reluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
@@ -721,7 +721,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 				}
 				else if(layers[i] == &leakyReluKernel)
 				{
-					cout << "running leakyReluKernel " << endl;
+					//cout << "running leakyReluKernel " << endl;
 					for(int q = 0; q < numGPUsToUse; q++)
 					{
 						clSetKernelArg(leakyReluKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
@@ -746,26 +746,26 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 				prevNeurons = temp;
 			}
 
-			cout << "starting softmaxKernel" <<  endl;
+			//cout << "starting softmaxKernel" <<  endl;
 			//end of forward through normal layers. now softmax is all that is left
 			// the current neurons are in prevNeurons due to the pointer swap
 			int softSize = n_layers.back()->getNumNeurons();
-			vector<vector<double>> neur(numGPUsToUse, vector<double>(softSize));
+			vector<vector<float>> neur(numGPUsToUse, vector<float>(softSize));
 			for(int q = 0; q < numGPUsToUse; q++)
 			{
 				
-				CheckError(clEnqueueReadBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0, sizeof(double) * softSize, 
+				CheckError(clEnqueueReadBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0, sizeof(float) * softSize, 
 					neur[q].data(), 0, nullptr, nullptr));
 				//clFinish(queue[q]);
 				maxSubtraction(neur[q]);
-				double denom = vectorESum(neur[q]);
-				CheckError(clEnqueueWriteBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0, sizeof(double) * softSize,
+				float denom = vectorESum(neur[q]);
+				CheckError(clEnqueueWriteBuffer(queue[q], (*prevNeurons)[q], CL_TRUE, 0, sizeof(float) * softSize,
 					neur[q].data(), 0, nullptr, nullptr));
 
 				//set kernel args
 				clSetKernelArg(softmaxKernel, 0, sizeof(cl_mem), &(*prevNeurons)[q]);
 				clSetKernelArg(softmaxKernel, 1, sizeof(cl_mem), &(*neurons)[q]);
-				clSetKernelArg(softmaxKernel, 2, sizeof(double), &denom);
+				clSetKernelArg(softmaxKernel, 2, sizeof(float), &denom);
 				const size_t globalWorkSize[] = {(size_t)softSize,0,0};
 				CheckError(clEnqueueNDRangeKernel(queue[q], softmaxKernel, 1,
 					nullptr,
@@ -780,7 +780,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 
 			for(int q = 0; q < numGPUsToUse; q++)
 			{
-				CheckError(clEnqueueReadBuffer(queue[q], (*neurons)[q], CL_TRUE, 0, sizeof(double) * softSize, 
+				CheckError(clEnqueueReadBuffer(queue[q], (*neurons)[q], CL_TRUE, 0, sizeof(float) * softSize, 
 					neur[q].data(), 0, nullptr, nullptr));
 				calculatedClasses[startForThisRound++] = getMaxElementIndex(neur[q]);
 			}
@@ -797,7 +797,7 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 				if(calculatedClasses[i] == n_trainingDataTrueVals[i])
 					numCorrect++;
 			}
-			cout << "Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(float)calculatedClasses.size() << "%" << endl;
+			cout << "Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(float)calculatedClasses.size()*100 << "%" << endl;
 		}
 		else
 		{
@@ -815,15 +815,32 @@ void Net::run() // run only goes forward and will be on the GPU if possible.
 	{
 		//CPU implemenation
 		gradCheck = false;
-		for(int r=0; r < n_trainingData.size(); r++)
+		//vector<vector<vector<float> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+		//setAll3DVector(lastLayerGradients,1);
+		int numCorrect;
+		SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+		numCorrect = 0;
+		//set the next training image as the InputLayer for the net
+		for(int t=0; t< n_trainingData.size(); t++)
 		{
-			n_layers[0] = n_trainingData[r];
+			n_layers[0] = n_trainingData[t];
 
 			//run forward pass
 			forwardprop();
 
-			//get the results and save them into n_results
+			//set trueVal only needed for backprop
+			//soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+			int predictedClass = soft->getPredictedClass();
+			if(predictedClass == n_trainingDataTrueVals[t])
+				numCorrect++;
+
+			//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
+			//and print for each epoch?
+
 		}
+		cout << "Accuracy: " << (float)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
+
 	}
 }
 
@@ -938,9 +955,9 @@ bool Net::addSoftmaxLayer()
 }
 
 //The true value will be the index of the correct class
-void Net::addTrainingData(const vector<vector<vector<vector<double> > > >& trainingData, vector<double>& trueVals)
+void Net::addTrainingData(const vector<vector<vector<vector<float> > > >& trainingData, vector<float>& trueVals)
 {
-	const vector<vector<vector<vector<double> > > >& t = trainingData;	
+	const vector<vector<vector<vector<float> > > >& t = trainingData;	
 	for(int n=0; n< t.size(); n++)
 	{
 		InputLayer *in = new InputLayer(t[n],&n_blankVector);
@@ -949,9 +966,9 @@ void Net::addTrainingData(const vector<vector<vector<vector<double> > > >& train
 	}
 }
 
-void Net::addRealData(const vector<vector<vector<vector<double> > > >& realData)
+void Net::addRealData(const vector<vector<vector<vector<float> > > >& realData)
 {
-	const vector<vector<vector<vector<double> > > >& r = realData;
+	const vector<vector<vector<vector<float> > > >& r = realData;
 	n_results.resize(r.size());	
 	for(int n=0; n< r.size(); n++)
 	{
@@ -965,7 +982,7 @@ void Net::clear()
 	n_layers.clear();
 }
 
-vector<vector<vector<double> > >* Net::getBlankVectorPointer()
+vector<vector<vector<float> > >* Net::getBlankVectorPointer()
 {
 	return &n_blankVector;
 }
@@ -980,11 +997,11 @@ bool Net::setActivType(int activationType)
 	return false;
 }
 
-double Net::calcLoss(int indexOfTrueVal)
+float Net::calcLoss(int indexOfTrueVal)
 {
 	// call softmax on the last layer of input data. The last layer should go down to a vector that is
 	// 1x1xn or 1xnx1 or nx1x1
-	vector<double> normedPredictions;
+	vector<float> normedPredictions;
 	softmax(n_layers.back()->getNeurons(), normedPredictions); // gets out predictions
 	return -log(normedPredictions[indexOfTrueVal]);
 
@@ -992,7 +1009,7 @@ double Net::calcLoss(int indexOfTrueVal)
 
 int Net::getPredictedClass()
 {
-	vector<double> normedPredictions;
+	vector<float> normedPredictions;
 	softmax(n_layers.back()->getNeurons(), normedPredictions);
 	int maxLoc = 0;
 	for(int i=1; i<normedPredictions.size();i++)
@@ -1267,7 +1284,7 @@ bool Net::save(const char* filename)
 	out += data;
 	out += '\n';
 
-	vector<vector<vector<double> > > blankVector = n_blankInput.getNeurons();
+	vector<vector<vector<float> > > blankVector = n_blankInput.getNeurons();
 
 	sprintf(data,"%lu",blankVector.size());
 	out += "inputWidth=";
@@ -1343,7 +1360,7 @@ InputLayer::InputLayer()
 
 InputLayer::~InputLayer(){}
 
-InputLayer::InputLayer(const vector<vector<vector<double> > >& trainingImage, vector<vector<vector<double> > >* blankdNeurons)
+InputLayer::InputLayer(const vector<vector<vector<float> > >& trainingImage, vector<vector<vector<float> > >* blankdNeurons)
 {
 	i_neurons = &trainingImage;
 	//resize3DVector(i_dneurons,trainingImage.size(),trainingImage[0].size(),trainingImage[0][0].size());
@@ -1358,9 +1375,9 @@ int InputLayer::getType() const
 	return i_type;
 }
 
-double* InputLayer::getImage() const
+float* InputLayer::getImage() const
 {
-	double *image = new double[i_numNeurons];
+	float *image = new float[i_numNeurons];
 	int imIndex = 0;
 	for(int i=0; i< i_neurons->size(); i++)
 	{
@@ -1375,7 +1392,7 @@ double* InputLayer::getImage() const
 	return image;
 }
 
-void InputLayer::getImage(double* image, int size) const
+void InputLayer::getImage(float* image, int size) const
 {
 	if(size == i_numNeurons)
 	{
@@ -1405,24 +1422,24 @@ int InputLayer::getNumNeurons() const
 void InputLayer::forwardprop(const Layer& prevLayer){}
 void InputLayer::backprop(Layer& prevLayer){}
 
-const vector<vector<vector<double> > >& InputLayer::getNeurons() const
+const vector<vector<vector<float> > >& InputLayer::getNeurons() const
 {
 	//cout << "getNeurons: " << i_neurons->size() << endl;
 	//cout << "neuron mem: " << i_neurons << endl;
 	return *i_neurons;
 }
 
-vector<vector<vector<double> > >& InputLayer::getdNeurons()
+vector<vector<vector<float> > >& InputLayer::getdNeurons()
 {
 	return *i_dneurons;
 }
 
-bool InputLayer::setImage(const vector<vector<vector<double> > >* trainingImage, vector<vector<vector<double> > >* blankdNeurons)
+bool InputLayer::setImage(const vector<vector<vector<float> > >* trainingImage, vector<vector<vector<float> > >* blankdNeurons)
 {
 	if(i_resizeable)
 	{
 		//cout << "In setImage.\ntrainingImage.size() = " <<trainingImage->size() << endl;
-		//const vector<vector<vector<double> > >& t = trainingImage;
+		//const vector<vector<vector<float> > >& t = trainingImage;
 		i_neurons = trainingImage;
 		i_dneurons = blankdNeurons;
 		//cout << "trainingImage mem " << trainingImage  << endl;
@@ -1466,7 +1483,7 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 	
 	//cout << "prevLayer.getNeurons().size() = " << prevLayer.getNeurons().size() << endl;
 
-	const vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
+	const vector<vector<vector<float> > > prevNeurons = prevLayer.getNeurons();
 	int prevWidth = prevNeurons.size();
 	int prevHeight = prevNeurons[0].size();
 	int prevDepth = prevNeurons[0][0].size();
@@ -1533,7 +1550,7 @@ int ConvLayer::getNumWeights() const
 void ConvLayer::initRandomWeights()
 {
 	default_random_engine gen(time(0));
-	uniform_real_distribution<double> distr(-.005,.005);
+	uniform_real_distribution<float> distr(-.005,.005);
 	for(int f = 0;f<c_weights.size(); f++)
 	{
 		for(int i=0; i< c_weights[0].size(); i++)
@@ -1542,7 +1559,7 @@ void ConvLayer::initRandomWeights()
 			{
 				for(int k=0; k< c_weights[0][0][0].size(); k++)
 				{
-					//double rnum = distr(gen);
+					//float rnum = distr(gen);
 					c_weights[f][i][j][k] = distr(gen);//rnum;
 					//cout << rnum << endl;
 				}
@@ -1560,7 +1577,7 @@ void ConvLayer::initRandomWeights()
 
 void ConvLayer::initWeights(string weights)
 {
-	double weight;
+	float weight;
 	int startIndex = 0, endIndex;
 	for(int f = 0;f<c_weights.size(); f++)
 	{
@@ -1599,7 +1616,7 @@ vector<int> ConvLayer::getKernelHyperParameters() const
 	return hyper;
 }
 
-void ConvLayer::_putWeights(double* weights, int vectIndex) const
+void ConvLayer::_putWeights(float* weights, int vectIndex) const
 {
 	int start = c_weights[0].size() * c_weights[0][0].size() * c_weights[0][0][0].size() * vectIndex;
 	//printf("%d %d\n", start, vectIndex);
@@ -1617,12 +1634,12 @@ void ConvLayer::_putWeights(double* weights, int vectIndex) const
 	}
 }
 
-double* ConvLayer::getWeights() const 
+float* ConvLayer::getWeights() const 
 {
 	//cout << "allocing " << c_numWeights << " weights" << endl;
 	//cout << c_weights.size() << "x" << c_weights[0].size() << "x" << c_weights[0][0].size() << "x" << c_weights[0][0][0].size() << endl;
 	//int numWeights = c_weights.size() * c_weights[0].size() * c_weights[0][0].size();
-	double *weights = new double[c_numWeights];
+	float *weights = new float[c_numWeights];
 
 	//cout << "allocing threads" << endl;
 	thread *t = new thread[c_weights.size()];
@@ -1650,9 +1667,9 @@ int ConvLayer::getNumBiases() const
 	return c_numBiases;
 }
 
-double* ConvLayer::getBiases() const
+float* ConvLayer::getBiases() const
 {
-	double *biases = new double[c_numBiases];
+	float *biases = new float[c_numBiases];
 
 	for(int b = 0; b < c_numBiases; b++)
 	{
@@ -1664,8 +1681,8 @@ double* ConvLayer::getBiases() const
 
 void ConvLayer::forwardprop(const Layer& prevLayer)
 {
-	vector<vector<vector<double> > > padSource;
-	const vector<vector<vector<double> > > *source;
+	vector<vector<vector<float> > > padSource;
+	const vector<vector<vector<float> > > *source;
 	if(c_padding != 0)
 	{
 		padZeros(prevLayer.getNeurons(),c_padding,padSource);
@@ -1673,7 +1690,7 @@ void ConvLayer::forwardprop(const Layer& prevLayer)
 	}
 	else
 		source = &prevLayer.getNeurons();
-	double sum;
+	float sum;
 	int oX, oY;
 	int subsetWidth = c_weights[0].size(); // this is the same as filterSize
 	int subsetHeight = c_weights[0][0].size();
@@ -1729,8 +1746,8 @@ void ConvLayer::backprop(Layer& prevLayer)
 		getchar();
 	}
 
-	vector<vector<vector<double> > >& p_dNeurons = prevLayer.getdNeurons();
-	vector<vector<vector<double> > > padded_dNeurons;
+	vector<vector<vector<float> > >& p_dNeurons = prevLayer.getdNeurons();
+	vector<vector<vector<float> > > padded_dNeurons;
 	resize3DVector(padded_dNeurons,p_dNeurons.size() + 2*c_padding,p_dNeurons[0].size() + 2*c_padding, p_dNeurons[0][0].size());
 	setAll3DVector(p_dNeurons, 0);
 	//setAll1DVector(c_dbiases, 0);
@@ -1740,8 +1757,8 @@ void ConvLayer::backprop(Layer& prevLayer)
 	}
 	setAll4DVector(c_dweights, 0);
 
-	vector<vector<vector<double> > > padSource;
-	const vector<vector<vector<double> > > *source;
+	vector<vector<vector<float> > > padSource;
+	const vector<vector<vector<float> > > *source;
 	if(c_padding != 0)
 	{
 		padZeros(prevLayer.getNeurons(),c_padding,padSource);
@@ -1750,7 +1767,7 @@ void ConvLayer::backprop(Layer& prevLayer)
 	else
 		source = &prevLayer.getNeurons();
 
-	//vector<vector<vector<double> > > source;
+	//vector<vector<vector<float> > > source;
 	//padZeros(prevLayer.getNeurons(),c_padding,source);
 
 	int oX, oY; // outX & outY
@@ -1830,12 +1847,12 @@ void ConvLayer::backprop(Layer& prevLayer)
 	}
 }
 
-const vector<vector<vector<double> > >& ConvLayer::getNeurons() const
+const vector<vector<vector<float> > >& ConvLayer::getNeurons() const
 {
 	return c_neurons;
 }
 
-vector<vector<vector<double> > >& ConvLayer::getdNeurons()
+vector<vector<vector<float> > >& ConvLayer::getdNeurons()
 {
 	return c_dneurons;
 }
@@ -1903,7 +1920,7 @@ const int MaxPoolLayer::m_type = Net::MAX_POOL_LAYER;
 MaxPoolLayer::MaxPoolLayer(const Layer& prevLayer, int poolSize, int stride)
 {
  	// need to set size of neurons and dneurons and make sure it goes evenly across new neurons
- 	const vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
+ 	const vector<vector<vector<float> > > prevNeurons = prevLayer.getNeurons();
  	//cout << "prevLayer.getNeurons().size() = " << prevNeurons.size() << endl;
  	int pWidth = prevNeurons.size();
  	int pHeight = prevNeurons[0].size();
@@ -1957,7 +1974,7 @@ vector<int> MaxPoolLayer::getKernelHyperParameters() const
 
 void MaxPoolLayer::forwardprop(const Layer& prevLayer)
 {
-	const vector<vector<vector<double> > >& source = prevLayer.getNeurons();
+	const vector<vector<vector<float> > >& source = prevLayer.getNeurons();
 	int oX=0, oY=0;//, di, dj; //, dk;
 	for(int k=0; k<source[0][0].size(); k++) // depth
 	{
@@ -1967,7 +1984,7 @@ void MaxPoolLayer::forwardprop(const Layer& prevLayer)
 			oY = 0;
 			for(int j=0;j<source[0].size()-1;j+=m_stride) // cols
 			{
-				double maxVal = source[i][j][k];
+				float maxVal = source[i][j][k];
 				for(int s=0;s<m_poolSize;s++)
 				{
 					for(int r=0; r< m_poolSize; r++)
@@ -2003,9 +2020,9 @@ void MaxPoolLayer::backprop(Layer& prevLayer)
 
 	//m_dneurons should have been set at this point by the next layer's backprop
 	//set all prev dNeurons to 0
-	vector<vector<vector<double> > >& p_dNeurons = prevLayer.getdNeurons();
+	vector<vector<vector<float> > >& p_dNeurons = prevLayer.getdNeurons();
  	setAll3DVector(p_dNeurons, 0);
- 	const vector<vector<vector<double> > >& source = prevLayer.getNeurons();
+ 	const vector<vector<vector<float> > >& source = prevLayer.getNeurons();
 
  	//for each set in maxPool, add in the m_dneurons val to the max. All others will stay 0.
 	int oX=0, oY=0, di, dj; //, dk;
@@ -2017,7 +2034,7 @@ void MaxPoolLayer::backprop(Layer& prevLayer)
 			oY = 0;
 			for(int j=0;j<source[0].size()-1;j+=m_stride) // cols
 			{
-				double maxVal = source[i][j][k];
+				float maxVal = source[i][j][k];
 				for(int s=0;s<m_poolSize;s++)
 				{
 					for(int r=0; r< m_poolSize; r++)
@@ -2040,12 +2057,12 @@ void MaxPoolLayer::backprop(Layer& prevLayer)
 }
 
 
-const vector<vector<vector<double> > >& MaxPoolLayer::getNeurons() const
+const vector<vector<vector<float> > >& MaxPoolLayer::getNeurons() const
 {
 	return m_neurons;
 }
 
-vector<vector<vector<double> > >& MaxPoolLayer::getdNeurons()
+vector<vector<vector<float> > >& MaxPoolLayer::getdNeurons()
 {
 	return m_dneurons;
 }
@@ -2074,9 +2091,9 @@ string MaxPoolLayer::getHyperParameters() const
 
 const int ActivLayer::a_type = Net::ACTIV_LAYER;
 
-const double ActivLayer::LEAKY_RELU_CONST = .01;
+const float ActivLayer::LEAKY_RELU_CONST = .01;
 
-const double ActivLayer::RELU_CAP = 5000;
+const float ActivLayer::RELU_CAP = 5000;
 
 ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 {
@@ -2096,7 +2113,7 @@ ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 	//cout << "prevLayer.getNeurons().size() = " << prevLayer.getNeurons().size() << endl;
 
 	a_activationType = activationType;
-	vector<vector<vector<double> > > prevNeurons = prevLayer.getNeurons();
+	vector<vector<vector<float> > > prevNeurons = prevLayer.getNeurons();
 	int w = prevNeurons.size();
 	int h = prevNeurons[0].size();
 	int d = prevNeurons[0][0].size();
@@ -2124,7 +2141,7 @@ int ActivLayer::getActivationType() const
 
 void ActivLayer::forwardprop(const Layer& prevLayer)
 {
-	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+	const vector<vector<vector<float> > >& prevNeurons = prevLayer.getNeurons();
 
 	if(a_activationType == ActivLayer::RELU)
 	{
@@ -2183,8 +2200,8 @@ void ActivLayer::backprop(Layer& prevLayer)
 		getchar();
 	}
 
-	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
-	vector<vector<vector<double> > >& p_dNeurons = prevLayer.getdNeurons();
+	const vector<vector<vector<float> > >& prevNeurons = prevLayer.getNeurons();
+	vector<vector<vector<float> > >& p_dNeurons = prevLayer.getdNeurons();
 	if(a_activationType == ActivLayer::RELU)
 	{
 		for(int i=0; i< prevNeurons.size(); i++)
@@ -2231,12 +2248,12 @@ void ActivLayer::backprop(Layer& prevLayer)
 	}
 }
 
-const vector<vector<vector<double> > >& ActivLayer::getNeurons() const
+const vector<vector<vector<float> > >& ActivLayer::getNeurons() const
 {
 	return a_neurons;
 }
 
-vector<vector<vector<double> > >& ActivLayer::getdNeurons()
+vector<vector<vector<float> > >& ActivLayer::getdNeurons()
 {
 	return a_dneurons;
 }
@@ -2262,7 +2279,7 @@ string ActivLayer::getHyperParameters() const
 
  SoftmaxLayer::SoftmaxLayer(const Layer& prevLayer)
  {
- 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+ 	const vector<vector<vector<float> > >& prevNeurons = prevLayer.getNeurons();
  	int numDirs = 0;
 	int i,j,k, *dir;
 	int width = prevNeurons.size();
@@ -2295,7 +2312,7 @@ string ActivLayer::getHyperParameters() const
 
  void SoftmaxLayer::forwardprop(const Layer& prevLayer)
  {
- 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+ 	const vector<vector<vector<float> > >& prevNeurons = prevLayer.getNeurons();
 	int i,j,k, *dir;
 	int width = prevNeurons.size();
 	int height = prevNeurons[0].size();
@@ -2316,7 +2333,7 @@ string ActivLayer::getHyperParameters() const
 	}
 
 	maxSubtraction(s_neurons);
-	double denom = vectorESum(s_neurons);
+	float denom = vectorESum(s_neurons);
 	for(int n=0; n < s_neurons.size(); n++)
 	{
 		s_neurons[n] = exp(s_neurons[n])/denom;
@@ -2340,8 +2357,8 @@ string ActivLayer::getHyperParameters() const
 
  void SoftmaxLayer::gradientCheck(Layer& prevLayer)
  {
- 	vector<vector<vector<double> > >& prevdNeurons = prevLayer.getdNeurons();
- 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
+ 	vector<vector<vector<float> > >& prevdNeurons = prevLayer.getdNeurons();
+ 	const vector<vector<vector<float> > >& prevNeurons = prevLayer.getNeurons();
  	cout << "\n\n";
  	int i,j,k, *dir;
 	int width = prevNeurons.size();
@@ -2361,12 +2378,12 @@ string ActivLayer::getHyperParameters() const
  				cout << "old s_neurons: ";
  				printVector(s_neurons);
 
- 				vector<double> oldError = getError();
+ 				vector<float> oldError = getError();
  				s_neurons[*dir] += Net::GRADCHECK_H;
 
  				//from forwardprop
  				maxSubtraction(s_neurons);
-				double denom = vectorESum(s_neurons);
+				float denom = vectorESum(s_neurons);
 				for(int n=0; n < s_neurons.size(); n++)
 				{
 					s_neurons[n] = exp(s_neurons[n])/denom;
@@ -2383,8 +2400,8 @@ string ActivLayer::getHyperParameters() const
 				cout << "new s_neurons: ";
 				printVector(s_neurons);
 
-				vector<double> newError = getError();
-				double numericalGradient = 0;
+				vector<float> newError = getError();
+				float numericalGradient = 0;
 				for(int e=0; e<newError.size(); e++)
 				{
 					cout << (newError[e] - oldError[e])/Net::GRADCHECK_H << endl;
@@ -2425,7 +2442,7 @@ string ActivLayer::getHyperParameters() const
 			getchar();
 	}
 
- 	vector<vector<vector<double> > >& prevdNeurons = prevLayer.getdNeurons();
+ 	vector<vector<vector<float> > >& prevdNeurons = prevLayer.getdNeurons();
  	int n = 0;
  	for(int i=0; i< prevdNeurons.size(); i++)
  	{
@@ -2453,7 +2470,7 @@ string ActivLayer::getHyperParameters() const
 	return maxLoc;
  }
 
- vector<double> SoftmaxLayer::getError() 
+ vector<float> SoftmaxLayer::getError() 
  {
  	for(int i=0; i< s_neurons.size(); i++)
  	{
@@ -2471,7 +2488,7 @@ string ActivLayer::getHyperParameters() const
  	return s_dneurons;
  }
 
- void SoftmaxLayer::setError(vector<double> error)
+ void SoftmaxLayer::setError(vector<float> error)
  {
  	if(error.size() != s_dneurons.size())
  	{
@@ -2488,12 +2505,12 @@ string ActivLayer::getHyperParameters() const
  	return s_type;
  }
 
- const vector<vector<vector<double> > >& SoftmaxLayer::getNeurons() const
+ const vector<vector<vector<float> > >& SoftmaxLayer::getNeurons() const
  {
  	return s_3neurons;
  } 
 
- vector<vector<vector<double> > >& SoftmaxLayer::getdNeurons()
+ vector<vector<vector<float> > >& SoftmaxLayer::getdNeurons()
  {
  	return s_3dneurons;
  }
@@ -2501,7 +2518,7 @@ string ActivLayer::getHyperParameters() const
 /***********************************
  * Functions
  ***********************************/
-void softmax(const vector<vector<vector<double> > >& vect, vector<double>& out)
+void softmax(const vector<vector<vector<float> > >& vect, vector<float>& out)
 {
 	//cout << "orig vector";
 	//printVector(vect);
@@ -2537,7 +2554,7 @@ void softmax(const vector<vector<vector<double> > >& vect, vector<double>& out)
 	maxSubtraction(out);
 	//cout << "Pre exp" << endl;
 	//printVector(out);
-	double denom = vectorESum(out);
+	float denom = vectorESum(out);
 	//cout << "denom " << denom << endl;
 	for(int n=0; n< out.size(); n++)
 	{
@@ -2547,7 +2564,7 @@ void softmax(const vector<vector<vector<double> > >& vect, vector<double>& out)
 	//printVector(out);
 }
 
-void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
+void resize3DVector(vector<vector<vector<float> > > &vect, int width, int height, int depth)
 {
 	vect.resize(width);
 	for(int i=0; i < width; i++)
@@ -2560,7 +2577,7 @@ void resize3DVector(vector<vector<vector<double> > > &vect, int width, int heigh
 	}
 }
 
-void setAll4DVector(vector<vector<vector<vector<double> > > > &vect, double val)
+void setAll4DVector(vector<vector<vector<vector<float> > > > &vect, float val)
 {
 	for(int n=0; n< vect.size(); n++)
 	{
@@ -2568,7 +2585,7 @@ void setAll4DVector(vector<vector<vector<vector<double> > > > &vect, double val)
 	}
 }
 
-void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
+void setAll3DVector(vector<vector<vector<float> > > &vect, float val)
 {
 	for(int i=0; i< vect.size(); i++)
 	{
@@ -2582,7 +2599,7 @@ void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
 	}
 }
 
-void printVector(const vector<vector<vector<vector<double> > > > &vect)
+void printVector(const vector<vector<vector<vector<float> > > > &vect)
 {
 	for(int n=0; n< vect.size(); n++)
 	{
@@ -2591,7 +2608,7 @@ void printVector(const vector<vector<vector<vector<double> > > > &vect)
 	}
 }
 
-void printVector(const vector<vector<vector<double> > > &vect)
+void printVector(const vector<vector<vector<float> > > &vect)
 {
 	for(int i=0;i < vect.size();i++) // rows
 	{
@@ -2609,7 +2626,7 @@ void printVector(const vector<vector<vector<double> > > &vect)
 	}
 }
 
-void printVector(const vector<double>& vect)
+void printVector(const vector<float>& vect)
 {
 	cout << "|";
 	for(int i=0; i< vect.size(); i++)
@@ -2626,7 +2643,7 @@ void printVector(const vector<double>& vect)
  * It does this on every depth level. Depth is not padded.
  *
  *********************/
-void padZeros(const vector<vector<vector<double> > > &source, int numZeros, vector<vector<vector<double> > > &dest)
+void padZeros(const vector<vector<vector<float> > > &source, int numZeros, vector<vector<vector<float> > > &dest)
 {
 	int width2 = source.size() + 2*numZeros;
 	int height2 = source[0].size() + 2*numZeros;
@@ -2646,9 +2663,9 @@ void padZeros(const vector<vector<vector<double> > > &source, int numZeros, vect
 }
 
 
-double vectorESum(const vector<double> &source)
+float vectorESum(const vector<float> &source)
 {
-	double sum = 0;
+	float sum = 0;
 	for(int i=0; i < source.size(); i++)
 	{
 		sum += exp(source[i]);
@@ -2656,7 +2673,7 @@ double vectorESum(const vector<double> &source)
 	return sum;
 }
 
-void vectorClone(const vector<vector<vector<double> > > &source, vector<vector<vector<double> > > &dest)
+void vectorClone(const vector<vector<vector<float> > > &source, vector<vector<vector<float> > > &dest)
 {
 	resize3DVector(dest,source.size(),source[0].size(),source[0][0].size());
 	for(int i=0; i< dest.size(); i++)
@@ -2672,7 +2689,7 @@ void vectorClone(const vector<vector<vector<double> > > &source, vector<vector<v
 	
 }
 
-void compressImage(vector<vector<vector<vector<double> > > >& vect, double newMin, double newMax)
+void compressImage(vector<vector<vector<vector<float> > > >& vect, float newMin, float newMax)
 {
 	for(int n=0; n< vect.size(); n++)
 	{
@@ -2680,7 +2697,7 @@ void compressImage(vector<vector<vector<vector<double> > > >& vect, double newMi
 	}
 }
 
-void compressImage(vector<vector<vector<double> > >& vect, double newMin, double newMax)
+void compressImage(vector<vector<vector<float> > >& vect, float newMin, float newMax)
 {
 	for(int i=0; i< vect.size(); i++)
 	{
@@ -2694,9 +2711,9 @@ void compressImage(vector<vector<vector<double> > >& vect, double newMin, double
 	}
 }
 
-void maxSubtraction(vector<double>& vect)
+void maxSubtraction(vector<float>& vect)
 {
-	double max = vect[0];
+	float max = vect[0];
 	for(int i=1;i<vect.size();i++)
 	{
 		if(vect[i] > max)
@@ -2708,11 +2725,19 @@ void maxSubtraction(vector<double>& vect)
 	}
 }
 
-void preprocess(vector<vector<vector<double> > > & vect)
+void preprocess(vector<vector<vector<vector<float> > > >& vect)
+{
+	for(int v=0; v< vect.size(); v++)
+	{
+		preprocess(vect[v]); //thread this
+	}
+}
+
+void preprocess(vector<vector<vector<float> > > & vect)
 {
 	//preprocess using (val - mean)/stdDeviation for all elements
-	double m = mean(vect);
-	double stddv = stddev(vect,m);
+	float m = mean(vect);
+	float stddv = stddev(vect,m);
 	for(int i=0; i< vect.size();i++)
 	{
 		for(int j=0; j< vect[i].size(); j++)
@@ -2725,9 +2750,9 @@ void preprocess(vector<vector<vector<double> > > & vect)
 	}
 }
 
-double mean(const vector<vector<vector<double> > > & vect)
+float mean(const vector<vector<vector<float> > > & vect)
 {
-	double mean = 0;
+	float mean = 0;
 	for(int i=0; i< vect.size(); i++)
 	{
 		for(int j=0; j< vect[0].size(); j++)
@@ -2742,16 +2767,16 @@ double mean(const vector<vector<vector<double> > > & vect)
 	return mean;
 }
 
-double stddev(const vector<vector<vector<double> > > & vect) 
+float stddev(const vector<vector<vector<float> > > & vect) 
 {
-	double m = mean(vect);
+	float m = mean(vect);
 	return stddev(vect,m);
 }
 
-double stddev(const vector<vector<vector<double> > > & vect, double mean) 
+float stddev(const vector<vector<vector<float> > > & vect, float mean) 
 {
-	double sqdiffs = 0;
-	double temp;
+	float sqdiffs = 0;
+	float temp;
 	for(int i=0; i< vect.size();i++)
 	{
 		for(int j=0; j< vect[i].size(); j++)
@@ -2763,11 +2788,11 @@ double stddev(const vector<vector<vector<double> > > & vect, double mean)
 			}
 		}
 	}
-	double sqdiffMean = sqdiffs / (vect.size() * vect[0].size() * vect[0][0].size());
+	float sqdiffMean = sqdiffs / (vect.size() * vect[0].size() * vect[0][0].size());
 	return sqrt(sqdiffMean);
 }
 
-void meanSubtraction(vector<vector<vector<vector<double> > > >& vect)
+void meanSubtraction(vector<vector<vector<vector<float> > > >& vect)
 {
 	for(int n=0; n< vect.size(); n++)
 	{
@@ -2775,9 +2800,9 @@ void meanSubtraction(vector<vector<vector<vector<double> > > >& vect)
 	}
 }
 
-void meanSubtraction(vector<vector<vector<double> > >& vect)
+void meanSubtraction(vector<vector<vector<float> > >& vect)
 {
-	double mean = 0;
+	float mean = 0;
 	for(int i=0; i< vect.size(); i++)
 	{
 		for(int j=0; j< vect[0].size(); j++)
@@ -2802,9 +2827,9 @@ void meanSubtraction(vector<vector<vector<double> > >& vect)
 	}
 }
 
-void meanSubtraction(vector<double>& vect)
+void meanSubtraction(vector<float>& vect)
 {
-	double mean = 0;
+	float mean = 0;
 	for(int i=0;i<vect.size();i++)
 	{
 		mean += vect[i];
@@ -2816,12 +2841,12 @@ void meanSubtraction(vector<double>& vect)
 	}
 }
 
-int getMaxElementIndex(const vector<double>& vect)
+int getMaxElementIndex(const vector<float>& vect)
 {
 	if(vect.size() < 1)
 		return -1;
-	double max = vect[0];
-	double maxIndex = 0;
+	float max = vect[0];
+	float maxIndex = 0;
 	for(int i=1; i< vect.size(); i++)
 	{
 		if(vect[i] > max)

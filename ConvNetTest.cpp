@@ -24,7 +24,7 @@
 using namespace std;
 using namespace cv;
 
-void convert1DArrayTo3DVector(const double *array, int width, int height, int depth, vector<vector<vector<double> > > &dest)
+void convert1DArrayTo3DVector(const float *array, int width, int height, int depth, vector<vector<vector<float> > > &dest)
 {
 	//resize dest vector
 	dest.resize(width);
@@ -49,7 +49,7 @@ void convert1DArrayTo3DVector(const double *array, int width, int height, int de
 	}
 }
 
-void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
+void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<float> > > &dest, int row)
 {
 	for(int j=0; j< m.cols; j++)
 	{
@@ -60,12 +60,12 @@ void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > 
 	}
 }
 
-void threadTest(vector<vector<vector<double> > > &dest)
+void threadTest(vector<vector<vector<float> > > &dest)
 {
 	cout << dest.size() << endl;
 }
 
-void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
+void convertColorMatToVector(const Mat& m, vector<vector<vector<float> > > &dest)
 {
 	if(m.type() != CV_8UC3)
 	{
@@ -92,7 +92,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
 	//delete t;
 }
 /*
-void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
+void convertColorMatToVector(const Mat& m, vector<vector<vector<float> > > &dest)
 {
 	if(m.type() != CV_8UC3)
 	{
@@ -125,7 +125,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
 }
 */
 
-void getImageInVector(const char* filename, vector<vector<vector<double> > >& dest)
+void getImageInVector(const char* filename, vector<vector<vector<float> > >& dest)
 {
 	Mat image = imread(filename,1);
 	convertColorMatToVector(image,dest);
@@ -144,15 +144,15 @@ void oldestMain()
 {
 	string weights = "1,0,1,-1,0,0,-1,1,0,0,1,0,1,0,0,1,-1,-1,-1,0,0,1,1,-1,-1,1,0,0,1,-1,-1,-1,-1,-1,0,-1,1,1,-1,0,0,-1,0,1,-1,1,-1,1,1,1,-1,-1,0,1,_1,0";
 
-	double testArray[] = {
+	float testArray[] = {
 		0,1,2, 1,2,1, 0,0,0, 2,2,2, 2,0,1,
 		2,2,1, 1,0,0, 2,1,1, 2,2,0, 1,2,0,
 		1,1,0, 1,0,1, 2,2,0, 0,1,0, 2,2,2,
 		1,1,0, 0,2,1, 0,1,0, 1,2,2, 2,0,2,
 		2,0,0, 2,0,2, 0,1,1, 2,1,0, 2,2,0};
 
-	vector<vector<vector<vector<double> > > > testVectors(1);
-	vector<double> trueVals(1,1);
+	vector<vector<vector<vector<float> > > > testVectors(1);
+	vector<float> trueVals(1,1);
 	
 	convert1DArrayTo3DVector(testArray,5,5,3,testVectors[0]);
 
@@ -172,7 +172,7 @@ void oldestMain()
 	//delete testNet;
 }
 
-void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vector<double> > > >& images, vector<double>& trueVals)
+void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vector<float> > > >& images, vector<float>& trueVals)
 {
 	const char* inPath = folder;
 	bool isDirectory;
@@ -260,8 +260,8 @@ int runTrainedCNN(int argc, char** argv)
 	
 	cout << "Getting training images" << endl;
 
-	vector<vector<vector<vector<double> > > > trainingImages;
-	vector<double> trueVals;
+	vector<vector<vector<vector<float> > > > trainingImages;
+	vector<float> trueVals;
 
 	ifstream tiConfig;
 	string line;
@@ -297,8 +297,8 @@ int runTrainedCNN(int argc, char** argv)
 	//cout << "Doing image preprocessing (compress vals from -1 to 1)" << endl;
 	//compressImage(trainingImages,-1,1);
 	
-	cout << "Doing image preprocessing (mean subtraction)." << endl;
-	meanSubtraction(trainingImages);
+	cout << "Doing image preprocessing." << endl;
+	preprocess(trainingImages);
 
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);
@@ -307,7 +307,8 @@ int runTrainedCNN(int argc, char** argv)
 	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
-	net.run();
+	net.run(false);
+	//net.run();
 
 	cout << "Done" << endl;
 	return 0;
@@ -343,8 +344,8 @@ int trainCNN(int argc, char** argv)
 	
 	cout << "Getting training images" << endl;
 
-	vector<vector<vector<vector<double> > > > trainingImages;
-	vector<double> trueVals;
+	vector<vector<vector<vector<float> > > > trainingImages;
+	vector<float> trueVals;
 
 	ifstream tiConfig;
 	string line;
@@ -380,8 +381,8 @@ int trainCNN(int argc, char** argv)
 	//cout << "Doing image preprocessing (compress vals from -1 to 1)" << endl;
 	//compressImage(trainingImages,-1,1);
 	
-	cout << "Doing image preprocessing (mean subtraction)." << endl;
-	meanSubtraction(trainingImages);
+	cout << "Doing image preprocessing." << endl;
+	preprocess(trainingImages);
 
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);

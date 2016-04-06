@@ -1,5 +1,5 @@
 //numthreads should be size of neurons and prevNeurons (should be same)
-__kernel void relu(__global double* prevNeurons, __global double* neurons)
+__kernel void relu(__global float* prevNeurons, __global float* neurons)
 {
 	const int i = get_global_id(0);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= 5)
@@ -11,11 +11,11 @@ __kernel void relu(__global double* prevNeurons, __global double* neurons)
 }
 
 //numthreads should be size of neurons and prevNeurons (should be same)
-__kernel void leakyRelu(__global double* prevNeurons, __global double* neurons)
+__kernel void leakyRelu(__global float* prevNeurons, __global float* neurons)
 {
 	const int i = get_global_id(0);
-	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
-	double newVal;
+	//float newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
+	float newVal;
 	if(prevNeurons[i] > 0) newVal = prevNeurons[i];
 	else newVal = prevNeurons[i] * 0.01;
 	if(newVal >= -5 && newVal <= 5)
@@ -28,7 +28,7 @@ __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons)
 
 
 //num threads should be the size of the neurons after the maxPool
-__kernel void maxPool(__global double* prevNeurons, __global double* neurons,
+__kernel void maxPool(__global float* prevNeurons, __global float* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride)
 {
 	int width = prevwidth;
@@ -46,7 +46,7 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	int numBlocksPerRow = (width - poolsize)/stride + 1; // maybe calc once and pass in as param
 	int i = ((x/numBlocksPerRow) * width * stride * depth) + ((x%numBlocksPerRow) * stride * depth); //see large comment above
 
-	double maxVal = prevNeurons[i];
+	float maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
 		for(int col = 0; col < poolsize; col++)
@@ -60,8 +60,8 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	neurons[x] = maxVal;
 }
 
-__kernel void convolve(__global double* prevNeurons, __global double* neurons,
-	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
+__kernel void convolve(__global float* prevNeurons, __global float* neurons,
+	__constant float* weights, __constant float* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
 {
 	//int myHeight = myBlock/numBlocksPerRow;
 	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
@@ -84,7 +84,7 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 
 	//can I do the pointer arithmetic better?
 
-	double result = 0;
+	float result = 0;
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
@@ -96,8 +96,8 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 	neurons[i] = result + biases[myFilter];
 }
 
-__kernel void softmax(__global double *prevNeurons, __global double *neurons,
-	double denominator)
+__kernel void softmax(__global float *prevNeurons, __global float *neurons,
+	float denominator)
 {
 	int i = get_global_id(0);
 	neurons[i] = exp(prevNeurons[i])/denominator;
