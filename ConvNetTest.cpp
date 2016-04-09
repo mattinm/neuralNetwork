@@ -161,11 +161,12 @@ void oldestMain()
 	Net *testNet = new Net(5,5,3);
 	testNet->addTrainingData(testVectors,trueVals);
 	//cout << "Adding ConvLayer" << endl;
-	testNet->addConvLayer(2,2,3,1,weights);
-	testNet->addActivLayer();
+	testNet->addConvLayer(2,2,3,0,weights);
+	//const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad)
+	//testNet->addActivLayer();
 	//testNet->addMaxPoolLayer(2,1);
 
-	testNet->train(1);
+	testNet->run(false);
 
 
 	cout << "Done" << endl;
@@ -307,8 +308,8 @@ int runTrainedCNN(int argc, char** argv)
 	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
-	net.run(false);
-	//net.run();
+	//net.run(false);
+	net.run(true);
 
 	cout << "Done" << endl;
 	return 0;
@@ -417,6 +418,8 @@ int main(int argc, char** argv)
 	//trainCNN(argc, argv);
 	runTrainedCNN(argc, argv);
 	//cout << "back in main" << endl;
+
+	//oldestMain();
 	return 0;
 }
 

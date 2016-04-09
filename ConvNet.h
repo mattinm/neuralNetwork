@@ -61,6 +61,7 @@ public:
 	~ConvLayer();
 	int getType() const;
 	int getNumNeurons() const;
+	int getMaxSizeNeeded() const;
 	float* getWeights() const;
 	int getNumWeights() const;
 	float* getBiases() const;
@@ -89,7 +90,9 @@ private:
 	int c_padding;
 	int c_stride;
 	int c_prevNeuronWidth;
+	int c_prevNeuronHeight;
 	int c_prevNeuronDepth;
+	int c_maxSizeNeeded;
 };
 
 class MaxPoolLayer : public Layer{
@@ -242,6 +245,8 @@ void printVector(const std::vector<std::vector<std::vector<std::vector<float> > 
 void printVector(const std::vector<std::vector<std::vector<float> > > &vect);
 
 void printVector(const std::vector<float>& vect);
+
+void printArray(float* array, int size);
 
 void resize3DVector(std::vector<std::vector<std::vector<float> > > &vect, int width, int height, int depth);
 
