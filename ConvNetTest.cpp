@@ -308,8 +308,8 @@ int runTrainedCNN(int argc, char** argv)
 	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
-	//net.run(false);
-	net.run(true);
+	net.run(false);
+	//net.newRun(false);
 
 	cout << "Done" << endl;
 	return 0;

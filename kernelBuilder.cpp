@@ -106,9 +106,3 @@ int main(int argc, char** argv)
 
 	clReleaseContext(context);
 }
-
-
-
-
-
-

@@ -79,6 +79,8 @@
 
 #define GETMAX(x,y) (x > y) ? x: y
 
+ typedef unsigned long ulong;
+
 using namespace std;
 
 /***********************************
@@ -187,30 +189,82 @@ void Net::runTrainingData()
 
 }
 
-void Net::splitTrain(int epochs)
+
+
+void Net::splitTrain(int epochs, bool useGPU)
 {
+	useGPU = false;
 
 	if(n_trainingData.size() != n_trainingDataTrueVals.size())
 	{
 		cout << "All the training data needs true values for training" << endl;
 		return;
 	}
-	//set 1 in the d_neurons in the last layer
-			//or do we need to set it to the error? -> I don't think so.
+
 	string ep = to_string(epochs);
 
 	int startValidationIndex = n_trainingData.size() * 0.9;
 
-	gradCheck = false;
-	//vector<vector<vector<float> > >& lastLayerGradients = n_layers.back()->getdNeurons();
-	//setAll3DVector(lastLayerGradients,1);
-	int numCorrect;
-	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
-	for(int e=0; e< epochs; e++)
+	cl_int error = CL_SUCCESS;
+
+	vector<int> calculatedClasses(n_trainingData.size());
+	//get num of platforms and we will use the first one
+	cl_uint platformIdCount = 0;
+	clGetPlatformIDs (0, nullptr, &platformIdCount);
+	vector<cl_platform_id> platformIds (platformIdCount);
+	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
+
+	cl_uint gpudeviceIdCount = 0;
+	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_GPU, 0, nullptr, &gpudeviceIdCount);
+
+	if(useGPU && gpudeviceIdCount > 0)
 	{
+
+	}
+	else
+	{
+		gradCheck = false;
+		//vector<vector<vector<float> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+		//setAll3DVector(lastLayerGradients,1);
+		int numCorrect;
+		SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+		for(int e=0; e< epochs; e++)
+		{
+			numCorrect = 0;
+			//set the next training image as the InputLayer for the net
+			for(int t=0; t< startValidationIndex; t++)
+			{
+				n_layers[0] = n_trainingData[t];
+
+				//run forward pass
+				forwardprop();
+
+				//set trueVal
+				soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+				int predictedClass = soft->getPredictedClass();
+				if(predictedClass == n_trainingDataTrueVals[t])
+					numCorrect++;
+
+				//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
+				//and print for each epoch?
+
+				//run backward pass beside the weight no
+				backprop();
+
+				//
+
+			}
+			cout << "Epoch: " ;
+			cout << setw(ep.size()) << e+1;
+			cout << ", Accuracy: " << (float)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
+
+			shuffleTrainingData();
+		}
+
+		cout << "Running Validation set" << endl;
 		numCorrect = 0;
-		//set the next training image as the InputLayer for the net
-		for(int t=0; t< startValidationIndex; t++)
+		for(int t=startValidationIndex; t< n_trainingData.size(); t++)
 		{
 			n_layers[0] = n_trainingData[t];
 
@@ -223,41 +277,9 @@ void Net::splitTrain(int epochs)
 			int predictedClass = soft->getPredictedClass();
 			if(predictedClass == n_trainingDataTrueVals[t])
 				numCorrect++;
-
-			//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
-			//and print for each epoch?
-
-			//run backward pass beside the weight no
-			backprop();
-
-			//
-
 		}
-		cout << "Epoch: " ;
-		cout << setw(ep.size()) << e+1;
-		cout << ", Accuracy: " << (float)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
-
-		shuffleTrainingData();
+		cout << "Validation run on Training data: " <<  "Accuracy: " << (float)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
 	}
-
-	cout << "Running Validation set" << endl;
-	numCorrect = 0;
-	for(int t=startValidationIndex; t< n_trainingData.size(); t++)
-	{
-		n_layers[0] = n_trainingData[t];
-
-		//run forward pass
-		forwardprop();
-
-		//set trueVal
-		soft->setTrueVal(n_trainingDataTrueVals[t]);
-
-		int predictedClass = soft->getPredictedClass();
-		if(predictedClass == n_trainingDataTrueVals[t])
-			numCorrect++;
-	}
-	cout << "Validation run on Training data: " <<  "Accuracy: " << (float)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
-
 }
 
 void Net::train(int epochs)
@@ -406,6 +428,414 @@ void Net::gradientCheck()
 	//without putting an & before prevNeurons. then you can change it.
 }
 
+void Net::newRun(bool useGPU)
+{
+	cl_int error = CL_SUCCESS;
+
+	vector<int> calculatedClasses(n_trainingData.size());
+
+	//get num of platforms and we will use the first one
+	cl_uint platformIdCount = 0;
+	clGetPlatformIDs (0, nullptr, &platformIdCount);
+	vector<cl_platform_id> platformIds (platformIdCount);
+	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
+
+	cl_uint deviceIdCount = 0;
+	cl_uint gpudeviceIdCount = 0;
+	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
+
+	vector<cl_device_id> deviceIds(deviceIdCount);
+	clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_ALL, deviceIdCount, deviceIds.data(), nullptr);
+
+	//decide which one to use.
+	// if gpu available that can hold the mem, use it. 
+	unsigned long forwardMemNeeded = getMemForward();
+	int q = 0; //device to use
+	if(useGPU)
+	{
+		for(int i = 1; i < deviceIdCount; i++)
+		{
+			cl_device_type type;
+			CheckError(clGetDeviceInfo(deviceIds[i], CL_DEVICE_TYPE, sizeof(cl_device_type), &type, nullptr));
+			if(type == CL_DEVICE_TYPE_GPU)
+			{
+				cl_ulong memAmount;
+				CheckError(clGetDeviceInfo(deviceIds[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &memAmount, nullptr));
+				if(memAmount > forwardMemNeeded)
+				{
+					q = i;
+				}
+			}
+		}
+	}
+	size_t valueSize;
+	CheckError(clGetDeviceInfo(deviceIds[q], CL_DEVICE_NAME, 0, NULL, &valueSize));
+	char* name = new char[valueSize];
+	cout << "Using device " << q << ": ";
+	CheckError(clGetDeviceInfo(deviceIds[q], CL_DEVICE_NAME, valueSize, name, nullptr));
+	cout << name << endl;
+
+
+	//make the context
+	const cl_context_properties contextProperties[] = 
+	{
+		CL_CONTEXT_PLATFORM,
+		reinterpret_cast<cl_context_properties>(platformIds[0]),
+		0,0
+	};
+	cl_context context = clCreateContext(contextProperties, deviceIdCount, deviceIds.data(), 
+	nullptr, nullptr, &error);
+	CheckError(error);
+
+	//build the program
+	cl_program CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), context);
+	const char* options = "-cl-single-precision-constant";
+	//cout << "Build Program " << clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), options, nullptr, nullptr) << endl;
+	const cl_device_id* deviceToBuild = &(deviceIds[q]);
+	CheckError(clBuildProgram(CNForward, 1, deviceToBuild, options, nullptr, nullptr));
+	cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel;
+
+	//Create the kernels
+
+	reluKernel = clCreateKernel(CNForward, "relu", &error);
+	CheckError(error);
+
+	leakyReluKernel = clCreateKernel(CNForward, "leakyRelu", &error);
+	CheckError(error);
+
+	convKernel = clCreateKernel(CNForward, "convolve", &error);
+	CheckError(error);
+	zeroPadKernel = clCreateKernel(CNForward, "zeroPad", &error);
+	CheckError(error);
+
+	maxPoolKernel = clCreateKernel(CNForward, "maxPool", &error);
+	CheckError(error);
+
+	softmaxKernel = clCreateKernel(CNForward, "softmax", &error);
+	CheckError(error);
+
+
+	//cout << "Kernels created" << endl;
+		
+	//make the command queue
+	cl_command_queue queue = clCreateCommandQueue(context, deviceIds[q], 0, &error);
+		CheckError(error);
+
+	//make a vector of pointers to kernels that is parallel to n_layers. Use this to make memory
+	//on gpu for the weights and biases. get maxSize of every set of neurons and make two of
+	//those on gpu
+	int numConvLayers = 0;
+
+	int maxNeuronSize = n_layers[0]->getNumNeurons();
+
+	vector<cl_kernel*> layers(n_layers.size());
+	layers[0] = nullptr; //because input layer
+	vector<cl_mem> weights;
+	vector<int> weightSizes;
+	vector<cl_mem> biases;
+	vector<int> biasSizes;
+	for(int i=1; i< n_layers.size(); i++)
+	{
+		int type = n_layers[i]->getType();
+		if(type == Net::CONV_LAYER)
+		{
+			//cout << "conv " << numConvLayers << "i " << i << endl;
+			//cout << "Conv" << endl;
+			layers[i] = &convKernel;
+			numConvLayers++;
+			ConvLayer *conv = (ConvLayer*) n_layers[i];
+			int numWeights = conv->getNumWeights();
+			//cout << "get some weights" << endl;
+			float* w = conv->getWeights();
+			//cout << "weights got" << endl;
+			weights.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+				sizeof(float) * numWeights, w, &error));
+			weightSizes.push_back(numWeights);
+			CheckError(error);
+
+			//get biases too
+			int numBiases = conv->getNumBiases();
+			float *b = conv->getBiases();
+			biases.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+				sizeof(float) * numBiases, b, &error));
+			biasSizes.push_back(numBiases);
+			CheckError(error);
+
+			int maxSizeNeeded = conv->getMaxSizeNeeded();
+			if(maxSizeNeeded > maxNeuronSize)
+			{
+				maxNeuronSize = maxSizeNeeded;
+			}
+
+			delete w;
+			delete b;
+			//cout << "End Conv" << endl;
+		}
+		else if (type == Net::MAX_POOL_LAYER)
+			layers[i] = &maxPoolKernel;
+		else if (type == Net::SOFTMAX_LAYER)
+			layers[i] = &softmaxKernel;
+		else if (type == Net::ACTIV_LAYER)
+		{
+			ActivLayer* act = (ActivLayer*)n_layers[i];
+			if(act->getActivationType() == ActivLayer::RELU)
+				layers[i] = &reluKernel;
+			else if (act->getActivationType() == ActivLayer::LEAKY_RELU)
+				layers[i] = &leakyReluKernel;
+		}
+		else
+		{
+			cout << "Unknown layer type for the GPU implemenation. Defaulting to CPU." << endl;
+			gradCheck = false;
+			for(int r=0; r < n_trainingData.size(); r++)
+			{
+				n_layers[0] = n_trainingData[r];
+
+				//run forward pass
+				forwardprop();
+
+				//get the results and save them into n_results
+			}
+			return;
+		}
+		if(n_layers[i]->getNumNeurons() > maxNeuronSize)
+		{
+			maxNeuronSize = n_layers[i]->getNumNeurons();
+		}
+	}
+
+	//cout << "GPU Layers initialized" << endl;
+	
+	cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxNeuronSize,
+			nullptr, &error);
+	CheckError(error);
+	cl_mem *neurons = &n;
+	cl_mem p = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * maxNeuronSize,
+			nullptr, &error);
+	CheckError(error);
+	cl_mem *prevNeurons = &p;
+
+	float* testHold = new float[maxNeuronSize];
+
+	//cout << "Max neuron size: " << maxNeuronSize << endl;
+	
+	int imageSize = ((InputLayer*)n_layers[0])->getImageSize();
+	float* image = new float[imageSize];
+
+	/**************************************
+	 *
+	 *	Start going through the images
+	 *
+	 **************************************/
+	int softSize = n_layers.back()->getNumNeurons();
+	vector<float> neur(softSize);
+	//cout << "Starting run on GPU(s)" << endl;
+	for(int r=0; r < n_trainingData.size(); r++)
+	{
+		//set the new image(s)
+		int startForThisRound = r;
+		if(r < n_trainingData.size())
+			n_trainingData[r]->getImage(image, imageSize);
+		
+
+		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
+				sizeof(float) * imageSize,
+				image, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		//run kernels from index = 1 to index = end - 1. special stuff needs to be done on 
+		//data before softmax is run
+		int curConvLayer = 0;
+		size_t globalWorkSize[] = {0,0,0};
+		cl_mem *temp;
+		
+		for(int i=1; i< layers.size() - 1; i++)
+		{	
+			//cout << "start for" << endl;
+			if(layers[i] == &convKernel)
+			{	/*
+				vector<int> hyper(7);
+				hyper[0] = c_weights[0].size(); // filterSize
+				hyper[1] = c_stride;
+				hyper[2] = c_prevNeuronWidth;
+				hyper[3] = c_prevNeuronDepth;
+				hyper[4] = c_biases.size();  // num filters
+				hyper[5] = c_padding;
+				hyper[6] = c_prevNeuronHeight;
+				*/
+
+				//cout << "running convKernel " << curConvLayer << endl;
+				vector<int> hyper = ((ConvLayer*)n_layers[i])->getKernelHyperParameters();
+
+				if(hyper[5] != 0) //if padding != 0
+				{
+					//run the zeroPad Kernel
+					clSetKernelArg(zeroPadKernel, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(zeroPadKernel, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(zeroPadKernel, 2, sizeof(int), &(hyper[5])); // padding
+					clSetKernelArg(zeroPadKernel, 3, sizeof(int), &(hyper[2])); // prevWidth
+					clSetKernelArg(zeroPadKernel, 4, sizeof(int), &(hyper[6])); // prevHeight
+					clSetKernelArg(zeroPadKernel, 5, sizeof(int), &(hyper[3])); // depth (before and after zero pad)
+
+					// run it for the size of the new array
+					//							  (prevWidth+ 2 * padding ) * (prevHeight+2 * padding ) * depth
+					globalWorkSize[0] = (size_t) ((hyper[2] + 2 * hyper[5]) * (hyper[6] + 2 * hyper[5]) * hyper[3]);
+					CheckError(clEnqueueNDRangeKernel(queue, zeroPadKernel, 1,
+						nullptr,
+						globalWorkSize,
+						nullptr, 0, nullptr, nullptr));
+					clFinish(queue);
+
+					//swap the buffers so prevNeurons holds the zero padded data
+					temp = neurons;
+					neurons = prevNeurons;
+					prevNeurons = temp;
+
+				}
+				
+				clSetKernelArg(convKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(convKernel, 1, sizeof(cl_mem), neurons);
+				clSetKernelArg(convKernel, 2, sizeof(cl_mem), &weights[curConvLayer]);
+				clSetKernelArg(convKernel, 3, sizeof(cl_mem), &biases[curConvLayer]);
+				
+				int numFilters = hyper[4];
+				clSetKernelArg(convKernel, 4, sizeof(int), &numFilters);
+				clSetKernelArg(convKernel, 5, sizeof(int), &(hyper[0])); // filterSize
+				clSetKernelArg(convKernel, 6, sizeof(int), &(hyper[1])); // stride
+				clSetKernelArg(convKernel, 7, sizeof(int), &(hyper[2])); // prevWidth
+				clSetKernelArg(convKernel, 8, sizeof(int), &(hyper[3])); // prevDepth
+
+				globalWorkSize[0] = (size_t)n_layers[i]->getNumNeurons();
+				
+				CheckError(clEnqueueNDRangeKernel(queue, convKernel, 1,
+					nullptr,
+					globalWorkSize,
+					nullptr, 0, nullptr, nullptr));
+				curConvLayer++;
+			}
+			else if(layers[i] == &maxPoolKernel)
+			{
+				//cout << "running maxPoolKernel " << endl;
+				vector<int> hyper = ((MaxPoolLayer*)n_layers[i])->getKernelHyperParameters();
+
+				clSetKernelArg(maxPoolKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(maxPoolKernel, 1, sizeof(cl_mem), neurons);
+				clSetKernelArg(maxPoolKernel, 2, sizeof(int), &(hyper[0]));
+				clSetKernelArg(maxPoolKernel, 3, sizeof(int), &(hyper[1]));
+				clSetKernelArg(maxPoolKernel, 4, sizeof(int), &(hyper[2]));
+				clSetKernelArg(maxPoolKernel, 5, sizeof(int), &(hyper[3]));
+				
+				globalWorkSize[0] = (size_t)n_layers[i]->getNumNeurons();
+				
+				CheckError(clEnqueueNDRangeKernel(queue, maxPoolKernel, 1,
+					nullptr,
+					globalWorkSize,
+					nullptr, 0, nullptr, nullptr));
+			}
+			else if(layers[i] == &reluKernel)
+			{
+				//cout << "running reluKernel " << endl;
+				clSetKernelArg(reluKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(reluKernel, 1, sizeof(cl_mem), neurons);
+
+				globalWorkSize[0] = (size_t)n_layers[i]->getNumNeurons();
+				
+				CheckError(clEnqueueNDRangeKernel(queue, reluKernel, 1,
+					nullptr,
+					globalWorkSize,
+					nullptr, 0, nullptr, nullptr));
+			}
+			else if(layers[i] == &leakyReluKernel)
+			{
+				//cout << "running leakyReluKernel " << endl;
+				clSetKernelArg(leakyReluKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(leakyReluKernel, 1, sizeof(cl_mem), neurons);
+
+				globalWorkSize[0] = (size_t)n_layers[i]->getNumNeurons();
+
+				CheckError(clEnqueueNDRangeKernel(queue, leakyReluKernel, 1,
+					nullptr,
+					globalWorkSize,
+					nullptr, 0, nullptr, nullptr));
+			}
+			clFinish(queue);
+
+			//swap prev and cur neuron pointers
+			temp = neurons;
+			neurons = prevNeurons;
+			prevNeurons = temp;
+		}
+
+		//end of forward through normal layers. now softmax is all that is left
+		CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(float) * softSize, 
+			neur.data(), 0, nullptr, nullptr));
+		//clFinish(queue[q]);
+		maxSubtraction(neur);
+		float denom = vectorESum(neur);
+		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(float) * softSize,
+			neur.data(), 0, nullptr, nullptr));
+
+		clFinish(queue);
+
+		//set kernel args
+		//cout << "running softmaxKernel " << r <<  endl;
+		clSetKernelArg(softmaxKernel, 0, sizeof(cl_mem), prevNeurons);
+		clSetKernelArg(softmaxKernel, 1, sizeof(cl_mem), neurons);
+		clSetKernelArg(softmaxKernel, 2, sizeof(float), &denom);
+		globalWorkSize[0] = (size_t)softSize;
+		CheckError(clEnqueueNDRangeKernel(queue, softmaxKernel, 1,
+			nullptr,
+			globalWorkSize,
+			nullptr, 0, nullptr, nullptr));
+
+		clFinish(queue);
+
+		CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(float) * softSize, 
+			neur.data(), 0, nullptr, nullptr));
+		calculatedClasses[startForThisRound++] = getMaxElementIndex(neur);
+		//cout << getMaxElementIndex(neur) << " | " << neur[getMaxElementIndex(neur)] << endl;;
+	}
+
+	delete image;
+
+	if(calculatedClasses.size() == n_trainingDataTrueVals.size())
+	{
+		int numCorrect = 0;
+		for(int i=0; i< calculatedClasses.size(); i++)
+		{
+			if(calculatedClasses[i] == n_trainingDataTrueVals[i])
+				numCorrect++;
+		}
+		cout << "Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(float)calculatedClasses.size()*100 << "%" << endl;
+	}
+	else
+	{
+		for(int i=0; i < calculatedClasses.size(); i++)
+		{
+			cout << calculatedClasses[i] << endl;
+		}
+	}
+
+	clReleaseCommandQueue(queue);
+	clReleaseMemObject(*neurons);
+	clReleaseMemObject(*prevNeurons);
+	for(int w = 0; w < weights.size(); w++)
+	{
+		clReleaseMemObject(weights[w]);
+		clReleaseMemObject(biases[w]);
+	}
+
+	clReleaseKernel(convKernel);
+	clReleaseKernel(zeroPadKernel);
+	clReleaseKernel(maxPoolKernel);
+	clReleaseKernel(reluKernel);
+	clReleaseKernel(leakyReluKernel);
+	clReleaseKernel(softmaxKernel);
+	clReleaseProgram(CNForward);
+
+	clReleaseContext(context);
+}
+
 void Net::run(bool useGPU) // run only goes forward and will be on the GPU if possible.
 {
 	cl_int error = CL_SUCCESS;
@@ -446,34 +876,25 @@ void Net::run(bool useGPU) // run only goes forward and will be on the GPU if po
 		CheckError(clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), options, nullptr, nullptr));
 		cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel;
 
-		//Figure out which kernels we need.
-		if(n_hasRELULayer)
-		{
-			reluKernel = clCreateKernel(CNForward, "relu", &error);
-			CheckError(error);
-		}
-		if(n_hasLeakyRELULayer)
-		{
-			leakyReluKernel = clCreateKernel(CNForward, "leakyRelu", &error);
-			CheckError(error);
-		}
-		if(n_hasConvLayer)
-		{
-			convKernel = clCreateKernel(CNForward, "convolve", &error);
-			CheckError(error);
-			zeroPadKernel = clCreateKernel(CNForward, "zeroPad", &error);
-			CheckError(error);
-		}
-		if(n_hasMaxPoolLayer)
-		{
-			maxPoolKernel = clCreateKernel(CNForward, "maxPool", &error);
-			CheckError(error);
-		}
-		if(n_hasSoftmax)
-		{
-			softmaxKernel = clCreateKernel(CNForward, "softmax", &error);
-			CheckError(error);
-		}
+		//Create the kernels
+
+		reluKernel = clCreateKernel(CNForward, "relu", &error);
+		CheckError(error);
+
+		leakyReluKernel = clCreateKernel(CNForward, "leakyRelu", &error);
+		CheckError(error);
+
+		convKernel = clCreateKernel(CNForward, "convolve", &error);
+		CheckError(error);
+		zeroPadKernel = clCreateKernel(CNForward, "zeroPad", &error);
+		CheckError(error);
+
+		maxPoolKernel = clCreateKernel(CNForward, "maxPool", &error);
+		CheckError(error);
+
+		softmaxKernel = clCreateKernel(CNForward, "softmax", &error);
+		CheckError(error);
+
 
 		//cout << "Kernels created" << endl;
 			
@@ -615,11 +1036,6 @@ void Net::run(bool useGPU) // run only goes forward and will be on the GPU if po
 					image, 0, nullptr, nullptr));
 			clFinish(queue);
 
-
-
-
-
-
 			/*
 			cout  << "trying convKernel" << endl;
 
@@ -675,10 +1091,6 @@ void Net::run(bool useGPU) // run only goes forward and will be on the GPU if po
 			
 			return;
 			*/
-
-
-
-
 
 			//run kernels from index = 1 to index = end - 1. special stuff needs to be done on 
 			//data before softmax is run
@@ -809,11 +1221,7 @@ void Net::run(bool useGPU) // run only goes forward and will be on the GPU if po
 					return;
 				}
 				*/
-				
-				
-
 				//swap prev and cur neuron pointers
-				
 				temp = neurons;
 				neurons = prevNeurons;
 				prevNeurons = temp;
@@ -878,15 +1286,20 @@ void Net::run(bool useGPU) // run only goes forward and will be on the GPU if po
 		clReleaseMemObject(*neurons);
 		clReleaseMemObject(*prevNeurons);
 		for(int w = 0; w < weights.size(); w++)
+		{
 			clReleaseMemObject(weights[w]);
-		for(int b = 0; b <biases.size(); b++)
-			clReleaseMemObject(biases[b]);
+			clReleaseMemObject(biases[w]);
+		}
 
-		//clReleaseKernel(convKernel);
-		//clReleaseKernel(softmaxKernel);
-		//clReleaseProgram(program);
+		clReleaseKernel(convKernel);
+		clReleaseKernel(zeroPadKernel);
+		clReleaseKernel(maxPoolKernel);
+		clReleaseKernel(reluKernel);
+		clReleaseKernel(leakyReluKernel);
+		clReleaseKernel(softmaxKernel);
+		clReleaseProgram(CNForward);
 
-		//clReleaseContext(context);
+		clReleaseContext(context);
 
 
 	}
@@ -1425,6 +1838,54 @@ bool Net::save(const char* filename)
 	return true;
 }
 
+unsigned long Net::getMaxNeuronSize() const
+{
+	unsigned long maxNeuronSize = n_layers[0]->getNumNeurons();
+	for(int i=0; i < n_layers.size(); i++)
+	{
+		if(n_layers[i]->getNumNeurons() > maxNeuronSize)
+		{
+			maxNeuronSize = n_layers[i]->getNumNeurons();
+		}
+	}
+
+	return maxNeuronSize;
+}
+
+unsigned long Net::getMemForward() const
+{
+	//Needed mem is all the weights and biases, and 2 * maxNeuronSize
+	unsigned long maxNeuronSize = n_layers[0]->getNumNeurons();
+	unsigned long weightsAndBiasMem = 0;
+	for(int i=0; i < n_layers.size(); i++)
+	{
+		if(n_layers[i]->getType() == Net::CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)n_layers[i];
+			weightsAndBiasMem += conv->getMemWeightsAndBiases();
+		}
+		if(n_layers[i]->getNumNeurons() > maxNeuronSize)
+		{
+			maxNeuronSize = n_layers[i]->getNumNeurons();
+		}
+	}
+
+	return weightsAndBiasMem + 2 * maxNeuronSize;
+}
+
+unsigned long Net::getMem() const
+{
+	//Needed mem is weightAndBiasMem + neuronMemForEachForwardLayer + 2*maxNeuronsSize(for backprop)
+	unsigned long memMinusForwardNeuron = getMemForward();
+	unsigned long forwardNeuronMem = 0;
+	for(int i=0; i < n_layers.size(); i++)
+	{
+		forwardNeuronMem += n_layers[i]->getNumNeurons() * sizeof(float);
+	}
+
+	return memMinusForwardNeuron + forwardNeuronMem;
+}
+
 /**********************
  * InputLayer
  **********************/
@@ -1536,6 +1997,11 @@ bool InputLayer::setImage(const vector<vector<vector<float> > >* trainingImage, 
 		return true;
 	}
 	return false;
+}
+
+unsigned long InputLayer::getMem() const
+{
+	return getNumNeurons() * sizeof(float) * 2; //one for neurons, one for dneurons
 }
 
 /**********************
@@ -2015,6 +2481,23 @@ string ConvLayer::getHyperParameters() const
 	return out;
 }
 
+unsigned long ConvLayer::getMemWeightsAndBiases() const
+{
+	//int neuronsbytes = c_numNeurons * sizeof(float);
+	unsigned long weightbytes = c_numWeights * sizeof(float);
+	unsigned long biasbytes = c_numBiases * sizeof(float);
+
+	return weightbytes + biasbytes;
+}
+
+unsigned long ConvLayer::getMem() const
+{
+	unsigned long weightbiasbytes = getMemWeightsAndBiases();
+	unsigned long neuronbytes = c_numNeurons * sizeof(float);
+
+	return weightbiasbytes + neuronbytes;
+}
+
 /**********************
  * MaxPoolLayer
  **********************/
@@ -2193,6 +2676,11 @@ string MaxPoolLayer::getHyperParameters() const
 	out += '\n';
 
 	return out;
+}
+
+unsigned long MaxPoolLayer::getMem() const
+{
+	return m_numNeurons * sizeof(float);
 }
 
 /**********************
@@ -2386,6 +2874,11 @@ string ActivLayer::getHyperParameters() const
 	out += '\n';
 
 	return out;
+}
+
+unsigned long ActivLayer::getMem() const
+{
+	return a_numNeurons * sizeof(float);
 }
 
 /**********************
@@ -2630,6 +3123,11 @@ string ActivLayer::getHyperParameters() const
  vector<vector<vector<float> > >& SoftmaxLayer::getdNeurons()
  {
  	return s_3dneurons;
+ }
+
+ unsigned long SoftmaxLayer::getMem() const
+ {
+ 	return s_neurons.size() * sizeof(float);
  }
 
 /***********************************

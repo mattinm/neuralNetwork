@@ -18,6 +18,7 @@
  	#include "CL/cl.h"
 #endif
 
+
 // Classes
 
 class Layer{
@@ -25,6 +26,7 @@ public:
 	virtual ~Layer(){};
 	virtual int getType() const = 0;
 	virtual int getNumNeurons() const = 0;
+	virtual unsigned long getMem() const = 0;
 	virtual void forwardprop(const Layer& prevLayer) = 0;
 	virtual void backprop(Layer& prevLayer) = 0;
 	virtual const std::vector<std::vector<std::vector<float> > >& getNeurons() const = 0;
@@ -37,6 +39,7 @@ public:
 	~InputLayer();
 	int getType() const;
 	int getNumNeurons() const;
+	unsigned long getMem() const;
 	float* getImage() const;
 	void getImage(float* dest, int size) const;
 	int getImageSize() const;
@@ -61,6 +64,8 @@ public:
 	~ConvLayer();
 	int getType() const;
 	int getNumNeurons() const;
+	unsigned long getMemWeightsAndBiases() const;
+	unsigned long getMem() const;
 	int getMaxSizeNeeded() const;
 	float* getWeights() const;
 	int getNumWeights() const;
@@ -103,6 +108,7 @@ public:
 	int getNumNeurons() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
+	unsigned long getMem() const;
 	std::vector<int> getKernelHyperParameters() const;
 	std::string getHyperParameters() const;
 	const std::vector<std::vector<std::vector<float> > >& getNeurons() const;
@@ -128,6 +134,7 @@ public:
 	static const int LEAKY_RELU = 1;
 	static const int NUM_ACTIV_TYPES = 2;
 	int getType() const;
+	unsigned long getMem() const;
 	int getNumNeurons() const;
 	int getActivationType() const;
 	void forwardprop(const Layer& prevLayer);
@@ -153,6 +160,7 @@ public:
 	std::vector<float> getError();
 	void setError(std::vector<float> error);
 	int getType() const;
+	unsigned long getMem() const;
 	int getNumNeurons() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
@@ -199,9 +207,10 @@ public:
 	bool addSoftmaxLayer();
 	void addTrainingData(const std::vector<std::vector<std::vector<std::vector<float> > > >& trainingData, std::vector<float>& trueVals);
 	void clear();
+	void newRun(bool useGPU = true);
 	bool setActivType(int activationType);
 	void train(int epochs);
-	void splitTrain(int epochs);
+	void splitTrain(int epochs, bool useGPU = true);
 	void runTrainingData();
 	void miniBatchTrain(int epochs, int batchSize);
 	void addRealData(const std::vector<std::vector<std::vector<std::vector<float> > > >& realData);
@@ -211,6 +220,8 @@ public:
 	void gradientCheck();
 	float calcLoss(int indexOfTrueVal);
 	void shuffleTrainingData(int times=1);
+	unsigned long getMem() const;
+	unsigned long getMemForward() const;
 
 	bool save(const char* filename);
 private:
@@ -226,6 +237,8 @@ private:
 
 	bool load(const char* filename);
 	void init(int, int, int);
+	unsigned long getMaxNeuronSize() const;
+
 };
 
 

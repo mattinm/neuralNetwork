@@ -1,4 +1,14 @@
-//numthreads should be size of neurons and prevNeurons (should be same)
+// backprops that need the neuron vals.
+//		Conv
+
+// backprops that need info. 
+// 		Activ  	1 means write the dneuron val into it.
+//				0 means write 0 into it (it fell outside the range)
+//	   		   -1 means write leakyReluConst * dneuron val into it
+
+//		maxPool write the index of the maxval for the new neuron into a parallel array for the new neurons.
+//			in backprop search that array for your index and if they match, += the dneurons value into it
+
 __kernel void relu(__global float* prevNeurons, __global float* neurons)
 {
 	const int i = get_global_id(0);
