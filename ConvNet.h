@@ -207,6 +207,7 @@ public:
 	bool addSoftmaxLayer();
 	void addTrainingData(const std::vector<std::vector<std::vector<std::vector<float> > > >& trainingData, std::vector<float>& trueVals);
 	void clear();
+	void OpenCLTrain(int epochs, bool useGPU = true);
 	void newRun(bool useGPU = true);
 	bool setActivType(int activationType);
 	void train(int epochs);

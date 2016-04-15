@@ -1,13 +1,17 @@
+#define RELU_CAP 5000
+#define LEAKY_RELU_CONST .01
+
+
 //numthreads should be size of neurons and prevNeurons (should be same)
 __kernel void relu(__global float* prevNeurons, __global float* neurons)
 {
 	const int i = get_global_id(0);
-	if(prevNeurons[i] >= 0 && prevNeurons[i] <= 5000)
+	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
 		neurons[i] = prevNeurons[i];
 	else if(prevNeurons < 0)
 		neurons[i] = 0;
 	else
-		neurons[i] = 5;
+		neurons[i] = RELU_CAP;
 }
 
 //numthreads should be size of neurons and prevNeurons (should be same)
@@ -19,14 +23,14 @@ __kernel void leakyRelu(__global float* prevNeurons, __global float* neurons)
 	if(prevNeurons[i] >= 0) 
 		newVal = prevNeurons[i];
 	else 
-		newVal = prevNeurons[i] * 0.01;
+		newVal = prevNeurons[i] * LEAKY_RELU_CONST;
 
-	if(-5000 <= newVal && newVal <= 5000)
+	if(-RELU_CAP <= newVal && newVal <= RELU_CAP)
 		neurons[i] = newVal;
-	else if(newVal < -5000)
-		neurons[i] = -5000;
+	else if(newVal < -RELU_CAP)
+		neurons[i] = -RELU_CAP;
 	else
-		neurons[i] = 5000;
+		neurons[i] = RELU_CAP;
 }
 
 
@@ -94,11 +98,13 @@ __kernel void convolve(__global float* prevNeurons, __global float* neurons,
 	//can I do the pointer arithmetic better?
 
 	float result = 0;
+	__constant float* curWeight = &(weights[j]);
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
 		{
-			result += weights[j++] * prevNeurons[h++];
+			//result += weights[j++] * prevNeurons[h++];
+			result += *(curWeight++) * prevNeurons[h++];
 		}
 		h += amountToNextLayer;
 	}
@@ -128,7 +134,7 @@ __kernel void zeroPad(__global float *prevNeurons, __global float *neurons, int 
 	int ourCol = (x/depth) % nw;
 	int ourDepth = x%depth;
 
-	if(ourRow == 0 || ourRow == nh-1 || ourCol == 0 || ourCol == nw-1)
+	if(ourRow < pad || ourRow >= nh-pad || ourCol < pad || ourCol >= nw-pad)
 		neurons[x] = 0;
 	else
 	{

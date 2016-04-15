@@ -245,7 +245,6 @@ void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vec
 
 int runTrainedCNN(int argc, char** argv)
 {
-	
 	if(argc != 3)
 	{
 		cout << "Use: ./ConvNetTest trainingImagesConfig.txt nnConfig.txt. A trainingImagesConfig file is needed. See the readMe for format." << endl;
@@ -308,8 +307,8 @@ int runTrainedCNN(int argc, char** argv)
 	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
-	net.run(false);
-	//net.newRun(false);
+	//net.run(false);
+	net.newRun(false);
 
 	cout << "Done" << endl;
 	return 0;
@@ -394,7 +393,8 @@ int trainCNN(int argc, char** argv)
 	//net.gradientCheck();
 
 	cout << "Split Training Neural Network" << endl;
-	net.splitTrain(100);
+	//net.splitTrain(100);
+	net.OpenCLTrain(10, false);
 
 	//int batchSize = 10;
 	//cout << "MiniBatch Training Neural Network. Batch Size = "<< batchSize << endl;
@@ -415,8 +415,8 @@ int trainCNN(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-	//trainCNN(argc, argv);
-	runTrainedCNN(argc, argv);
+	trainCNN(argc, argv);
+	//runTrainedCNN(argc, argv);
 	//cout << "back in main" << endl;
 
 	//oldestMain();
