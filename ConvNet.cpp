@@ -673,6 +673,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	 **************************************/
 	int softSize = n_layers.back()->getNumNeurons();
 	vector<float> neur(softSize);
+	vector<float> test(maxNeuronSize);
 	//cout << "Starting run on GPU(s)" << endl;
 	for(int e=0; e < epochs; e++)
 	{
@@ -830,6 +831,13 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 						nullptr, 0, nullptr, nullptr));
 				}
 				clFinish(queue);
+				
+				cout << "Forward Layer " << i << endl;
+				CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(float) * n_layers[i]->getNumNeurons(),
+					test.data(), 0, nullptr, nullptr));
+				printArray(test.data(), n_layers[i]->getNumNeurons());
+				getchar();
+				
 
 				//swap prev and cur neuron pointers
 				temp = neurons;
@@ -864,6 +872,9 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 			CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(float) * softSize, 
 				neur.data(), 0, nullptr, nullptr));
 			calculatedClasses[startForThisRound++] = getMaxElementIndex(neur);
+
+			cout << "Forward softmax" << endl;
+			printVector(neur);
 			//cout << getMaxElementIndex(neur) << " | " << neur[getMaxElementIndex(neur)] << endl;;
 
 
@@ -880,6 +891,13 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 				nullptr,
 				globalWorkSize,
 				nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+
+			CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(float) * softSize, 
+				neur.data(), 0, nullptr, nullptr));
+			cout << "Backprop Softmax" << endl;
+			printVector(neur);
+
 			//swap prev and cur neuron pointers
 			temp = neurons;
 			neurons = prevNeurons;
@@ -1041,6 +1059,12 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 				//cout << "before finish" << endl;
 				clFinish(queue);
 				//cout << "after finish" << endl;
+
+				cout << "Backprop Layer " << i << endl;
+				CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(float) * n_layers[i]->getNumNeurons(),
+					test.data(), 0, nullptr, nullptr));
+				printArray(test.data(), n_layers[i]->getNumNeurons());
+				getchar();
 
 				//swap prev and cur neuron pointers
 				temp = neurons;
@@ -4137,7 +4161,7 @@ void printArray(float* array, int size)
 	{
 		cout << array[i] << ", ";
 	}
-	cout << endl;
+	cout << endl << endl;
 }
 
 int getMaxElementIndex(const vector<float>& vect)

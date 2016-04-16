@@ -191,7 +191,7 @@ public:
 	static const int ACTIV_LAYER = 2;
 	static const int INPUT_LAYER = 3;
 	static const int SOFTMAX_LAYER = 4;
-	static const bool walkthrough = false;
+	static const bool walkthrough = true;
 	static const bool showErrors = false;
 	static bool gradCheck;
 	static const float GRADCHECK_H;

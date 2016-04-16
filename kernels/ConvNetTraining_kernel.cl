@@ -231,6 +231,7 @@ __kernel void convolve_back_neurons(__global float* prevdNeurons, __global float
 					for(int f=0; f < numFilters; f++)
 					{
 						result += weights[placeInFilter] * dneurons[d+f];//[d++];
+						printf("x %d weights %f dneurons %f\n",x,weights[placeInFilter],dneurons[d+f]);
 						placeInFilter += numWeightsPerFilter; // gets us to same element in next filter
 					}
 					//if we found it in this minilayer, it wont be in any of the others
@@ -246,6 +247,7 @@ __kernel void convolve_back_neurons(__global float* prevdNeurons, __global float
 	}
 
 	prevdNeurons[x] = result;
+	//printf("x %d result %f\n",x,result);
 	
 }
 

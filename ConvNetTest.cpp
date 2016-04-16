@@ -314,6 +314,89 @@ int runTrainedCNN(int argc, char** argv)
 	return 0;
 }
 
+int continueTrainingCNN(int argc, char** argv)
+{
+	if(argc != 3 && argc != 4)
+	{
+		cout << "Use: ./ConvNetTest trainingImagesConfig.txt nnConfig.txt.\n./ConvNetTest trainingImagesConfig.txt nnConfig.txt newOutfile.txt." << endl;
+		cout <<  "If a new outFile is not specified any new training will be saved over the old nnConfig file.\nA trainingImagesConfig file is needed. See the readMe for format." << endl;
+		return 0;
+	}
+	cout << "Running a trained NeuralNet: " << argv[2] << endl;
+	cout << "Building NeuralNet" << endl;
+	//set up CNN
+	
+	Net net(argv[2]);
+
+	cout << "NeuralNet set up" << endl;
+	
+	cout << "Getting training images" << endl;
+
+	vector<vector<vector<vector<float> > > > trainingImages;
+	vector<float> trueVals;
+
+	ifstream tiConfig;
+	string line;
+	tiConfig.open(argv[1]);
+	if(!tiConfig.is_open())
+	{
+		cout << "Could not open the trainingImagesConfig file " << argv[1];
+		return -1;
+	}
+	while(getline(tiConfig,line))
+	{
+		int loc = line.find(",");
+		if(loc != string::npos)
+		{
+			cout << "Adding folder" << line.substr(0,loc) << endl;
+			getTrainingImages(line.substr(0,loc).c_str(),stoi(line.substr(loc+1)),trainingImages,trueVals);
+		}
+		else
+			cout << "Error in trainingImagesConfig at line:\n" << line << endl;
+	}
+	tiConfig.close();
+
+	cout << trainingImages.size() << " training images added." << endl;
+
+	assert(trainingImages.size() == trueVals.size());
+	if(trainingImages.size() == 0)
+	{
+		cout << "No training images found. Exiting." << endl;
+		return 0;
+	}
+	// do (val - mean)/stdDeviation
+
+	//cout << "Doing image preprocessing (compress vals from -1 to 1)" << endl;
+	//compressImage(trainingImages,-1,1);
+	
+	cout << "Doing image preprocessing." << endl;
+	preprocess(trainingImages);
+
+	cout << "Adding training images to Network" << endl;
+	net.addTrainingData(trainingImages,trueVals);
+
+	//shuffling shouldnt matter if there is no backprop
+	//net.shuffleTrainingData(10);
+
+	cout << "Continuing training net" << endl;
+	//net.splitTrain(1);
+	net.OpenCLTrain(1, false);
+
+	if(argc == 4)
+	{
+		cout << "Saving CNN to " << argv[3] << endl;
+		net.save(argv[3]);
+	}
+	else
+	{
+		cout << "Saving CNN back to " << argv[2] << endl;
+		net.save(argv[2]);
+	}
+
+	cout << "Done" << endl;
+	return 0;
+}
+
 int trainCNN(int argc, char** argv)
 {
 	cout << "Training a new Neural Net" << endl;
@@ -393,8 +476,9 @@ int trainCNN(int argc, char** argv)
 	//net.gradientCheck();
 
 	cout << "Split Training Neural Network" << endl;
-	//net.splitTrain(100);
-	net.OpenCLTrain(10, false);
+	//net.splitTrain(1);
+	net.OpenCLTrain(1, false);
+
 
 	//int batchSize = 10;
 	//cout << "MiniBatch Training Neural Network. Batch Size = "<< batchSize << endl;
@@ -415,7 +499,8 @@ int trainCNN(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-	trainCNN(argc, argv);
+	//trainCNN(argc, argv);
+	continueTrainingCNN(argc, argv);
 	//runTrainedCNN(argc, argv);
 	//cout << "back in main" << endl;
 
