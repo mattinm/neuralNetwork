@@ -24,7 +24,7 @@
 using namespace std;
 using namespace cv;
 
-void convert1DArrayTo3DVector(const float *array, int width, int height, int depth, vector<vector<vector<float> > > &dest)
+void convert1DArrayTo3DVector(const double *array, int width, int height, int depth, vector<vector<vector<double> > > &dest)
 {
 	//resize dest vector
 	dest.resize(width);
@@ -49,7 +49,7 @@ void convert1DArrayTo3DVector(const float *array, int width, int height, int dep
 	}
 }
 
-void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<float> > > &dest, int row)
+void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
 {
 	for(int j=0; j< m.cols; j++)
 	{
@@ -60,12 +60,12 @@ void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<float> > > &
 	}
 }
 
-void threadTest(vector<vector<vector<float> > > &dest)
+void threadTest(vector<vector<vector<double> > > &dest)
 {
 	cout << dest.size() << endl;
 }
 
-void convertColorMatToVector(const Mat& m, vector<vector<vector<float> > > &dest)
+void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
 {
 	if(m.type() != CV_8UC3)
 	{
@@ -92,7 +92,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<float> > > &dest
 	//delete t;
 }
 /*
-void convertColorMatToVector(const Mat& m, vector<vector<vector<float> > > &dest)
+void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
 {
 	if(m.type() != CV_8UC3)
 	{
@@ -125,7 +125,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<float> > > &dest
 }
 */
 
-void getImageInVector(const char* filename, vector<vector<vector<float> > >& dest)
+void getImageInVector(const char* filename, vector<vector<vector<double> > >& dest)
 {
 	Mat image = imread(filename,1);
 	convertColorMatToVector(image,dest);
@@ -144,15 +144,15 @@ void oldestMain()
 {
 	string weights = "1,0,1,-1,0,0,-1,1,0,0,1,0,1,0,0,1,-1,-1,-1,0,0,1,1,-1,-1,1,0,0,1,-1,-1,-1,-1,-1,0,-1,1,1,-1,0,0,-1,0,1,-1,1,-1,1,1,1,-1,-1,0,1,_1,0";
 
-	float testArray[] = {
+	double testArray[] = {
 		0,1,2, 1,2,1, 0,0,0, 2,2,2, 2,0,1,
 		2,2,1, 1,0,0, 2,1,1, 2,2,0, 1,2,0,
 		1,1,0, 1,0,1, 2,2,0, 0,1,0, 2,2,2,
 		1,1,0, 0,2,1, 0,1,0, 1,2,2, 2,0,2,
 		2,0,0, 2,0,2, 0,1,1, 2,1,0, 2,2,0};
 
-	vector<vector<vector<vector<float> > > > testVectors(1);
-	vector<float> trueVals(1,1);
+	vector<vector<vector<vector<double> > > > testVectors(1);
+	vector<double> trueVals(1,1);
 	
 	convert1DArrayTo3DVector(testArray,5,5,3,testVectors[0]);
 
@@ -173,7 +173,7 @@ void oldestMain()
 	//delete testNet;
 }
 
-void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vector<float> > > >& images, vector<float>& trueVals)
+void getTrainingImages(const char* folder, int trueVal, vector<vector<vector<vector<double> > > >& images, vector<double>& trueVals)
 {
 	const char* inPath = folder;
 	bool isDirectory;
@@ -260,8 +260,8 @@ int runTrainedCNN(int argc, char** argv)
 	
 	cout << "Getting training images" << endl;
 
-	vector<vector<vector<vector<float> > > > trainingImages;
-	vector<float> trueVals;
+	vector<vector<vector<vector<double> > > > trainingImages;
+	vector<double> trueVals;
 
 	ifstream tiConfig;
 	string line;
@@ -332,8 +332,8 @@ int continueTrainingCNN(int argc, char** argv)
 	
 	cout << "Getting training images" << endl;
 
-	vector<vector<vector<vector<float> > > > trainingImages;
-	vector<float> trueVals;
+	vector<vector<vector<vector<double> > > > trainingImages;
+	vector<double> trueVals;
 
 	ifstream tiConfig;
 	string line;
@@ -380,7 +380,7 @@ int continueTrainingCNN(int argc, char** argv)
 
 	cout << "Continuing training net" << endl;
 	//net.splitTrain(1);
-	net.OpenCLTrain(1, false);
+	net.OpenCLTrain(10, false);
 
 	if(argc == 4)
 	{
@@ -427,8 +427,8 @@ int trainCNN(int argc, char** argv)
 	
 	cout << "Getting training images" << endl;
 
-	vector<vector<vector<vector<float> > > > trainingImages;
-	vector<float> trueVals;
+	vector<vector<vector<vector<double> > > > trainingImages;
+	vector<double> trueVals;
 
 	ifstream tiConfig;
 	string line;

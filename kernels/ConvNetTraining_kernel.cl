@@ -19,7 +19,7 @@
 *
 *************************************************/
 
-__kernel void relu(__global float* prevNeurons, __global float* neurons, __global float* dneuronInfo)
+__kernel void relu(__global double* prevNeurons, __global double* neurons, __global double* dneuronInfo)
 {
 	const int i = get_global_id(0);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
@@ -38,7 +38,7 @@ __kernel void relu(__global float* prevNeurons, __global float* neurons, __globa
 }
 
 //prevNeurons is the set of neurons in the prev layer, the set you are writing into
-__kernel void relu_back(__global float* prevdNeurons, __global float* dneurons, __global float* dneuronInfo)
+__kernel void relu_back(__global double* prevdNeurons, __global double* dneurons, __global double* dneuronInfo)
 {
 	const int i = get_global_id(0);
 	prevdNeurons[i] = dneuronInfo[i] * dneurons[i];	
@@ -46,12 +46,12 @@ __kernel void relu_back(__global float* prevdNeurons, __global float* dneurons, 
 
 
 //numthreads should be size of neurons and prevNeurons (should be same)
-__kernel void leakyRelu(__global float* prevNeurons, __global float* neurons, __global float* dneuronInfo)
+__kernel void leakyRelu(__global double* prevNeurons, __global double* neurons, __global double* dneuronInfo)
 {
 	const int i = get_global_id(0);
-	//float newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
-	float newVal;
-	float dneur = LEAKY_RELU_CONST;
+	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
+	double newVal;
+	double dneur = LEAKY_RELU_CONST;
 	if(prevNeurons[i] >= 0) 
 	{
 		newVal = prevNeurons[i];
@@ -73,7 +73,7 @@ __kernel void leakyRelu(__global float* prevNeurons, __global float* neurons, __
 	dneuronInfo[i] = dneur;
 }
 
-__kernel void leakyRelu_back(__global float* prevdNeurons, __global float* dneurons, __global float* dneuronInfo)
+__kernel void leakyRelu_back(__global double* prevdNeurons, __global double* dneurons, __global double* dneuronInfo)
 {
 	const int i = get_global_id(0);
 	prevdNeurons[i] = dneuronInfo[i] * dneurons[i];
@@ -86,7 +86,7 @@ __kernel void leakyRelu_back(__global float* prevdNeurons, __global float* dneur
 *************************************************/
 
 //num threads should be the size of the neurons after the maxPool
-__kernel void maxPool(__global float* prevNeurons, __global float* neurons,
+__kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride, __global int* maxIndexes)
 {
 	int width = prevwidth;
@@ -108,12 +108,12 @@ __kernel void maxPool(__global float* prevNeurons, __global float* neurons,
 	
 	int amountToNextLayer = (width - poolsize) * depth;\
 	int maxIndex = i;
-	float maxVal = prevNeurons[i];
+	double maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
 		for(int col = 0; col < poolsize; col++)
 		{
-			if(prevNeurons[i] > maxVal)
+			if(prevNeurons[i] >= maxVal)
 			{
 				maxVal = prevNeurons[i];
 				maxIndex = i;
@@ -122,20 +122,25 @@ __kernel void maxPool(__global float* prevNeurons, __global float* neurons,
 		}
 		i += amountToNextLayer;
 	}
+	//printf("forward maxIndex %d",);
 	neurons[x] = maxVal;
-	maxIndexes[x] = i;
+	maxIndexes[x] = maxIndex;
 }
 
 //run for each neuron in prevdNeurons
-__kernel void maxPool_back(__global float* prevdNeurons, __global float* dneurons, __global int* maxIndexes, int numIndexes)
+__kernel void maxPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes)
 {
 	const int i = get_global_id(0);
-	float result = 0;
+	double result = 0;
 	for(int j=0; j< numIndexes; j++)
 	{
 		//if(maxIndexes[j] == i)
-		if(*(maxIndexes++) == i)
-			result += dneurons[i];
+		if(*(maxIndexes) == i)
+		{
+			//printf("maxIndex %d, j %d, dneurons[j] %f\n",*maxIndexes, j, dneurons[j]);
+			result += dneurons[j];
+		}
+		maxIndexes++;
 	}
 
 	prevdNeurons[i] = result;
@@ -148,8 +153,8 @@ __kernel void maxPool_back(__global float* prevdNeurons, __global float* dneuron
 *************************************************/
 
 //can keep the padded vals by using the calling code
-__kernel void convolve(__global float* prevNeurons, __global float* neurons,
-	__global float* weights, __global float* biases, int numFilters, int filterSize, int stride,
+__kernel void convolve(__global double* prevNeurons, __global double* neurons,
+	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride,
 	 int prevwidth, int prevdepth)
 {
 	//int myHeight = myBlock/numBlocksPerRow;
@@ -173,8 +178,8 @@ __kernel void convolve(__global float* prevNeurons, __global float* neurons,
 
 	int amountToNextLayer = (width - filterSize) * depth;
 
-	float result = 0;
-	__global float* curWeight = &(weights[j]);
+	double result = 0;
+	__global double* curWeight = &(weights[j]);
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
@@ -189,8 +194,8 @@ __kernel void convolve(__global float* prevNeurons, __global float* neurons,
 	neurons[i] = result + biases[myFilter];
 }
 
-__kernel void convolve_back_neurons(__global float* prevdNeurons, __global float* dneurons,
-	__global float* weights, int numFilters, int filterSize, int stride, int prevwidth, int depth)
+__kernel void convolve_back_neurons(__global double* prevdNeurons, __global double* dneurons,
+	__global double* weights, int numFilters, int filterSize, int stride, int prevwidth, int depth)
 {
 	
 	//calculated const variables
@@ -201,9 +206,9 @@ __kernel void convolve_back_neurons(__global float* prevdNeurons, __global float
 
 	//variable declarations
 	int start = 0; 
-	int origStart = 0;
+	int origStart;
 	int d = 0;
-	int result = 0;
+	double result = 0;
 	int endlayer;
 	int placeInFilter;
 
@@ -227,11 +232,11 @@ __kernel void convolve_back_neurons(__global float* prevdNeurons, __global float
 				endlayer = start + filxdep;
 				if(start <= x && x < endlayer)
 				{
-					placeInFilter = x - start;
+					placeInFilter = (x - start) + miniHeight*filxdep;
 					for(int f=0; f < numFilters; f++)
 					{
 						result += weights[placeInFilter] * dneurons[d+f];//[d++];
-						printf("x %d weights %f dneurons %f\n",x,weights[placeInFilter],dneurons[d+f]);
+						//printf("x %d weights %f dneurons %f result %f\n",x,weights[placeInFilter],dneurons[d+f],result);
 						placeInFilter += numWeightsPerFilter; // gets us to same element in next filter
 					}
 					//if we found it in this minilayer, it wont be in any of the others
@@ -245,14 +250,14 @@ __kernel void convolve_back_neurons(__global float* prevdNeurons, __global float
 			start = origStart + toNextRow;
 		}
 	}
-
+	//printf("x %d final result %f\n",x,result);
 	prevdNeurons[x] = result;
 	//printf("x %d result %f\n",x,result);
 	
 }
 
-__kernel void convolve_back_weights(__global float* weights, __global float* prevNeurons, __global float* dneurons,
-	int depth, int stride, int prevwidth, int filterSize, int numFilters, float stepSize)
+__kernel void convolve_back_weights(__global double* weights, __global double* prevNeurons, __global double* dneurons,
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize)
 {
 	
 	int x = get_global_id(0);
@@ -263,7 +268,7 @@ __kernel void convolve_back_weights(__global float* weights, __global float* pre
 	int p = x % numWeightsPerFilter; // my place in the filter
 
 	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
-	float myDerivative = 0;
+	double myDerivative = 0;
 
 	int depxstr = depth * stride;
 	int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
@@ -284,25 +289,25 @@ __kernel void convolve_back_weights(__global float* weights, __global float* pre
 }
 
 //should have numBiases work units
-__kernel void convolve_back_biases(__global float* biases, __global float* dneurons, int dneuronSize, 
-	int dneuronDepth, float stepSize)
+__kernel void convolve_back_biases(__global double* biases, __global double* dneurons, int dneuronSize, 
+	int dneuronDepth, double stepSize)
 {
 	
 	int i = get_global_id(0);
 	int j = i;//%dneuronDepth //which filter we're in. dont need % because there is only one bias per filter
-	float myDerivative = 0;
+	double myDerivative = 0;
 	int dneurFaceSize = dneuronSize/dneuronDepth;
 	for(int a = 0; a< dneurFaceSize; a++) // calc myDerivative
 	{
 		myDerivative += dneurons[j];
 		j+=dneuronDepth;
 	}
-
+	//printf("stepSize %lf", stepSize);
 	biases[i] -= stepSize * myDerivative; // update bias
 
 }
 
-__kernel void zeroPad(__global float *prevNeurons, __global float *neurons, int pad, int prevwidth,
+__kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
 	int x = get_global_id(0);
@@ -329,7 +334,7 @@ __kernel void zeroPad(__global float *prevNeurons, __global float *neurons, int 
 }
 
 // run on each of the dneurons. NOT prevdNeurons!
-__kernel void zeroPad_back(__global float* prevdNeurons, __global float* dneurons, int pad, int prevwidth,
+__kernel void zeroPad_back(__global double* prevdNeurons, __global double* dneurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
 	int x = get_global_id(0);
@@ -359,14 +364,14 @@ __kernel void zeroPad_back(__global float* prevdNeurons, __global float* dneuron
 *
 *************************************************/
 
-__kernel void softmax(__global float *prevNeurons, __global float *neurons, float denominator)
+__kernel void softmax(__global double *prevNeurons, __global double *neurons, double denominator)
 {
 	int i = get_global_id(0);
 	neurons[i] = exp(prevNeurons[i])/denominator;
 }
 
 //pushes the derivatives into prevdNeurons
-__kernel void softmax_back(__global float* dNeurons, __global float* neurons, int trueVal)
+__kernel void softmax_back(__global double* dNeurons, __global double* neurons, int trueVal)
 {
 	int i = get_global_id(0);
 
@@ -388,7 +393,7 @@ __kernel void softmax_back(__global float* dNeurons, __global float* neurons, in
 *
 *************************************************/
 
-__kernel void copyArray(__global float* source, __global float* dest)
+__kernel void copyArray(__global double* source, __global double* dest)
 {
 	int x = get_global_id(0);
 	dest[x] = source[x];

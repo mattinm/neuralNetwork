@@ -29,8 +29,8 @@ public:
 	virtual unsigned long getMem() const = 0;
 	virtual void forwardprop(const Layer& prevLayer) = 0;
 	virtual void backprop(Layer& prevLayer) = 0;
-	virtual const std::vector<std::vector<std::vector<float> > >& getNeurons() const = 0;
-	virtual std::vector<std::vector<std::vector<float> > >& getdNeurons() = 0;
+	virtual const std::vector<std::vector<std::vector<double> > >& getNeurons() const = 0;
+	virtual std::vector<std::vector<std::vector<double> > >& getdNeurons() = 0;
 };
 
 class InputLayer : public Layer{
@@ -40,21 +40,21 @@ public:
 	int getType() const;
 	int getNumNeurons() const;
 	unsigned long getMem() const;
-	float* getImage() const;
-	void getImage(float* dest, int size) const;
+	double* getImage() const;
+	void getImage(double* dest, int size) const;
 	int getImageSize() const;
-	InputLayer(const std::vector<std::vector<std::vector<float> > >& trainingImage, std::vector<std::vector<std::vector<float> > >* blankdNeurons);
+	InputLayer(const std::vector<std::vector<std::vector<double> > >& trainingImage, std::vector<std::vector<std::vector<double> > >* blankdNeurons);
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
-	const std::vector<std::vector<std::vector<float> > >& getNeurons() const;
-	std::vector<std::vector<std::vector<float> > >& getdNeurons();
-	bool setImage(const std::vector<std::vector<std::vector<float> > >* trainingImage,std::vector<std::vector<std::vector<float> > >* blankdNeurons);
+	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
+	std::vector<std::vector<std::vector<double> > >& getdNeurons();
+	bool setImage(const std::vector<std::vector<std::vector<double> > >* trainingImage,std::vector<std::vector<std::vector<double> > >* blankdNeurons);
 private:
 	static const int i_type;
 	bool i_resizeable;
 	int i_numNeurons;
-	const std::vector<std::vector<std::vector<float> > >  *i_neurons;
-	std::vector<std::vector<std::vector<float> > > *i_dneurons;
+	const std::vector<std::vector<std::vector<double> > >  *i_neurons;
+	std::vector<std::vector<std::vector<double> > > *i_dneurons;
 };
 
 class ConvLayer : public Layer{
@@ -67,31 +67,31 @@ public:
 	unsigned long getMemWeightsAndBiases() const;
 	unsigned long getMem() const;
 	int getMaxSizeNeeded() const;
-	float* getWeights() const;
+	double* getWeights() const;
 	int getNumWeights() const;
-	float* getBiases() const;
+	double* getBiases() const;
 	int getNumBiases() const;
 	std::vector<int> getKernelHyperParameters() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
 	std::string getHyperParameters() const;
-	const std::vector<std::vector<std::vector<float> > >& getNeurons() const;
-	std::vector<std::vector<std::vector<float> > >& getdNeurons();
+	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
+	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
-	void _putWeights(float* weights, int vectIndex) const;
+	void _putWeights(double* weights, int vectIndex) const;
 	void init(const Layer& prevLayer, int numFilters, int stride, int filterSize, int pad);
 	void initRandomWeights();
 	void initWeights(std::string weights);
 	static const int c_type;
-	std::vector<std::vector<std::vector<float> > > c_neurons;
-	std::vector<std::vector<std::vector<float> > > c_dneurons;
-	std::vector<std::vector<std::vector<std::vector<float> > > > c_weights;
-	std::vector<std::vector<std::vector<std::vector<float> > > > c_dweights;
+	std::vector<std::vector<std::vector<double> > > c_neurons;
+	std::vector<std::vector<std::vector<double> > > c_dneurons;
+	std::vector<std::vector<std::vector<std::vector<double> > > > c_weights;
+	std::vector<std::vector<std::vector<std::vector<double> > > > c_dweights;
 	int c_numWeights;
 	int c_numBiases;
 	int c_numNeurons;
-	std::vector<float> c_biases;
-	std::vector<float> c_dbiases;
+	std::vector<double> c_biases;
+	std::vector<double> c_dbiases;
 	int c_padding;
 	int c_stride;
 	int c_prevNeuronWidth;
@@ -111,12 +111,12 @@ public:
 	unsigned long getMem() const;
 	std::vector<int> getKernelHyperParameters() const;
 	std::string getHyperParameters() const;
-	const std::vector<std::vector<std::vector<float> > >& getNeurons() const;
-	std::vector<std::vector<std::vector<float> > >& getdNeurons();
+	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
+	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
 	static const int m_type;
-	std::vector<std::vector<std::vector<float> > > m_neurons;
-	std::vector<std::vector<std::vector<float> > > m_dneurons;
+	std::vector<std::vector<std::vector<double> > > m_neurons;
+	std::vector<std::vector<std::vector<double> > > m_dneurons;
 	int m_stride;
 	int m_poolSize;
 	int m_numNeurons;
@@ -140,15 +140,15 @@ public:
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
 	std::string getHyperParameters() const;
-	const std::vector<std::vector<std::vector<float> > >& getNeurons() const;
-	std::vector<std::vector<std::vector<float> > >& getdNeurons();
+	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
+	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
 	static const int a_type;
-	static const float RELU_CAP;
-	static const float LEAKY_RELU_CONST;
+	static const double RELU_CAP;
+	static const double LEAKY_RELU_CONST;
 	int a_activationType;
-	std::vector<std::vector<std::vector<float> > > a_neurons;
-	std::vector<std::vector<std::vector<float> > > a_dneurons;
+	std::vector<std::vector<std::vector<double> > > a_neurons;
+	std::vector<std::vector<std::vector<double> > > a_dneurons;
 	int a_numNeurons;
 };
 
@@ -157,8 +157,8 @@ public:
 	SoftmaxLayer(const Layer& prevLayer);
 	~SoftmaxLayer();
 	int getPredictedClass();
-	std::vector<float> getError();
-	void setError(std::vector<float> error);
+	std::vector<double> getError();
+	void setError(std::vector<double> error);
 	int getType() const;
 	unsigned long getMem() const;
 	int getNumNeurons() const;
@@ -166,14 +166,14 @@ public:
 	void backprop(Layer& prevLayer);
 	void setTrueVal(int trueVal);
 	void gradientCheck(Layer& prevLayer);
-	const std::vector<std::vector<std::vector<float> > >& getNeurons() const;
-	std::vector<std::vector<std::vector<float> > >& getdNeurons();
+	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
+	std::vector<std::vector<std::vector<double> > >& getdNeurons();
 private:
 	static const int s_type;
-	std::vector<float> s_neurons;
-	std::vector<std::vector<std::vector<float> > > s_3neurons;
-	std::vector<float> s_dneurons;
-	std::vector<std::vector<std::vector<float> > > s_3dneurons;
+	std::vector<double> s_neurons;
+	std::vector<std::vector<std::vector<double> > > s_3neurons;
+	std::vector<double> s_dneurons;
+	std::vector<std::vector<std::vector<double> > > s_3dneurons;
 	int s_trueVal;
 };
 
@@ -185,7 +185,7 @@ public:
 	~Net();
 	void forwardprop();
 	void backprop();
-	static float stepSize;
+	static double stepSize;
 	static const int CONV_LAYER = 0;
 	static const int MAX_POOL_LAYER = 1;
 	static const int ACTIV_LAYER = 2;
@@ -194,7 +194,7 @@ public:
 	static const bool walkthrough = true;
 	static const bool showErrors = false;
 	static bool gradCheck;
-	static const float GRADCHECK_H;
+	static const double GRADCHECK_H;
 
 	void debug();
 
@@ -205,7 +205,7 @@ public:
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad, std::string weightsAndBiases);
 	bool addMaxPoolLayer(int poolSize, int stride);
 	bool addSoftmaxLayer();
-	void addTrainingData(const std::vector<std::vector<std::vector<std::vector<float> > > >& trainingData, std::vector<float>& trueVals);
+	void addTrainingData(const std::vector<std::vector<std::vector<std::vector<double> > > >& trainingData, std::vector<double>& trueVals);
 	void clear();
 	void OpenCLTrain(int epochs, bool useGPU = true);
 	void newRun(bool useGPU = true);
@@ -214,12 +214,12 @@ public:
 	void splitTrain(int epochs, bool useGPU = true);
 	void runTrainingData();
 	void miniBatchTrain(int epochs, int batchSize);
-	void addRealData(const std::vector<std::vector<std::vector<std::vector<float> > > >& realData);
+	void addRealData(const std::vector<std::vector<std::vector<std::vector<double> > > >& realData);
 	void run(bool useGPU=true);
-	std::vector<std::vector<std::vector<float> > >* getBlankVectorPointer();
+	std::vector<std::vector<std::vector<double> > >* getBlankVectorPointer();
 	int getPredictedClass();
 	void gradientCheck();
-	float calcLoss(int indexOfTrueVal);
+	double calcLoss(int indexOfTrueVal);
 	void shuffleTrainingData(int times=1);
 	unsigned long getMem() const;
 	unsigned long getMemForward() const;
@@ -228,9 +228,9 @@ public:
 private:
 	static int n_activationType;
 	std::vector<InputLayer*> n_trainingData;
-	std::vector<float> n_results;
-	std::vector<float> n_trainingDataTrueVals;
-	std::vector<std::vector<std::vector<float> > > n_blankVector;
+	std::vector<double> n_results;
+	std::vector<double> n_trainingDataTrueVals;
+	std::vector<std::vector<std::vector<double> > > n_blankVector;
 	InputLayer n_blankInput;
 	std::vector<Layer*> n_layers;
 	bool n_training;
@@ -252,51 +252,51 @@ void CheckError (cl_int error);
 cl_program CreateProgram (const std::string& source, cl_context& context);
 
 // Other Functions
-void padZeros(const std::vector<std::vector<std::vector<float> > > &source, int numZeros, std::vector<std::vector<std::vector<float> > > &dest);
+void padZeros(const std::vector<std::vector<std::vector<double> > > &source, int numZeros, std::vector<std::vector<std::vector<double> > > &dest);
 
-void printVector(const std::vector<std::vector<std::vector<std::vector<float> > > > &vect);
+void printVector(const std::vector<std::vector<std::vector<std::vector<double> > > > &vect);
 
-void printVector(const std::vector<std::vector<std::vector<float> > > &vect);
+void printVector(const std::vector<std::vector<std::vector<double> > > &vect);
 
-void printVector(const std::vector<float>& vect);
+void printVector(const std::vector<double>& vect);
 
-void printArray(float* array, int size);
+void printArray(double* array, int size);
 
-void resize3DVector(std::vector<std::vector<std::vector<float> > > &vect, int width, int height, int depth);
+void resize3DVector(std::vector<std::vector<std::vector<double> > > &vect, int width, int height, int depth);
 
-void setAll3DVector(std::vector<std::vector<std::vector<float> > > &vect, float val);
+void setAll3DVector(std::vector<std::vector<std::vector<double> > > &vect, double val);
 
-void setAll4DVector(std::vector<std::vector<std::vector<std::vector<float> > > > &vect, float val);
+void setAll4DVector(std::vector<std::vector<std::vector<std::vector<double> > > > &vect, double val);
 
-void softmax(const std::vector<std::vector<std::vector<float> > > &vect, std::vector<float>& normedPredictionsContainer);
+void softmax(const std::vector<std::vector<std::vector<double> > > &vect, std::vector<double>& normedPredictionsContainer);
 
-void maxSubtraction(std::vector<float>& vect);
+void maxSubtraction(std::vector<double>& vect);
 
-void meanSubtraction(std::vector<float>& vect);
+void meanSubtraction(std::vector<double>& vect);
 
-float mean(const std::vector<std::vector<std::vector<float> > >& vect);
+double mean(const std::vector<std::vector<std::vector<double> > >& vect);
 
-float stddev(const std::vector<std::vector<std::vector<float> > >& vect);
+double stddev(const std::vector<std::vector<std::vector<double> > >& vect);
 
-float stddev(const std::vector<std::vector<std::vector<float> > >& vect, float mean);
+double stddev(const std::vector<std::vector<std::vector<double> > >& vect, double mean);
 
-void preprocess(std::vector<std::vector<std::vector<float> > >& vect);
+void preprocess(std::vector<std::vector<std::vector<double> > >& vect);
 
-void preprocess(std::vector<std::vector<std::vector<std::vector<float> > > >& vect);
+void preprocess(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
 
-void meanSubtraction(std::vector<std::vector<std::vector<float> > >& vect);
+void meanSubtraction(std::vector<std::vector<std::vector<double> > >& vect);
 
-void meanSubtraction(std::vector<std::vector<std::vector<std::vector<float> > > >& vect);
+void meanSubtraction(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
 
-void compressImage(std::vector<std::vector<std::vector<std::vector<float> > > >& vect, float newMin, float newMax);
+void compressImage(std::vector<std::vector<std::vector<std::vector<double> > > >& vect, double newMin, double newMax);
 
-void compressImage(std::vector<std::vector<std::vector<float> > >& vect, float newMin, float newMax);
+void compressImage(std::vector<std::vector<std::vector<double> > >& vect, double newMin, double newMax);
 
-float vectorESum(const std::vector<float> &source);
+double vectorESum(const std::vector<double> &source);
 
-int getMaxElementIndex(const std::vector<float> &vect); 
+int getMaxElementIndex(const std::vector<double> &vect); 
 
-void vectorClone(const std::vector<std::vector<std::vector<float> > > &source, std::vector<std::vector<std::vector<float> > > &dest);
+void vectorClone(const std::vector<std::vector<std::vector<double> > > &source, std::vector<std::vector<std::vector<double> > > &dest);
 
 
 
