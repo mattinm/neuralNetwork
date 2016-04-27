@@ -20,9 +20,33 @@
 #include <sys/stat.h>
 #include <fstream>
 #include <thread>
+#include <time.h>
+#include <string>
 
 using namespace std;
 using namespace cv;
+
+string secondsToString(time_t seconds)
+{
+	time_t secs = seconds%60;
+	time_t mins = (seconds%3600)/60;
+	time_t hours = seconds/3600;
+	char out[100];
+	if(hours > 0)
+	{
+		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
+	}
+	else if(mins > 0)
+	{
+		sprintf(out,"%ld mins, %ld secs",mins,secs);
+	}
+	else
+	{
+		sprintf(out,"%ld secs",secs);
+	}
+	string outString = out;
+	return outString;
+}
 
 void convert1DArrayTo3DVector(const double *array, int width, int height, int depth, vector<vector<vector<double> > > &dest)
 {
@@ -308,7 +332,11 @@ int runTrainedCNN(int argc, char** argv)
 
 	cout << "Doing a run without learning on training images" << endl;
 	//net.run(false);
+	time_t starttime = time(NULL);
 	net.newRun(false);
+	time_t endtime = time(NULL);
+	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << endl;
+
 
 	cout << "Done" << endl;
 	return 0;
@@ -327,6 +355,7 @@ int continueTrainingCNN(int argc, char** argv)
 	//set up CNN
 	
 	Net net(argv[2]);
+	Net net2(argv[2]);
 
 	cout << "NeuralNet set up" << endl;
 	
@@ -370,18 +399,36 @@ int continueTrainingCNN(int argc, char** argv)
 	//compressImage(trainingImages,-1,1);
 	
 	cout << "Doing image preprocessing." << endl;
-	preprocess(trainingImages);
+	//preprocess(trainingImages);
+	meanSubtraction(trainingImages);
 
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);
+	net2.addTrainingData(trainingImages,trueVals);
 
 	//shuffling shouldnt matter if there is no backprop
 	//net.shuffleTrainingData(10);
 
-	cout << "Continuing training net" << endl;
-	//net.splitTrain(1);
-	net.OpenCLTrain(10, false);
+	time_t starttime, endtime;
 
+	cout << "Continuing training net" << endl;
+	int epochs = 5;
+	/*
+	starttime = time(NULL);
+	net.train(epochs);
+	endtime = time(NULL);
+	cout << "Time for non OpenCL code: " << endtime - starttime << " seconds" << endl;
+	*/
+	starttime = time(NULL);
+	net2.OpenCLTrain(epochs, false);
+	endtime = time(NULL);
+	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << endl;
+	
+
+	//net.save("origTrain.txt");
+	net2.save("clTrain.txt");
+
+	/*
 	if(argc == 4)
 	{
 		cout << "Saving CNN to " << argv[3] << endl;
@@ -392,10 +439,11 @@ int continueTrainingCNN(int argc, char** argv)
 		cout << "Saving CNN back to " << argv[2] << endl;
 		net.save(argv[2]);
 	}
+	*/
 
 	cout << "Done" << endl;
 	return 0;
-}
+} // end continueTrainingCNN
 
 int trainCNN(int argc, char** argv)
 {
@@ -407,8 +455,47 @@ int trainCNN(int argc, char** argv)
 		return -1;
 	}
 	cout << "Building NeuralNet" << endl;
+
+	Net net(32,32,3);
+	net.setActivType(ActivLayer::LEAKY_RELU);
+	net.addConvLayer(6,1,5,0);	//28x28x6
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);	//14x14x6
+	net.addConvLayer(10,1,3,0);	//12x12x10
+	net.addActivLayer();
+	net.addMaxPoolLayer(3,3);	//4x4x10
+	net.addConvLayer(5,1,3,1);	//4x4x5
+	net.addActivLayer();
+	net.addConvLayer(2,1,4,0);	//1x1x2
+	net.addActivLayer();
+	net.addSoftmaxLayer();
+
 	//set up CNN
+	/*
+	Net net(32,32,3);
+	net.setActivType(ActivLayer::LEAKY_RELU);
+	net.addConvLayer(20, 1, 3, 1); //numfilters, stride, filtersize, padding
+	net.addActivLayer(); 			//32x32x20
+	net.addConvLayer(10,1,3,1);		//32x32x10
+	net.addActivLayer();			
+	net.addMaxPoolLayer(2,2);		//16x16x10
+	net.addConvLayer(20,1,3,1);		//16x16x20
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);		//8x8x20
+	net.addConvLayer(40,1,3,1);		//8x8x40
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);		//4x4x40
+	net.addConvLayer(30,1,3,1);		//4x4x30
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);		//2x2x30
+	net.addConvLayer(20,1,3,1);		//2x2x20
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);		//1x1x20
+	net.addConvLayer(4,1,3,1);		//1x1x4
+	*/
+
 	
+	/*
 	Net net(32,32,3);
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(6,1,5,0);
@@ -420,11 +507,13 @@ int trainCNN(int argc, char** argv)
 	net.addConvLayer(2,1,4,0);
 	net.addActivLayer();
 	net.addSoftmaxLayer();
+	*/
 	
 	//Net net("oneEpoch.txt");
 
 	cout << "NeuralNet set up" << endl;
 	
+	time_t imageStart = time(NULL);
 	cout << "Getting training images" << endl;
 
 	vector<vector<vector<vector<double> > > > trainingImages;
@@ -452,6 +541,8 @@ int trainCNN(int argc, char** argv)
 	tiConfig.close();
 
 	cout << trainingImages.size() << " training images added." << endl;
+	time_t imageEnd = time(NULL);
+	cout << "Time needed for getting training images: " << secondsToString(imageEnd-imageStart) << endl;
 
 	assert(trainingImages.size() == trueVals.size());
 	if(trainingImages.size() == 0)
@@ -465,19 +556,26 @@ int trainCNN(int argc, char** argv)
 	//compressImage(trainingImages,-1,1);
 	
 	cout << "Doing image preprocessing." << endl;
-	preprocess(trainingImages);
+	//preprocess(trainingImages);
+	meanSubtraction(trainingImages);
 
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);
 
-	net.shuffleTrainingData(10);
+	//net.shuffleTrainingData(10);
 
 	//cout << "Doing gradient check" << endl;
 	//net.gradientCheck();
 
-	cout << "Split Training Neural Network" << endl;
+	//cout << "Split Training Neural Network" << endl;
 	//net.splitTrain(1);
-	net.OpenCLTrain(1, false);
+
+	cout << "Training Neural Network using OpenCL" << endl;
+	time_t trainStart = time(NULL);
+	net.OpenCLTrain(5, false);
+	//net.train(5);
+	time_t trainEnd = time(NULL);
+	cout << "Time for training 5 epochs: " << secondsToString(trainEnd - trainStart) << endl;
 
 
 	//int batchSize = 10;
@@ -499,8 +597,8 @@ int trainCNN(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-	//trainCNN(argc, argv);
-	continueTrainingCNN(argc, argv);
+	trainCNN(argc, argv);
+	//continueTrainingCNN(argc, argv);
 	//runTrainedCNN(argc, argv);
 	//cout << "back in main" << endl;
 

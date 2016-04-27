@@ -106,7 +106,7 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 
 	i = (i_div_dep/numBlocksPerRow * width * strxdep + i%depth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
 	
-	int amountToNextLayer = (width - poolsize) * depth;\
+	int amountToNextLayer = (width - poolsize) * depth;
 	int maxIndex = i;
 	double maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
@@ -134,13 +134,13 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 	double result = 0;
 	for(int j=0; j< numIndexes; j++)
 	{
-		//if(maxIndexes[j] == i)
-		if(*(maxIndexes) == i)
+		if(maxIndexes[j] == i)
+		//if(*(maxIndexes) == i)
 		{
 			//printf("maxIndex %d, j %d, dneurons[j] %f\n",*maxIndexes, j, dneurons[j]);
 			result += dneurons[j];
 		}
-		maxIndexes++;
+		//maxIndexes++;
 	}
 
 	prevdNeurons[i] = result;
@@ -247,8 +247,9 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 				start += widthxdepth;
 			}
 			d += numFilters;
-			start = origStart + toNextRow;
+			start = origStart + depth;
 		}
+		start = origStart + toNextRow;
 	}
 	//printf("x %d final result %f\n",x,result);
 	prevdNeurons[x] = result;
@@ -302,7 +303,7 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 		myDerivative += dneurons[j];
 		j+=dneuronDepth;
 	}
-	//printf("stepSize %lf", stepSize);
+	//printf("stepSize %lf myDerivative %lf, result %.9lf\n", stepSize, myDerivative, stepSize * myDerivative);
 	biases[i] -= stepSize * myDerivative; // update bias
 
 }
@@ -313,12 +314,12 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 	int x = get_global_id(0);
 
 	//turn x into i, j, k
-	int nw = prevwidth + 2*pad;
-	int nh = prevheight + 2*pad;
+	const int nw = prevwidth + 2*pad;
+	const int nh = prevheight + 2*pad;
 
-	int ourRow = x/(nw * depth);
-	int ourCol = (x/depth) % nw;
 	int ourDepth = x%depth;
+	int ourCol = ((x-ourDepth)/depth) % nw;
+	int ourRow = ((x-ourDepth)/depth) / nw;
 
 	if(ourRow < pad || ourRow >= nh-pad || ourCol < pad || ourCol >= nw-pad)
 		neurons[x] = 0;
@@ -343,9 +344,9 @@ __kernel void zeroPad_back(__global double* prevdNeurons, __global double* dneur
 	int nw = prevwidth + 2*pad;
 	int nh = prevheight + 2*pad;
 
-	int ourRow = x/(nw * depth);
-	int ourCol = (x/depth) % nw;
 	int ourDepth = x%depth;
+	int ourCol = ((x-ourDepth)/depth) % nw;
+	int ourRow = ((x-ourDepth)/depth) / nw;
 
 	if(!(ourRow < pad || ourRow >= nh-pad || ourCol < pad || ourCol >= nw-pad))
 	{
@@ -379,10 +380,12 @@ __kernel void softmax_back(__global double* dNeurons, __global double* neurons, 
 	{
 		dNeurons[i] = neurons[i] - 1;
 		//printf("neurons[i] on trueVal: %f\n", neurons[i]);
+		//dNeurons[i] = neurons[i];
 	}
 	else
 	{
 		dNeurons[i] = neurons[i];
+		//dNeurons[i] = neurons[i] - 1;
 	}
 }
 

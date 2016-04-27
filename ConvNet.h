@@ -66,11 +66,14 @@ public:
 	int getNumNeurons() const;
 	unsigned long getMemWeightsAndBiases() const;
 	unsigned long getMem() const;
+	int getPaddedNeuronSize() const;
 	int getMaxSizeNeeded() const;
 	double* getWeights() const;
 	int getNumWeights() const;
 	double* getBiases() const;
 	int getNumBiases() const;
+	void setBiases(double* biases);
+	void setWeights(double* weights);
 	std::vector<int> getKernelHyperParameters() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
@@ -98,6 +101,7 @@ private:
 	int c_prevNeuronHeight;
 	int c_prevNeuronDepth;
 	int c_maxSizeNeeded;
+	int c_paddedNeuronSize;
 };
 
 class MaxPoolLayer : public Layer{
@@ -191,7 +195,7 @@ public:
 	static const int ACTIV_LAYER = 2;
 	static const int INPUT_LAYER = 3;
 	static const int SOFTMAX_LAYER = 4;
-	static const bool walkthrough = true;
+	static const bool walkthrough = false;
 	static const bool showErrors = false;
 	static bool gradCheck;
 	static const double GRADCHECK_H;
@@ -239,6 +243,7 @@ private:
 	bool load(const char* filename);
 	void init(int, int, int);
 	unsigned long getMaxNeuronSize() const;
+	
 
 };
 
