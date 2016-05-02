@@ -11,6 +11,7 @@
 
 //#include <stdio.h>
 #include <vector>
+#include <string>
 
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
@@ -26,6 +27,7 @@ public:
 	virtual ~Layer(){};
 	virtual int getType() const = 0;
 	virtual int getNumNeurons() const = 0;
+	virtual std::string getNeuronDims() const = 0;
 	virtual unsigned long getMem() const = 0;
 	virtual void forwardprop(const Layer& prevLayer) = 0;
 	virtual void backprop(Layer& prevLayer) = 0;
@@ -39,6 +41,7 @@ public:
 	~InputLayer();
 	int getType() const;
 	int getNumNeurons() const;
+	std::string getNeuronDims() const;
 	unsigned long getMem() const;
 	double* getImage() const;
 	void getImage(double* dest, int size) const;
@@ -72,6 +75,7 @@ public:
 	int getNumWeights() const;
 	double* getBiases() const;
 	int getNumBiases() const;
+	std::string getNeuronDims() const;
 	void setBiases(double* biases);
 	void setWeights(double* weights);
 	std::vector<int> getKernelHyperParameters() const;
@@ -113,6 +117,7 @@ public:
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
 	unsigned long getMem() const;
+	std::string getNeuronDims() const;
 	std::vector<int> getKernelHyperParameters() const;
 	std::string getHyperParameters() const;
 	const std::vector<std::vector<std::vector<double> > >& getNeurons() const;
@@ -140,6 +145,7 @@ public:
 	int getType() const;
 	unsigned long getMem() const;
 	int getNumNeurons() const;
+	std::string getNeuronDims() const;
 	int getActivationType() const;
 	void forwardprop(const Layer& prevLayer);
 	void backprop(Layer& prevLayer);
@@ -164,6 +170,7 @@ public:
 	std::vector<double> getError();
 	void setError(std::vector<double> error);
 	int getType() const;
+	std::string getNeuronDims() const;
 	unsigned long getMem() const;
 	int getNumNeurons() const;
 	void forwardprop(const Layer& prevLayer);
@@ -189,6 +196,7 @@ public:
 	~Net();
 	void forwardprop();
 	void backprop();
+	void printLayerDims();
 	static double stepSize;
 	static const int CONV_LAYER = 0;
 	static const int MAX_POOL_LAYER = 1;

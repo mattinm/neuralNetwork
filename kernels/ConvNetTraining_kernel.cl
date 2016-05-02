@@ -334,7 +334,7 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 	}
 }
 
-// run on each of the dneurons. NOT prevdNeurons!
+// run on each of the padded dneurons. NOT prevdNeurons!
 __kernel void zeroPad_back(__global double* prevdNeurons, __global double* dneurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {

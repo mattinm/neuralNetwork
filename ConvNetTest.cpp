@@ -2,7 +2,7 @@
  *
  *	ConvNetTest
  *
- * 	Created by Connor Bowley on 3/16/15
+ * 	Created by Connor Bowley on 3/16/16
  *
  *
  *	Get the image vectors made without using Mat
@@ -456,7 +456,7 @@ int trainCNN(int argc, char** argv)
 	}
 	cout << "Building NeuralNet" << endl;
 
-	Net net(32,32,3);
+	Net net(32,32,3);           //32x32x3
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(6,1,5,0);	//28x28x6
 	net.addActivLayer();
@@ -464,7 +464,7 @@ int trainCNN(int argc, char** argv)
 	net.addConvLayer(10,1,3,0);	//12x12x10
 	net.addActivLayer();
 	net.addMaxPoolLayer(3,3);	//4x4x10
-	net.addConvLayer(5,1,3,1);	//4x4x5
+	//net.addConvLayer(5,1,3,1);	//4x4x5
 	net.addActivLayer();
 	net.addConvLayer(2,1,4,0);	//1x1x2
 	net.addActivLayer();
@@ -512,6 +512,9 @@ int trainCNN(int argc, char** argv)
 	//Net net("oneEpoch.txt");
 
 	cout << "NeuralNet set up" << endl;
+
+	net.printLayerDims();
+	//getchar();
 	
 	time_t imageStart = time(NULL);
 	cout << "Getting training images" << endl;
@@ -562,7 +565,7 @@ int trainCNN(int argc, char** argv)
 	cout << "Adding training images to Network" << endl;
 	net.addTrainingData(trainingImages,trueVals);
 
-	//net.shuffleTrainingData(10);
+	net.shuffleTrainingData(10);
 
 	//cout << "Doing gradient check" << endl;
 	//net.gradientCheck();

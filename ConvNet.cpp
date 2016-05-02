@@ -151,6 +151,14 @@ Net::~Net()
 	
 }
 
+void Net::printLayerDims()
+{
+	for(int i=0; i < n_layers.size(); i++)
+	{
+		cout << n_layers[i]->getNeuronDims();
+	}
+}
+
 void Net::forwardprop()
 {
 	for(int i=1; i< n_layers.size(); i++)
@@ -680,12 +688,13 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	int softSize = n_layers.back()->getNumNeurons();
 	vector<double> neur(softSize);
 	vector<double> test(maxNeuronSize);
+	cl_mem *temp;
 	//cout << "Starting run on GPU(s)" << endl;
 	for(int e=0; e < epochs; e++)
 	{
 		string ep = to_string(epochs);
 
-		//shuffleTrainingData();
+		shuffleTrainingData();
 		
 		for(int r=0; r < n_trainingData.size(); r++)
 		{
@@ -706,7 +715,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 			// this is initialized for the case the first real layer is a non-padded conv layer and it needs
 			// to save the neurons into the layerNeeds
 			size_t globalWorkSize[] = {(size_t)n_layers[0]->getNumNeurons(),0,0};
-			cl_mem *temp;
+			
 			
 
 			////////////////////////////////////
@@ -748,12 +757,13 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 							nullptr,
 							globalWorkSize,
 							nullptr, 0, nullptr, nullptr));
-						clFinish(queue);
+						
 
 						//swap the buffers so prevNeurons holds the zero padded data
 						temp = neurons;
 						neurons = prevNeurons;
 						prevNeurons = temp;
+						clFinish(queue);
 
 						if(Net::walkthrough)
 						{
@@ -774,6 +784,16 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					CheckError(clEnqueueNDRangeKernel(queue, copyArrayKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					//clFinish(queue); shouldn't need to finish yet because convKernel doesn't need to use the copy
+
+					if(Net::walkthrough)
+					{
+						clFinish(queue);
+						cout << "conv layerNeeds " << curConvLayer << endl;
+						CheckError(clEnqueueReadBuffer(queue, layerNeeds[i], CL_TRUE, 0, sizeof(double) * globalWorkSize[0],
+							test.data(), 0, nullptr, nullptr));
+						printArray(test.data(), globalWorkSize[0]);
+						getchar();
+					}
 
 					
 					clSetKernelArg(convKernel, 0, sizeof(cl_mem), prevNeurons);
@@ -890,8 +910,10 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 			CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * softSize, 
 				neur.data(), 0, nullptr, nullptr));
 			calculatedClasses[startForThisRound++] = getMaxElementIndex(neur);
+
 			if(Net::showErrors || Net::walkthrough)
 			{
+				cout << "max element was " << getMaxElementIndex(neur) << endl;
 				cout << "neur" << endl;
 				printVector(neur);
 				if(Net::walkthrough)
@@ -1023,6 +1045,27 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 
 					clFinish(queue); //MUST finish before weights start getting updated
 
+					if(Net::walkthrough)
+					{
+						//clFinish(queue);
+						cout << "conv layerNeeds back" << curConvLayer << endl;
+						CheckError(clEnqueueReadBuffer(queue, layerNeeds[i], CL_TRUE, 0, sizeof(double) * globalWorkSize[0],
+							test.data(), 0, nullptr, nullptr));
+						printArray(test.data(), globalWorkSize[0]);
+						getchar();
+					}
+					/*
+					if(Net::walkthrough)
+					{
+						size_t amount = (size_t)conv->getPaddedNeuronSize();
+						//printf("pwid %d, phei %d, dep %d, pad %d, size %ld\n",hyper[2],hyper[6],hyper[3],hyper[5],globalWorkSize[0]);
+						cout << "Back Layer new prevNeurons " << i << " ConvLayer " << curConvLayer << endl;
+						CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * amount,
+							test.data(), 0, nullptr, nullptr));
+						printArray(test.data(), amount);
+						getchar();
+					}*/
+
 					//backprop biases
 					
 					int sizeOfNeurons = n_layers[i]->getNumNeurons();
@@ -1082,8 +1125,10 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					}
 
 					//backprop the padding if necessary
-					if(hyper[5] != 0)
+					
+					if(hyper[5] != 0 and false)
 					{
+						globalWorkSize[0] = (size_t)conv->getPaddedNeuronSize();
 						if(Net::walkthrough)
 						{
 							printf("pwid %d, phei %d, dep %d, pad %d, size %ld\n",hyper[2],hyper[6],hyper[3],hyper[5],globalWorkSize[0]);
@@ -1098,6 +1143,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 						clFinish(queue); //so it finishes before zeroPadBackKernel starts changing prevNeurons and neurons
 
 						//swap prev and cur neuron pointers
+
 						temp = neurons;
 						neurons = prevNeurons;
 						prevNeurons = temp;
@@ -1109,10 +1155,21 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 						clSetKernelArg(zeroPadBackKernel, 4, sizeof(int), &(hyper[6])); //prevHeight(non-padded)
 						clSetKernelArg(zeroPadBackKernel, 5, sizeof(int), &(hyper[3])); //depth
 
-						globalWorkSize[0] = (size_t)conv->getPaddedNeuronSize();
+						
 						CheckError(clEnqueueNDRangeKernel(queue,zeroPadBackKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+						if(Net::walkthrough)
+						{
+							clFinish(queue);
+							cout << "Backprop Layer post de-pad " << i << " conv " << curConvLayer << endl;
+							CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * n_layers[i-1]->getNumNeurons(),
+								test.data(), 0, nullptr, nullptr));
+							printArray(test.data(), n_layers[i-1]->getNumNeurons());
+							getchar();
+						}
 					}
+					
 					
 
 					curConvLayer--;
@@ -2701,6 +2758,14 @@ int InputLayer::getType() const
 	return i_type;
 }
 
+string InputLayer::getNeuronDims() const
+{
+	char out[100];
+	sprintf(out, "%lu x %lu x %lu\n",(*i_neurons).size(),(*i_neurons)[0].size(),(*i_neurons)[0][0].size());
+	return string(out);
+
+}
+
 double* InputLayer::getImage() const
 {
 	double *image = new double[i_numNeurons];
@@ -2875,6 +2940,14 @@ void ConvLayer::init(const Layer& prevLayer, int numFilters, int stride, int fil
 }
 
 ConvLayer::~ConvLayer(){}
+
+string ConvLayer::getNeuronDims() const
+{
+	char out[100];
+	sprintf(out, "%lu x %lu x %lu\n",c_neurons.size(),c_neurons[0].size(),c_neurons[0][0].size());
+	return string(out);
+
+}
 
 int ConvLayer::getType() const
 {
@@ -3141,8 +3214,9 @@ void ConvLayer::backprop(Layer& prevLayer)
 	vector<vector<vector<double> > >& p_dNeurons = prevLayer.getdNeurons();
 	vector<vector<vector<double> > > padded_dNeurons;
 	resize3DVector(padded_dNeurons,p_dNeurons.size() + 2*c_padding,p_dNeurons[0].size() + 2*c_padding, p_dNeurons[0][0].size());
-	setAll3DVector(p_dNeurons, 0);
+	//setAll3DVector(p_dNeurons, 0);
 	//setAll1DVector(c_dbiases, 0);
+	setAll3DVector(padded_dNeurons,0);
 	for(int b=0; b< c_dbiases.size(); b++)
 	{
 		c_dbiases[b] = 0;
@@ -3155,6 +3229,13 @@ void ConvLayer::backprop(Layer& prevLayer)
 	{
 		padZeros(prevLayer.getNeurons(),c_padding,padSource);
 		source = &padSource;
+
+		if(Net::walkthrough)
+		{
+			cout << "In ConvLayer padding back source" << endl;
+			printVector(padSource);
+			getchar();
+		}
 	}
 	else
 		source = &prevLayer.getNeurons();
@@ -3196,12 +3277,6 @@ void ConvLayer::backprop(Layer& prevLayer)
 		}
 	}
 
-	if(Net::walkthrough && c_padding != 0)
-	{
-		cout << "In ConvLayer padding backprop" << endl;
-		printVector(padded_dNeurons);
-		getchar();
-	}
 
 	//put the padded_dNeurons into the real p_dNeurons
 	for(int i=c_padding; i < padded_dNeurons.size() - c_padding; i++)
@@ -3252,6 +3327,13 @@ void ConvLayer::backprop(Layer& prevLayer)
 			printVector(c_weights);
 			getchar();
 		}
+	}
+
+	if(Net::walkthrough && c_padding != 0)
+	{
+		cout << "In ConvLayer padding backprop" << endl;
+		printVector(padded_dNeurons);
+		getchar();
 	}
 }
 
@@ -3384,6 +3466,13 @@ int MaxPoolLayer::getType() const
 int MaxPoolLayer::getNumNeurons() const
 {
 	return m_numNeurons;
+}
+
+string MaxPoolLayer::getNeuronDims() const
+{
+	char out[100];
+	sprintf(out, "%lu x %lu x %lu\n",m_neurons.size(),m_neurons[0].size(),m_neurons[0][0].size());
+	return string(out);
 }
 
 vector<int> MaxPoolLayer::getKernelHyperParameters() const
@@ -3575,6 +3664,14 @@ int ActivLayer::getActivationType() const
 	return a_activationType;
 }
 
+string ActivLayer::getNeuronDims() const
+{
+	char out[100];
+	sprintf(out, "%lu x %lu x %lu\n",a_neurons.size(),a_neurons[0].size(),a_neurons[0][0].size());
+	return string(out);
+
+}
+
 void ActivLayer::forwardprop(const Layer& prevLayer)
 {
 	const vector<vector<vector<double> > >& prevNeurons = prevLayer.getNeurons();
@@ -3757,6 +3854,14 @@ unsigned long ActivLayer::getMem() const
  {
  	return s_neurons.size();
  }
+
+string SoftmaxLayer::getNeuronDims() const
+{
+	char out[100];
+	sprintf(out, "%lu x %lu x %lu\n",s_3neurons.size(),s_3neurons[0].size(),s_3neurons[0][0].size());
+	return string(out);
+}
+
 
  void SoftmaxLayer::forwardprop(const Layer& prevLayer)
  {
@@ -4101,8 +4206,11 @@ void padZeros(const vector<vector<vector<double> > > &source, int numZeros, vect
 	int width2 = source.size() + 2*numZeros;
 	int height2 = source[0].size() + 2*numZeros;
 	int depth2 = source[0][0].size();
+	//cout << "pad zeros:" << endl;
+	//printf("w %lu h %lu d %lu numZeros %d\n",source.size(),source[0].size(), source[0][0].size(), numZeros);
 	//resize dest vector
 	resize3DVector(dest,width2,height2,depth2);
+	setAll3DVector(dest,0);
 	for(int i=numZeros; i< dest.size()-numZeros; i++) // rows
 	{
 		for(int j=numZeros; j< dest[0].size()-numZeros; j++) // cols
