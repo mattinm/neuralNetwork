@@ -331,9 +331,10 @@ int runTrainedCNN(int argc, char** argv)
 	//net.shuffleTrainingData(10);
 
 	cout << "Doing a run without learning on training images" << endl;
+	vector<int> calcedClasses;
 	//net.run(false);
 	time_t starttime = time(NULL);
-	net.newRun(false);
+	net.newRun(calcedClasses,false);
 	time_t endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << endl;
 

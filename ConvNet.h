@@ -220,7 +220,7 @@ public:
 	void addTrainingData(const std::vector<std::vector<std::vector<std::vector<double> > > >& trainingData, std::vector<double>& trueVals);
 	void clear();
 	void OpenCLTrain(int epochs, bool useGPU = true);
-	void newRun(bool useGPU = true);
+	void newRun(std::vector<int>& calculatedClasses, bool useGPU = true);
 	bool setActivType(int activationType);
 	void train(int epochs);
 	void splitTrain(int epochs, bool useGPU = true);

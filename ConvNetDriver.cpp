@@ -7,7 +7,7 @@
 *	This program is for running trained CNNs that were trained using ConvNet.
 *
 *	Usage:
-*		./ConvNetDriver binaryImagesFile outputName.txt
+*		./ConvNetDriver cnnConfig.txt binaryImagesFile outputName.txt append(defaults to false)
 *
 *************************************/
 
@@ -15,7 +15,9 @@
 #include <iostream>
 #include <vector>
 #include "ConvNet.h"
+#include <ctype.h>
 #include <fstream>
+#include <time.h>
 
 using namespace std;
 
@@ -51,11 +53,6 @@ short readShort(ifstream& in)
 }
 unsigned short readUShort(ifstream& in)
 {
-	/*
-	char num[2];
-	in.read(num,2);
-	return num[0] | num[1] << 8;*/
-
 	unsigned short num;
 	in.read((char*)&num,sizeof(unsigned short));
 	return num;
@@ -63,24 +60,12 @@ unsigned short readUShort(ifstream& in)
 
 int readInt(ifstream& in)
 {
-	/*
-	char num[4];
-	in.read(num,4);
-	return (num[0]) | (num[1] << 8) | (num[2] << 16) | (num[3] << 24);
-	*/
-
 	int num;
 	in.read((char*)&num,sizeof(int));
 	return num;
 }
 unsigned int readUInt(ifstream& in)
 {
-	/*
-	char num[4];
-	in.read(num,4);
-	return num[0] | num[1] << 8 | num[2] << 16 | num[3] << 24;
-	*/
-
 	unsigned int num;
 	in.read((char*)&num,sizeof(unsigned int));
 	return num;
@@ -88,11 +73,6 @@ unsigned int readUInt(ifstream& in)
 
 float readFloat(ifstream& in)
 {
-	/*
-	char num[4];
-	in.read(num,4);
-	return num[0] | num[1] << 8 | num[2] << 16 | num[3] << 24;*/
-
 	float num;
 	in.read((char*)&num,sizeof(float));
 	return num;
@@ -100,25 +80,85 @@ float readFloat(ifstream& in)
 
 double readDouble(ifstream& in)
 {
-	/*
-	char num[8];
-	in.read(num,8);
-	return num[0] | num[1] << 8 | num[2] << 16 | num[3] << 24 | num[4] << 32 | num[5] << 40 | num[6] << 48 | num[7] << 56;
-	*/
-
 	double num;
 	in.read((char*)&num,sizeof(double));
 	return num;
+}
+
+string secondsToString(time_t seconds)
+{
+	time_t secs = seconds%60;
+	time_t mins = (seconds%3600)/60;
+	time_t hours = seconds/3600;
+	char out[100];
+	if(hours > 0)
+		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
+	else if(mins > 0)
+		sprintf(out,"%ld mins, %ld secs",mins,secs);
+	else
+		sprintf(out,"%ld secs",secs);
+	string outString = out;
+	return outString;
 }
 
 /**********************
  *	Functions
  ***********************/
 
-template<typename type>
-void getNextImage(ifstream& in, vector<imVector>& dest, short x, short y, short z)
+void getNextImage(ifstream& in, imVector& dest, short x, short y, short z, short sizeByte)
 {
+	resize3DVector(dest,x,y,z);
+	for(int i=0; i < x; i++)
+	{
+		for(int j=0; j < y; j++)
+		{
+			for(int k=0; k < z; k++)
+			{
+				if(sizeByte == 1)
+					dest[i][j][k] = (double)readUChar(in);
+				else if(sizeByte == -1)
+					dest[i][j][k] = (double)readChar(in);
+				else if(sizeByte == 2)
+					dest[i][j][k] = (double)readUShort(in);
+				else if(sizeByte == -2)
+					dest[i][j][k] = (double)readShort(in);
+				else if(sizeByte == 4)
+					dest[i][j][k] = (double)readUInt(in);
+				else if(sizeByte == -4)
+					dest[i][j][k] = (double)readInt(in);
+				else if(sizeByte == 5)
+					dest[i][j][k] = (double)readFloat(in);
+				else if(sizeByte == 6)
+					dest[i][j][k] = readDouble(in);
+				else
+				{
+					cout << "Unknown sizeByte: " << sizeByte << ". Exiting" << endl;
+					exit(0);
+				}
+			}
+		}
+	}
+}
 
+void saveClassesToFile(const char* filename, const vector<int>& calcedClasses, bool append)
+{
+	ofstream out;
+	char buffer[50];
+	int size;
+	if(append)
+		out.open(filename,ios::app);
+	else
+		out.open(filename,ios::trunc);
+
+	for(int i=0; i < calcedClasses.size(); i++)
+	{
+		sprintf(buffer,"%d\n",calcedClasses[i]);
+		size = 0;
+		while(buffer[size] != '\0')
+			size++;
+		out.write(buffer,size);
+	}
+	out.close();
 }
 
 void convertBinaryToVector(const char *filename, vector<imVector>& dest)
@@ -131,10 +171,11 @@ void convertBinaryToVector(const char *filename, vector<imVector>& dest)
 		exit(0);;
 	}
 
-	char buffer[100];
-	buffer[99] = '\0';
-	//in.read(buffer,99);
-	//cout << "buffer: " << buffer << endl;
+	in.seekg(0, in.end);
+	long end = in.tellg();
+	in.seekg(0, in.beg);
+
+	/*
 	double testd = readDouble(in);
 	int testi = readInt(in);
 	unsigned int testui = readUInt(in);
@@ -142,41 +183,70 @@ void convertBinaryToVector(const char *filename, vector<imVector>& dest)
 	char testc = readChar(in);
 	unsigned char testuc = readUChar(in);
 	float testf = readFloat(in);
-
-	short sizeByte = readShort(in);
-	short xSize = readShort(in);
-	short ySize = readShort(in);
-	short zSize = readShort(in);
-	/*
-	sizeByte = buffer[0] | buffer[1] << 8;
-	xSize = buffer[2] | buffer[3] << 8;
-	ySize = buffer[4] | buffer[5] << 8;
-	zSize = buffer[6] | buffer[7] << 8;*/
-
 	cout << "Double: " << testd << endl;
 	cout << "int: " << testi << endl;
 	cout << "uint: " << testui << endl;
 	cout << "ushort: " << testus << endl;
 	cout << "char: " << (int)testc << endl;
 	cout << "uchar: " << (int)testuc << endl;
-	cout << "float: " << testf << endl;
+	cout << "float: " << testf << endl;*/
 
-	cout << "Size: " << sizeByte << " x: " << xSize << " y: " << ySize << " z: " << zSize << endl; 
+	short sizeByte = readShort(in);
+	short xSize = readShort(in);
+	short ySize = readShort(in);
+	short zSize = readShort(in);	
 
-
-
+	cout << "Size: " << sizeByte << " x: " << xSize << " y: " << ySize << " z: " << zSize << endl;
+	while(in.tellg() != end)
+	{
+		dest.resize(dest.size() + 1);
+		getNextImage(in,dest.back(),xSize,ySize,zSize,sizeByte);
+	}
 	in.close();
+
+	cout << "Num images = " << dest.size() << endl;
+
+	//printVector(dest);
 }
 
 int main(int argc, char** argv)
 {
-	if(argc != 3)
+	if(argc != 4 && argc != 5)
 	{
-		cout << "Usage: ./ConvNetDriver binaryImagesFile outputName.txt" << endl;
+		cout << "Usage: ./ConvNetDriver cnnConfig.txt binaryImagesFile outputName.txt append(true or false, defaults to false)" << endl;
 		return 0;
 	}
 
-	vector<imVector> images;
-	convertBinaryToVector(argv[1],images);
+	bool append = false;
+	if(argc == 5)
+	{
+		int i = 0;
+		while(argv[4][i] != '\0')
+		{
+			argv[4][i] = tolower(argv[4][i]);
+			i++;
+		}
+		string arg(argv[4]);
+		if(arg.find("true") != string::npos)
+			append = true;
+	}
 
+	//set up net
+	Net net(argv[1]);
+
+	//get images and preprocess them
+	vector<imVector> images(0);
+	convertBinaryToVector(argv[2],images);
+	preprocess(images);
+
+	net.addRealData(images);
+
+	vector<int> calcedClasses;
+
+	time_t starttime = time(NULL);
+	net.newRun(calcedClasses,false);
+	time_t endtime = time(NULL);
+	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << endl;
+
+	saveClassesToFile(argv[3], calcedClasses, append);
 }

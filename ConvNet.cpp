@@ -1270,11 +1270,11 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	clReleaseContext(context);
 }
 
-void Net::newRun(bool useGPU)
+void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 {
 	cl_int error = CL_SUCCESS;
 
-	vector<int> calculatedClasses(n_trainingData.size());
+	calculatedClasses.resize(n_trainingData.size());
 
 	//get num of platforms and we will use the first one
 	cl_uint platformIdCount = 0;
@@ -1649,14 +1649,16 @@ void Net::newRun(bool useGPU)
 				numCorrect++;
 		}
 		cout << "Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(double)calculatedClasses.size()*100 << "%" << endl;
-	}
+	}/*
 	else
 	{
+		
 		for(int i=0; i < calculatedClasses.size(); i++)
 		{
 			cout << calculatedClasses[i] << endl;
 		}
-	}
+
+	}*/
 
 	clReleaseCommandQueue(queue);
 	clReleaseMemObject(*neurons);
@@ -2976,7 +2978,7 @@ int ConvLayer::getMaxSizeNeeded() const
 void ConvLayer::initRandomWeights()
 {
 	default_random_engine gen(time(0));
-	uniform_real_distribution<double> distr(-.005,.005);
+	uniform_real_distribution<double> distr(-.05,.05); // + - .005
 	for(int f = 0;f<c_weights.size(); f++)
 	{
 		for(int i=0; i< c_weights[0].size(); i++)

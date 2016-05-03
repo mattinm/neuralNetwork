@@ -6,8 +6,8 @@
 * 	All input images must be of the same size, specified in command line arguments. The format of the
 *	output file is this:
 *
-*		sizeByte xSize ySize zSize image1 image2 ... imageN
-*		short	 short short short 
+*		sizeByte xsize ysize zsize image1 trueVal1 image2 trueVal2... imageN trueValN
+*		short	 short short short 		  ushort		  ushort
 *
 *	The sizeByte says how large/what type each input is. 
 *		1 - unsigned byte 		-1 - signed byte
@@ -24,8 +24,8 @@
 *	ImageConfigFile format:
 *		inWidth inHeight inDepth
 *		sizeByte
-*		folderOfImages1
-*		folderOfImages2
+*		folderOfImages1,trueVal1
+*		folderOfImages2,trueVal2
 *		...
 *
 *
@@ -57,7 +57,7 @@ int checkExtensions(const char* filename)
 }
 
 template<typename type>
-void writeImage(const char* inPathandName, ofstream& outfile)
+void writeImage(const char* inPathandName, unsigned short trueVal, ofstream& outfile)
 {
 	Mat image = imread(inPathandName,1); //color image
 	//cout << image << endl;
@@ -71,6 +71,7 @@ void writeImage(const char* inPathandName, ofstream& outfile)
 
 	if(image.type() == CV_8UC3)
 	{
+		//write color image standard
 		for(int i=0; i < xsize; i++)
 		{
 			for(int j=0; j < ysize; j++)
@@ -83,13 +84,56 @@ void writeImage(const char* inPathandName, ofstream& outfile)
 				//cout << "writing" << endl;
 				outfile.write(reinterpret_cast<const char *>(pixel),size);
 			}
+			//write trueVal
+			outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
 		}
+
+		//write image rotated 90 degrees clockwise
+		for(int j=0; j < ysize; j++)
+		{
+			for(int i = xsize-1; i >= 0; i--)
+			{
+				const Vec3b curPixel = image.at<Vec3b>(i,j);
+				pixel[0] = (type)curPixel[0];
+				pixel[1] = (type)curPixel[1];
+				pixel[2] = (type)curPixel[2];
+				outfile.write(reinterpret_cast<const char *>(pixel),size);
+			}
+		}
+		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
+
+		//write image rotated 90 degrees counterclockwise
+		for(int j = ysize-1; j >= 0; j--)
+		{
+			for(int i = 0; i < xsize; i++)
+			{
+				const Vec3b curPixel = image.at<Vec3b>(i,j);
+				pixel[0] = (type)curPixel[0];
+				pixel[1] = (type)curPixel[1];
+				pixel[2] = (type)curPixel[2];
+				outfile.write(reinterpret_cast<const char *>(pixel),size);
+			}
+		}
+		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
+
+		//write image rotated 180 degrees
+		for(int i = xsize-1; i >= 0; i--)
+		{
+			for(int j = ysize-1; j >= 0; j--)
+			{
+				const Vec3b curPixel = image.at<Vec3b>(i,j);
+				pixel[0] = (type)curPixel[0];
+				pixel[1] = (type)curPixel[1];
+				pixel[2] = (type)curPixel[2];
+				outfile.write(reinterpret_cast<const char *>(pixel),size);
+			}
+		}
+		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
 	}
-	
 }
 
 template<typename type>
-void getImages(const char* folder, ofstream& outfile)
+void getImages(const char* folder, unsigned short trueVal, ofstream& outfile)
 {
 	cout << "Getting images from " << folder << endl;
 	const char* inPath = folder;
@@ -137,7 +181,7 @@ void getImages(const char* folder, ofstream& outfile)
 					{
 						sprintf(inPathandName,"%s%s",pathName.c_str(),file->d_name);
 						//cout << "going to write an image" << endl;
-						writeImage<type>(inPathandName,outfile);
+						writeImage<type>(inPathandName,trueVal,outfile);
 					}
 				}
 			}
@@ -148,7 +192,7 @@ void getImages(const char* folder, ofstream& outfile)
 	{
 		if(checkExtensions(inPath))
 		{
-			writeImage<type>(inPath,outfile);
+			writeImage<type>(inPath,trueVal,outfile);
 		}
 
 	}
@@ -213,29 +257,68 @@ int main (int argc, char** argv)
 
 	if(sizeByte == 1)
 		while(getline(imageConfig,line))
-			getImages<unsigned char>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<unsigned char>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == -1)
 		while(getline(imageConfig,line))
-			getImages<char>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<char>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == 2)
 		while(getline(imageConfig,line))
-			getImages<unsigned short>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<unsigned short>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == -2)
 		while(getline(imageConfig,line))
-			getImages<short>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<short>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == 4)
 		while(getline(imageConfig,line))
-			getImages<unsigned int>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<unsigned int>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == -4)
 		while(getline(imageConfig,line))
-			getImages<int>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<int>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == 5)
 		while(getline(imageConfig,line))
-			getImages<float>(line.c_str(),outfile);
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<float>(folder.c_str(),trueVal,outfile);
+		}
 	else if(sizeByte == 6)
 		while(getline(imageConfig,line))
-			getImages<double>(line.c_str(),outfile);
-
+		{
+			int comma = line.find(',');
+			string folder = line.substr(0,comma-1);
+			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			getImages<double>(folder.c_str(),trueVal,outfile);
+		}
 	imageConfig.close();
 	outfile.close();
 
