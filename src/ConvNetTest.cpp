@@ -493,6 +493,7 @@ int trainCNN(int argc, char** argv)
 	net.addActivLayer();
 	net.addMaxPoolLayer(2,2);		//1x1x20
 	net.addConvLayer(4,1,3,1);		//1x1x4
+	net.addSoftmaxLayer();
 	*/
 
 	

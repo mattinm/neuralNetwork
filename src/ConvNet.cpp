@@ -439,6 +439,12 @@ void Net::gradientCheck()
 
 void Net::OpenCLTrain(int epochs, bool useGPU)
 {
+	if(n_layers.back()->getType() != Net::SOFTMAX_LAYER)
+	{
+		cout << "Last layer must be softmax to train. Aborting training." << endl;
+		return;
+	}
+
 	cl_int error = CL_SUCCESS;
 
 	vector<int> calculatedClasses(n_trainingData.size());
@@ -1069,12 +1075,13 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					//backprop biases
 					
 					int sizeOfNeurons = n_layers[i]->getNumNeurons();
+					double mystepSize = Net::stepSize;// * i;
 					//cout << "running convBackBiasesKernel " << curConvLayer << ": " << sizeOfNeurons << "/" << hyper[4] << endl;
 					clSetKernelArg(convBackBiasesKernel, 0, sizeof(cl_mem), &(biases[curConvLayer]));
 					clSetKernelArg(convBackBiasesKernel, 1, sizeof(cl_mem), neurons);
 					clSetKernelArg(convBackBiasesKernel, 2, sizeof(int), &sizeOfNeurons);
 					clSetKernelArg(convBackBiasesKernel, 3, sizeof(int), &(hyper[4])); // numFilters = dneuronsDepth
-					clSetKernelArg(convBackBiasesKernel, 4, sizeof(double), &(Net::stepSize));
+					clSetKernelArg(convBackBiasesKernel, 4, sizeof(double), &(mystepSize));
 
 					globalWorkSize[0] = (size_t) hyper[4];//numFilters = numBiases
 					CheckError(clEnqueueNDRangeKernel(queue, convBackBiasesKernel, 1,
@@ -1106,7 +1113,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					clSetKernelArg(convBackWeightsKernel, 5, sizeof(int), &paddedWidth);
 					clSetKernelArg(convBackWeightsKernel, 6, sizeof(int), &(hyper[0])); // filterSize
 					clSetKernelArg(convBackWeightsKernel, 7, sizeof(int), &(hyper[4])); // numFilters
-					clSetKernelArg(convBackWeightsKernel, 8, sizeof(double), &(Net::stepSize));
+					clSetKernelArg(convBackWeightsKernel, 8, sizeof(double), &(mystepSize));
 
 					globalWorkSize[0] = (size_t)conv->getNumWeights();
 					//cout << "starting kernel " << endl;
@@ -1275,13 +1282,11 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	cl_int error = CL_SUCCESS;
 
 	calculatedClasses.resize(n_trainingData.size());
-
 	//get num of platforms and we will use the first one
 	cl_uint platformIdCount = 0;
 	clGetPlatformIDs (0, nullptr, &platformIdCount);
 	vector<cl_platform_id> platformIds (platformIdCount);
 	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
-
 	cl_uint deviceIdCount = 0;
 	cl_uint gpudeviceIdCount = 0;
 	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
@@ -1291,7 +1296,8 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 	//decide which one to use.
 	// if gpu available that can hold the mem, use it. 
-	unsigned long forwardMemNeeded = getMemForward();
+	//unsigned long forwardMemNeeded = getMemForward();
+
 	int q = 0; //device to use
 	if(useGPU)
 	{
@@ -1303,7 +1309,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 			{
 				cl_ulong memAmount;
 				CheckError(clGetDeviceInfo(deviceIds[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &memAmount, nullptr));
-				if(memAmount > forwardMemNeeded)
+				//if(memAmount > forwardMemNeeded)
 				{
 					q = i;
 				}
@@ -1316,7 +1322,6 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	cout << "Using device " << q << ": ";
 	CheckError(clGetDeviceInfo(deviceIds[q], CL_DEVICE_NAME, valueSize, name, nullptr));
 	cout << name << endl;
-
 
 	//make the context
 	const cl_context_properties contextProperties[] = 
@@ -1357,11 +1362,10 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	CheckError(error);
 
 
-	//cout << "Kernels created" << endl;
 		
 	//make the command queue
 	cl_command_queue queue = clCreateCommandQueue(context, deviceIds[q], 0, &error);
-		CheckError(error);
+	CheckError(error);
 
 	//make a vector of pointers to kernels that is parallel to n_layers. Use this to make memory
 	//on gpu for the weights and biases. get maxSize of every set of neurons and make two of
@@ -1370,12 +1374,14 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 	int maxNeuronSize = n_layers[0]->getNumNeurons();
 
+
 	vector<cl_kernel*> layers(n_layers.size());
 	layers[0] = nullptr; //because input layer
 	vector<cl_mem> weights;
 	vector<int> weightSizes;
 	vector<cl_mem> biases;
 	vector<int> biasSizes;
+
 	for(int i=1; i< n_layers.size(); i++)
 	{
 		int type = n_layers[i]->getType();
@@ -1446,7 +1452,6 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 		}
 	}
 
-	//cout << "GPU Layers initialized" << endl;
 	
 	cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
 			nullptr, &error);
@@ -1459,7 +1464,6 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 	//double* testHold = new double[maxNeuronSize];
 
-	//cout << "Max neuron size: " << maxNeuronSize << endl;
 	
 	int imageSize = ((InputLayer*)n_layers[0])->getImageSize();
 	double* image = new double[imageSize];
@@ -1471,7 +1475,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	 **************************************/
 	int softSize = n_layers.back()->getNumNeurons();
 	vector<double> neur(softSize);
-	//cout << "Starting run on GPU(s)" << endl;
+
 	for(int r=0; r < n_trainingData.size(); r++)
 	{
 		//set the new image(s)
@@ -2978,7 +2982,11 @@ int ConvLayer::getMaxSizeNeeded() const
 void ConvLayer::initRandomWeights()
 {
 	default_random_engine gen(time(0));
-	uniform_real_distribution<double> distr(-.05,.05); // + - .005
+	int filterSize = c_weights[0].size();
+	double max = pow(filterSize * filterSize + 1, -.5); //* filterSize * filterSize
+	uniform_real_distribution<double> distr(-max,max);
+
+	//uniform_real_distribution<double> distr(-.8,.8); // + - .005 using meanSub or +- .05 worked better
 	for(int f = 0;f<c_weights.size(); f++)
 	{
 		for(int i=0; i< c_weights[0].size(); i++)

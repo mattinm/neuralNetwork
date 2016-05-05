@@ -196,7 +196,7 @@ void convertBinaryToVector(const char *filename, vector<imVector>& dest)
 	short ySize = readShort(in);
 	short zSize = readShort(in);	
 
-	cout << "Size: " << sizeByte << " x: " << xSize << " y: " << ySize << " z: " << zSize << endl;
+	cout << "Input Image Size:  x: " << xSize << " y: " << ySize << " z: " << zSize << endl;
 	while(in.tellg() != end)
 	{
 		dest.resize(dest.size() + 1);
@@ -231,21 +231,35 @@ int main(int argc, char** argv)
 			append = true;
 	}
 
+	time_t starttime, endtime;
+
 	//set up net
 	Net net(argv[1]);
 
+	if(net.numLayers() < 0)
+	{
+		cout << "Net must have at least one layer. Exiting. Make sure the cnnConfig is correct." << endl;
+		return 0;
+	}
+
 	//get images and preprocess them
 	vector<imVector> images(0);
+	starttime = time(NULL);
 	convertBinaryToVector(argv[2],images);
+	endtime = time(NULL);
+	cout << "Time for bringing in binary: " << secondsToString(endtime - starttime) << endl;
+	
+
 	preprocess(images);
 
 	net.addRealData(images);
 
-	vector<int> calcedClasses;
+	vector<int> calcedClasses(0);
 
-	time_t starttime = time(NULL);
+	//cout << "Starting OpenCL Run" << endl;
+	starttime = time(NULL);
 	net.newRun(calcedClasses,false);
-	time_t endtime = time(NULL);
+	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << endl;
 
 	saveClassesToFile(argv[3], calcedClasses, append);

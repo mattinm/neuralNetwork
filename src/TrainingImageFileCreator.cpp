@@ -19,7 +19,7 @@
 *
 *
 *	Usage: 
-*		./ImageFileCreator ImageConfigFile outfileName
+*		./TrainingImageFileCreator ImageConfigFile outfileName
 *
 *	ImageConfigFile format:
 *		inWidth inHeight inDepth
@@ -60,11 +60,8 @@ template<typename type>
 void writeImage(const char* inPathandName, unsigned short trueVal, ofstream& outfile)
 {
 	Mat image = imread(inPathandName,1); //color image
-	//cout << image << endl;
-	//printf("x %d, y %d, z %d, ir %d, ic %d id %d",xsize,ysize,zsize,image.rows,image.cols,image.depth());
 	if(image.rows != ysize || image.cols != xsize)// || image.depth() != zsize)
 		return;
-	//cout << "after return" << endl;
 
 	type pixel[3];
 	long size = sizeof(type) * 3;
@@ -83,10 +80,10 @@ void writeImage(const char* inPathandName, unsigned short trueVal, ofstream& out
 
 				//cout << "writing" << endl;
 				outfile.write(reinterpret_cast<const char *>(pixel),size);
-			}
-			//write trueVal
-			outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
+			}	
 		}
+		//write trueVal
+		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(unsigned short));
 
 		//write image rotated 90 degrees clockwise
 		for(int j=0; j < ysize; j++)
@@ -118,6 +115,34 @@ void writeImage(const char* inPathandName, unsigned short trueVal, ofstream& out
 
 		//write image rotated 180 degrees
 		for(int i = xsize-1; i >= 0; i--)
+		{
+			for(int j = ysize-1; j >= 0; j--)
+			{
+				const Vec3b curPixel = image.at<Vec3b>(i,j);
+				pixel[0] = (type)curPixel[0];
+				pixel[1] = (type)curPixel[1];
+				pixel[2] = (type)curPixel[2];
+				outfile.write(reinterpret_cast<const char *>(pixel),size);
+			}
+		}
+		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
+
+		//write image horizontally flipped
+		for(int i = xsize-1; i >= 0; i--)
+		{
+			for(int j = 0; j < ysize; j++)
+			{
+				const Vec3b curPixel = image.at<Vec3b>(i,j);
+				pixel[0] = (type)curPixel[0];
+				pixel[1] = (type)curPixel[1];
+				pixel[2] = (type)curPixel[2];
+				outfile.write(reinterpret_cast<const char *>(pixel),size);
+			}
+		}
+		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
+
+		//write image vertically flipped
+		for(int i = 0; i < xsize; i++)
 		{
 			for(int j = ysize-1; j >= 0; j--)
 			{
@@ -202,7 +227,7 @@ int main (int argc, char** argv)
 {
 	if(argc != 3)
 	{
-		cout << "Usage: ./ImageFileCreator ImageConfigFile outfileName" << endl;
+		cout << "Usage: ./TrainingImageFileCreator ImageConfigFile outfileName" << endl;
 		return 0;
 	}
 
@@ -259,64 +284,64 @@ int main (int argc, char** argv)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<unsigned char>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == -1)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<char>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == 2)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<unsigned short>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == -2)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<short>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == 4)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<unsigned int>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == -4)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<int>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == 5)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<float>(folder.c_str(),trueVal,outfile);
 		}
 	else if(sizeByte == 6)
 		while(getline(imageConfig,line))
 		{
 			int comma = line.find(',');
-			string folder = line.substr(0,comma-1);
-			unsigned short trueVal = stoi(line.substr(comma+1,line.length()-1));
+			string folder = line.substr(0,comma);
+			unsigned short trueVal = stoi(line.substr(comma+1));
 			getImages<double>(folder.c_str(),trueVal,outfile);
 		}
 	imageConfig.close();
