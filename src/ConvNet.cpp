@@ -214,66 +214,16 @@ void Net::splitTrain(int epochs, bool useGPU)
 
 	int startValidationIndex = n_trainingData.size() * 0.9;
 
-	cl_int error = CL_SUCCESS;
-
-	vector<int> calculatedClasses(n_trainingData.size());
-	//get num of platforms and we will use the first one
-	cl_uint platformIdCount = 0;
-	clGetPlatformIDs (0, nullptr, &platformIdCount);
-	vector<cl_platform_id> platformIds (platformIdCount);
-	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
-
-	cl_uint gpudeviceIdCount = 0;
-	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_GPU, 0, nullptr, &gpudeviceIdCount);
-
-	if(useGPU && gpudeviceIdCount > 0)
+	gradCheck = false;
+	//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
+	//setAll3DVector(lastLayerGradients,1);
+	int numCorrect;
+	SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
+	for(int e=0; e< epochs; e++)
 	{
-
-	}
-	else
-	{
-		gradCheck = false;
-		//vector<vector<vector<double> > >& lastLayerGradients = n_layers.back()->getdNeurons();
-		//setAll3DVector(lastLayerGradients,1);
-		int numCorrect;
-		SoftmaxLayer* soft = (SoftmaxLayer*)n_layers.back();
-		for(int e=0; e< epochs; e++)
-		{
-			numCorrect = 0;
-			//set the next training image as the InputLayer for the net
-			for(int t=0; t< startValidationIndex; t++)
-			{
-				n_layers[0] = n_trainingData[t];
-
-				//run forward pass
-				forwardprop();
-
-				//set trueVal
-				soft->setTrueVal(n_trainingDataTrueVals[t]);
-
-				int predictedClass = soft->getPredictedClass();
-				if(predictedClass == n_trainingDataTrueVals[t])
-					numCorrect++;
-
-				//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
-				//and print for each epoch?
-
-				//run backward pass beside the weight no
-				backprop();
-
-				//
-
-			}
-			cout << "Epoch: " ;
-			cout << setw(ep.size()) << e+1;
-			cout << ", Accuracy: " << (double)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
-
-			//shuffleTrainingData();
-		}
-
-		cout << "Running Validation set" << endl;
 		numCorrect = 0;
-		for(int t=startValidationIndex; t< n_trainingData.size(); t++)
+		//set the next training image as the InputLayer for the net
+		for(int t=0; t< startValidationIndex; t++)
 		{
 			n_layers[0] = n_trainingData[t];
 
@@ -286,9 +236,41 @@ void Net::splitTrain(int epochs, bool useGPU)
 			int predictedClass = soft->getPredictedClass();
 			if(predictedClass == n_trainingDataTrueVals[t])
 				numCorrect++;
+
+			//get prediction and see if we are right. add up the amount of rights and wrongs get get accuracy
+			//and print for each epoch?
+
+			//run backward pass beside the weight no
+			backprop();
+
+			//
+
 		}
-		cout << "Validation run on Training data: " <<  "Accuracy: " << (double)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
+		cout << "Epoch: " ;
+		cout << setw(ep.size()) << e+1;
+		cout << ", Accuracy: " << (double)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
+
+		//shuffleTrainingData();
 	}
+
+	cout << "Running Validation set" << endl;
+	numCorrect = 0;
+	for(int t=startValidationIndex; t< n_trainingData.size(); t++)
+	{
+		n_layers[0] = n_trainingData[t];
+
+		//run forward pass
+		forwardprop();
+
+		//set trueVal
+		soft->setTrueVal(n_trainingDataTrueVals[t]);
+
+		int predictedClass = soft->getPredictedClass();
+		if(predictedClass == n_trainingDataTrueVals[t])
+			numCorrect++;
+	}
+	cout << "Validation run on Training data: " <<  "Accuracy: " << (double)numCorrect/(n_trainingData.size()-startValidationIndex)*100 << "%, " << numCorrect << " out of " << (n_trainingData.size()-startValidationIndex) << endl;
+	
 }
 
 void Net::train(int epochs)
@@ -456,7 +438,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
 
 	cl_uint deviceIdCount = 0;
-	cl_uint gpudeviceIdCount = 0;
+	//cl_uint gpudeviceIdCount = 0;
 	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
 
 	vector<cl_device_id> deviceIds(deviceIdCount);
@@ -1288,7 +1270,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	vector<cl_platform_id> platformIds (platformIdCount);
 	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
 	cl_uint deviceIdCount = 0;
-	cl_uint gpudeviceIdCount = 0;
+	//cl_uint gpudeviceIdCount = 0;
 	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
 
 	vector<cl_device_id> deviceIds(deviceIdCount);
@@ -1296,7 +1278,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 	//decide which one to use.
 	// if gpu available that can hold the mem, use it. 
-	//unsigned long forwardMemNeeded = getMemForward();
+	unsigned long forwardMemNeeded = getMemForward();
 
 	int q = 0; //device to use
 	if(useGPU)
@@ -1309,7 +1291,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 			{
 				cl_ulong memAmount;
 				CheckError(clGetDeviceInfo(deviceIds[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &memAmount, nullptr));
-				//if(memAmount > forwardMemNeeded)
+				if(memAmount > forwardMemNeeded)
 				{
 					q = i;
 				}

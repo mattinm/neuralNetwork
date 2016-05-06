@@ -245,7 +245,7 @@ private:
 	std::vector<std::vector<std::vector<double> > > n_blankVector;
 	InputLayer n_blankInput;
 	std::vector<Layer*> n_layers;
-	bool n_training;
+	//bool n_training;
 	bool n_hasConvLayer, n_hasMaxPoolLayer, n_hasRELULayer, n_hasLeakyRELULayer, n_hasSoftmax;
 
 	bool load(const char* filename);

@@ -84,6 +84,22 @@ double readDouble(ifstream& in)
 	return num;
 }
 
+string secondsToString(time_t seconds)
+{
+	time_t secs = seconds%60;
+	time_t mins = (seconds%3600)/60;
+	time_t hours = seconds/3600;
+	char out[100];
+	if(hours > 0)
+		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
+	else if(mins > 0)
+		sprintf(out,"%ld mins, %ld secs",mins,secs);
+	else
+		sprintf(out,"%ld secs",secs);
+	string outString = out;
+	return outString;
+}
+
 string secondsToString(float seconds)
 {
 	float secs = (int)seconds%60 + (seconds - (int)seconds);
@@ -280,7 +296,7 @@ int main(int argc, char** argv)
 	net.addTrainingData(images,trueVals);
 
 	starttime = time(NULL);
-	net.OpenCLTrain(epochs, true);
+	net.OpenCLTrain(epochs, false);
 	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
 }
