@@ -53,6 +53,7 @@ short xsize = -1, ysize = -1, zsize = -1;
 int imageNum = 0;
 int stride = 1;
 int globalStride = 1;
+unsigned short __globalTrueVal;
 
 template<typename type>
 void writeImage(Mat& image, ofstream& outfile)
@@ -83,7 +84,7 @@ void writeImage(Mat& image, ofstream& outfile)
 			}
 		}
 	}
-	
+	outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
 }
 
 template<typename type>
@@ -209,7 +210,7 @@ int main (int argc, char** argv)
 {
 	if(argc != 3 && argc != 4)
 	{
-		cout << "Usage: ./ImageSplitterFileCreator ImageConfigFile outfileName <stride=1>\nstride is optional, defaults to 1." << endl;
+		cout << "Usage: ./TrainingImageSplitterFileCreator ImageConfigFile outfileName <stride=1>\nstride is optional, defaults to 1." << endl;
 		return 0;
 	}
 
@@ -285,34 +286,36 @@ int main (int argc, char** argv)
 		 	trueVal = stoi(line.substr(comma1+1));
 		else
 			trueVal = stoi(line.substr(comma1+1,comma2));
-
+		__globalTrueVal = trueVal;
 		if(comma2 == string::npos)
 			stride = globalStride;
 		else
 		{
 			string stri = line.substr(comma2);
-			if(stri.find('=') != string::npos)
+			if(stri.find("stride=") != string::npos)
 			{
-				
+				stride = stoi(stri.substr(stri.find('=') + 1));
 			}
+			else
+				stride = stoi(stri);
 		}
 
 		if(sizeByte == 1)
-				getImages<unsigned char>(line.c_str(),outfile);
+				getImages<unsigned char>(folder.c_str(),outfile);
 		else if(sizeByte == -1)
-				getImages<char>(line.c_str(),outfile);
+				getImages<char>(folder.c_str(),outfile);
 		else if(sizeByte == 2)
-				getImages<unsigned short>(line.c_str(),outfile);
+				getImages<unsigned short>(folder.c_str(),outfile);
 		else if(sizeByte == -2)
-				getImages<short>(line.c_str(),outfile);
+				getImages<short>(folder.c_str(),outfile);
 		else if(sizeByte == 4)
-				getImages<unsigned int>(line.c_str(),outfile);
+				getImages<unsigned int>(folder.c_str(),outfile);
 		else if(sizeByte == -4)
-				getImages<int>(line.c_str(),outfile);
+				getImages<int>(folder.c_str(),outfile);
 		else if(sizeByte == 5)
-				getImages<float>(line.c_str(),outfile);
+				getImages<float>(folder.c_str(),outfile);
 		else if(sizeByte == 6)
-				getImages<double>(line.c_str(),outfile);
+				getImages<double>(folder.c_str(),outfile);
 	}
 
 	imageConfig.close();

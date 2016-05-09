@@ -234,7 +234,17 @@ int main(int argc, char** argv)
 
 	//set up net
 	Net net(xSize,ySize,zSize);
-
+	/*
+	net.setActivType(ActivLayer::RELU);
+	net.addConvLayer(10,1,3,0); 		//30x30x10
+	net.addActivLayer();
+	net.addMaxPoolLayer(2,2);		//15x15x10
+	net.addConvLayer(2,1,15,0);		//1x1x2
+	net.addActivLayer();
+	net.addSoftmaxLayer();
+	*/
+	
+	/*
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(20, 1, 3, 1); //numfilters, stride, filtersize, padding
 	net.addActivLayer(); 			//32x32x20
@@ -255,27 +265,28 @@ int main(int argc, char** argv)
 	net.addMaxPoolLayer(2,2);		//1x1x20
 	net.addConvLayer(4,1,3,1);		//1x1x4
 	net.addSoftmaxLayer();
-	/*
+	*/
+	
+	
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(6,1,5,0);
 	net.addActivLayer();
 	net.addMaxPoolLayer(2,2);
 
-	cout << "adding padded layer" << endl;
-	net.addConvLayer(7,1,3,1);
-	net.addActivLayer();
+	//net.addConvLayer(7,1,3,1);
+	//net.addActivLayer();
 
 	net.addConvLayer(10,1,3,0);
 	net.addActivLayer();
 	net.addMaxPoolLayer(3,3);
-	cout << "adding padded layer" << endl;
-	net.addConvLayer(5,1,3,1);	//4x4x5
-	net.addActivLayer();
+
+	//net.addConvLayer(5,1,3,1);	//4x4x5
+	//net.addActivLayer();
 
 	net.addConvLayer(2,1,4,0);
 	net.addActivLayer();
 	net.addSoftmaxLayer();
-	*/
+	
 
 
 	//get images and preprocess them

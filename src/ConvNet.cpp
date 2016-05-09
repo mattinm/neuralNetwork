@@ -910,7 +910,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 			/*
 			cout << "Forward softmax" << endl;
 			printVector(neur);*/
-			//cout << getMaxElementIndex(neur) << " | " << neur[getMaxElementIndex(neur)] << endl;;
+			//cout << getMaxElementIndex(neur) << " | " << neur[getMaxElementIndex(neur)] << endl;
 
 
 			////////////////////////////
@@ -2246,6 +2246,14 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, stri
 		return false;
 	}
 }
+/*
+bool Net::addFullyConnectedLayer(int outputSize)
+{
+	int num
+	return Net::addConvLayer(outputSize,)
+}
+*/
+
 
 bool Net::addMaxPoolLayer(int poolSize, int stride)
 {
@@ -2965,10 +2973,14 @@ void ConvLayer::initRandomWeights()
 {
 	default_random_engine gen(time(0));
 	int filterSize = c_weights[0].size();
-	double max = pow(filterSize * filterSize + 1, -.5); //* filterSize * filterSize
-	uniform_real_distribution<double> distr(-max,max);
+	//double max = pow(filterSize * filterSize + 1, -.5); //* filterSize * filterSize
+	//uniform_real_distribution<double> distr(-max,max);
 
-	//uniform_real_distribution<double> distr(-.8,.8); // + - .005 using meanSub or +- .05 worked better
+	double numInputs = filterSize * filterSize + 1;
+	double sqrtIn = pow(2/numInputs,.5);
+	normal_distribution<double> distr(0,1);
+
+	//uniform_real_distribution<double> distr(-.05,.05); // + - .005 using meanSub or +- .05 worked better
 	for(int f = 0;f<c_weights.size(); f++)
 	{
 		for(int i=0; i< c_weights[0].size(); i++)
@@ -2978,8 +2990,10 @@ void ConvLayer::initRandomWeights()
 				for(int k=0; k< c_weights[0][0][0].size(); k++)
 				{
 					//double rnum = distr(gen);
-					c_weights[f][i][j][k] = distr(gen);//rnum;
+					//c_weights[f][i][j][k] = distr(gen);//rnum;
 					//cout << rnum << endl;
+
+					c_weights[f][i][j][k] = distr(gen)*sqrtIn;
 				}
 			}
 		}
@@ -2987,7 +3001,7 @@ void ConvLayer::initRandomWeights()
 
 	for(int b=0; b< c_biases.size(); b++)
 	{
-		c_biases[b] = distr(gen);
+		c_biases[b] = 0;//distr(gen);
 	}
 
 

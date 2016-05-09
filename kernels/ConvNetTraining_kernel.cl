@@ -12,6 +12,7 @@
 
 #define RELU_CAP 5000 		 //max value that can pass through relu or leakyRelu
 #define LEAKY_RELU_CONST .01 //multiplication constant for negative values in leakyRelu
+#define l2Lambda 0.05
 
 /*************************************************
 *
@@ -284,6 +285,9 @@ __kernel void convolve_back_weights(__global double* weights, __global double* p
 		}
 		p += toNextBlockDown;
 	}
+
+	//L2 Reg?
+	myDerivative += l2Lambda * weights[x];// * weights[x];
 
 	weights[x] -= stepSize * myDerivative;
 	
