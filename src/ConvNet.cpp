@@ -492,7 +492,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, options, nullptr, nullptr));
 	cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel, reluBackKernel,
 		zeroPadBackKernel, softmaxBackKernel, maxPoolBackKernel, leakyReluBackKernel, convBackNeuronsKernel, 
-		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel;
+		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel;
 
 	//Create the kernels
 
@@ -513,6 +513,8 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	convBackBiasesKernel = clCreateKernel(CNTraining, "convolve_back_biases", &error);
 	CheckError(error);
 	convBackWeightsKernel = clCreateKernel(CNTraining, "convolve_back_weights", &error);
+	CheckError(error);
+	convBackWeightsMomentKernel = clCreateKernel(CNTraining, "convolve_back_weights_moment", &error);
 	CheckError(error);
 
 	zeroPadKernel = clCreateKernel(CNTraining, "zeroPad", &error);
@@ -647,6 +649,26 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 		}
 	}
 
+	//set up velocity stuff
+	vector<cl_mem> velocities;
+	double *zeroVels = new double[maxWeightSize];
+	for(int i=0; i< maxWeightSize; i++)
+		zeroVels[i] = 0.0;
+	for(int l=0; l < n_layers.size(); l++)
+	{
+		if(n_layers[l]->getType() == Net::CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)n_layers[l];
+			velocities.push_back(clCreateBuffer(context, CL_MEM_COPY_HOST_PTR, sizeof(double) * conv->getNumWeights(), zeroVels, &error));
+			CheckError(error);
+		}
+	}
+
+
+	delete zeroVels;
+	zeroVels = NULL;
+
+
 	//cout << "GPU Layers initialized" << endl;
 	
 	cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
@@ -683,6 +705,11 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 		string ep = to_string(epochs);
 
 		shuffleTrainingData();
+
+		if(epochs != 0 && epochs%5 == 0)
+		{
+			Net::stepSize *= .5;
+		}
 		
 		for(int r=0; r < n_trainingData.size(); r++)
 		{
@@ -901,7 +928,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 
 			if(Net::showErrors || Net::walkthrough)
 			{
-				cout << "max element was " << getMaxElementIndex(neur) << endl;
+				cout << "max element was " << getMaxElementIndex(neur)  << ". True: " << n_trainingDataTrueVals[r] << endl;
 				cout << "neur" << endl;
 				printVector(neur);
 				if(Net::walkthrough)
@@ -1087,20 +1114,41 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					//cout << "stepSize host " << Net::stepSize << endl;
 					
 					//cout << "running convBackWeightsKernel" << endl;
-					clSetKernelArg(convBackWeightsKernel, 0, sizeof(cl_mem), &(weights[curConvLayer]));
-					clSetKernelArg(convBackWeightsKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
-					clSetKernelArg(convBackWeightsKernel, 2, sizeof(cl_mem), neurons);
-					clSetKernelArg(convBackWeightsKernel, 3, sizeof(int), &(hyper[3])); // depth
-					clSetKernelArg(convBackWeightsKernel, 4, sizeof(int), &(hyper[1])); // stride
-					clSetKernelArg(convBackWeightsKernel, 5, sizeof(int), &paddedWidth);
-					clSetKernelArg(convBackWeightsKernel, 6, sizeof(int), &(hyper[0])); // filterSize
-					clSetKernelArg(convBackWeightsKernel, 7, sizeof(int), &(hyper[4])); // numFilters
-					clSetKernelArg(convBackWeightsKernel, 8, sizeof(double), &(mystepSize));
+					if(!Net::useMomentum) // no momentum
+					{
+						clSetKernelArg(convBackWeightsKernel, 0, sizeof(cl_mem), &(weights[curConvLayer]));
+						clSetKernelArg(convBackWeightsKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
+						clSetKernelArg(convBackWeightsKernel, 2, sizeof(cl_mem), neurons);
+						clSetKernelArg(convBackWeightsKernel, 3, sizeof(int), &(hyper[3])); // depth
+						clSetKernelArg(convBackWeightsKernel, 4, sizeof(int), &(hyper[1])); // stride
+						clSetKernelArg(convBackWeightsKernel, 5, sizeof(int), &paddedWidth);
+						clSetKernelArg(convBackWeightsKernel, 6, sizeof(int), &(hyper[0])); // filterSize
+						clSetKernelArg(convBackWeightsKernel, 7, sizeof(int), &(hyper[4])); // numFilters
+						clSetKernelArg(convBackWeightsKernel, 8, sizeof(double), &(mystepSize));
 
-					globalWorkSize[0] = (size_t)conv->getNumWeights();
-					//cout << "starting kernel " << endl;
-					CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsKernel, 1,
-						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+						globalWorkSize[0] = (size_t)conv->getNumWeights();
+						//cout << "starting kernel " << endl;
+						CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+					else // with momentum
+					{
+						clSetKernelArg(convBackWeightsMomentKernel, 0, sizeof(cl_mem), &(weights[curConvLayer]));
+						clSetKernelArg(convBackWeightsMomentKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
+						clSetKernelArg(convBackWeightsMomentKernel, 2, sizeof(cl_mem), neurons);
+						clSetKernelArg(convBackWeightsMomentKernel, 3, sizeof(int), &(hyper[3])); // depth
+						clSetKernelArg(convBackWeightsMomentKernel, 4, sizeof(int), &(hyper[1])); // stride
+						clSetKernelArg(convBackWeightsMomentKernel, 5, sizeof(int), &paddedWidth);
+						clSetKernelArg(convBackWeightsMomentKernel, 6, sizeof(int), &(hyper[0])); // filterSize
+						clSetKernelArg(convBackWeightsMomentKernel, 7, sizeof(int), &(hyper[4])); // numFilters
+						clSetKernelArg(convBackWeightsMomentKernel, 8, sizeof(double), &(mystepSize));
+						clSetKernelArg(convBackWeightsMomentKernel, 9, sizeof(cl_mem), &(velocities[curConvLayer]));
+
+						globalWorkSize[0] = (size_t)conv->getNumWeights();
+						//cout << "starting kernel " << endl;
+						CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsMomentKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
 
 					if(Net::walkthrough)
 					{
@@ -1115,7 +1163,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 
 					//backprop the padding if necessary
 					
-					if(hyper[5] != 0 and false)
+					if(hyper[5] != 0)
 					{
 						globalWorkSize[0] = (size_t)conv->getPaddedNeuronSize();
 						if(Net::walkthrough)
@@ -1270,7 +1318,6 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	vector<cl_platform_id> platformIds (platformIdCount);
 	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
 	cl_uint deviceIdCount = 0;
-	//cl_uint gpudeviceIdCount = 0;
 	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
 
 	vector<cl_device_id> deviceIds(deviceIdCount);
@@ -2725,6 +2772,32 @@ unsigned long Net::getMem() const
 	return memMinusForwardNeuron + forwardNeuronMem;
 }
 
+void Net::printTrainingDistribution() const
+{
+	int max = n_trainingDataTrueVals[0];
+	for(int i=0; i< n_trainingDataTrueVals.size(); i++)
+	{
+		if(n_trainingDataTrueVals[i] > max)
+			max = n_trainingDataTrueVals[i];
+	}
+	//cout << "max " << max << endl;
+
+	int *amounts = new int[max+1];
+	for(int i=0; i<= max; i++)
+		amounts[i] = 0;
+	for(int i=0; i < n_trainingDataTrueVals.size(); i++)
+	{
+		amounts[(int)n_trainingDataTrueVals[i]]++;
+	}
+
+	for(int i=0; i <= max; i++)
+	{
+		printf("True val: %d. Amount: %d.   %.4lf%%\n",i,amounts[i],amounts[i]/(double)n_trainingDataTrueVals.size()*100);
+	}
+
+	delete amounts;
+}
+
 /**********************
  * InputLayer
  **********************/
@@ -2978,7 +3051,8 @@ void ConvLayer::initRandomWeights()
 
 	double numInputs = filterSize * filterSize + 1;
 	double sqrtIn = pow(2/numInputs,.5);
-	normal_distribution<double> distr(0,1);
+	//normal_distribution<double> distr(0,1);
+	normal_distribution<double> distr(0,sqrtIn);
 
 	//uniform_real_distribution<double> distr(-.05,.05); // + - .005 using meanSub or +- .05 worked better
 	for(int f = 0;f<c_weights.size(); f++)
@@ -2990,10 +3064,10 @@ void ConvLayer::initRandomWeights()
 				for(int k=0; k< c_weights[0][0][0].size(); k++)
 				{
 					//double rnum = distr(gen);
-					//c_weights[f][i][j][k] = distr(gen);//rnum;
+					c_weights[f][i][j][k] = distr(gen);//rnum;
 					//cout << rnum << endl;
 
-					c_weights[f][i][j][k] = distr(gen)*sqrtIn;
+					//c_weights[f][i][j][k] = distr(gen)*sqrtIn;
 				}
 			}
 		}
@@ -3624,7 +3698,7 @@ const int ActivLayer::a_type = Net::ACTIV_LAYER;
 
 const double ActivLayer::LEAKY_RELU_CONST = .01;
 
-const double ActivLayer::RELU_CAP = 5000;
+const double ActivLayer::RELU_CAP = 5; // was 5000
 
 ActivLayer::ActivLayer(const Layer& prevLayer, const int activationType)
 {
@@ -4292,6 +4366,102 @@ void maxSubtraction(vector<double>& vect)
 	}
 }
 
+void vectorSubtraction(vector<vector<vector<double> > >& vect, double toSub)
+{
+	for(int i=0; i < vect.size(); i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				vect[i][j][k] -= toSub;
+			}
+		}
+	}
+}
+
+void vectorDivision(vector<vector<vector<double> > >& vect, double toDiv)
+{
+	for(int i=0; i < vect.size(); i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				vect[i][j][k] /= toDiv;
+			}
+		}
+	}
+}
+
+void vectorDivision(vector<vector<vector<vector<double> > > >& vect, double toDiv)
+{
+	for(int a = 0; a < vect.size(); a++)
+		for(int i=0; i < vect[a].size(); i++)
+		{
+			for(int j=0; j< vect[a][i].size(); j++)
+			{
+				for(int k=0; k< vect[a][i][j].size(); k++)
+				{
+					vect[a][i][j][k] /= toDiv;
+				}
+			}
+		}
+}
+
+void preprocessByFeature(vector<vector<vector<vector<double> > > >& vect)
+{
+	vector<vector<vector<double> > > meanVector;
+	resize3DVector(meanVector,vect[0].size(),vect[0][0].size(),vect[0][0][0].size());
+	setAll3DVector(meanVector,0);
+
+	//get mean by feature
+	for(int a=0; a < vect.size(); a++)
+	{
+		for(int i=0; i < vect[a].size(); i++)
+		{
+			for(int j=0; j< vect[a][i].size(); j++)
+			{
+				for(int k=0; k< vect[a][i][j].size(); k++)
+				{
+					meanVector[i][j][k] += vect[a][i][j][k];
+				}
+			}
+		}
+	}
+	vectorDivision(vect, vect.size());
+
+	//subtract the means
+	for(int a=0; a < vect.size(); a++)
+		for(int i=0; i < meanVector.size(); i++)
+			for(int j=0; j < meanVector[i].size(); j++)
+				for(int k=0; k < meanVector[i][j].size(); k++)
+					vect[a][i][j][k] -= meanVector[i][j][k];
+
+
+
+}
+
+void preprocessCollective(vector<vector<vector<vector<double> > > >& vect)
+{
+	double m = mean(vect);
+	double sdev = stddev(vect,m);
+
+	for(int a=0; a < vect.size(); a++)
+	{
+		for(int i=0; i< vect[a].size();i++)
+		{
+			for(int j=0; j< vect[a][i].size(); j++)
+			{
+				for(int k=0; k< vect[a][i][j].size(); k++)
+				{
+					vect[a][i][j][k] = (vect[a][i][j][k] - m)/sdev;
+				}
+			}
+		}
+	}
+}
+
 void preprocess(vector<vector<vector<vector<double> > > >& vect)
 {
 	for(int v=0; v< vect.size(); v++)
@@ -4332,6 +4502,50 @@ double mean(const vector<vector<vector<double> > > & vect)
 	}
 	mean /= vect.size() * vect[0].size() * vect[0][0].size();
 	return mean;
+}
+
+double mean(const vector<vector<vector<vector<double> > > > & vect)
+{
+	double mean = 0;
+	for(int a=0; a < vect.size(); a++)
+		for(int i=0; i< vect[a].size(); i++)
+		{
+			for(int j=0; j< vect[a][i].size(); j++)
+			{
+				for(int k=0; k< vect[a][i][j].size(); k++)
+				{
+					mean += vect[a][i][j][k];
+				}
+			}
+		}
+	mean /= vect.size() * vect[0].size() * vect[0][0].size();
+	return mean;
+}
+
+double stddev(const vector<vector<vector<vector<double> > > > & vect) 
+{
+	double m = mean(vect);
+	return stddev(vect,m);
+}
+
+double stddev(const vector<vector<vector<vector<double> > > > & vect, double mean) 
+{
+	double sqdiffs = 0;
+	double temp;
+	for(int a=0; a < vect.size(); a++)
+		for(int i=0; i< vect[a].size();i++)
+		{
+			for(int j=0; j< vect[a][i].size(); j++)
+			{
+				for(int k=0; k< vect[a][i][j].size(); k++)
+				{
+					temp = (vect[a][i][j][k] - mean);
+					sqdiffs += temp * temp;
+				}
+			}
+		}
+	double sqdiffMean = sqdiffs / (vect.size() * vect[0].size() * vect[0][0].size() * vect[0][0][0].size());
+	return sqrt(sqdiffMean);
 }
 
 double stddev(const vector<vector<vector<double> > > & vect) 

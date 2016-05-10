@@ -205,6 +205,7 @@ public:
 	static const int SOFTMAX_LAYER = 4;
 	static const bool walkthrough = false;
 	static const bool showErrors = false;
+	static const bool useMomentum = true;
 	static bool gradCheck;
 	static const double GRADCHECK_H;
 
@@ -235,6 +236,7 @@ public:
 	void shuffleTrainingData(int times=1);
 	unsigned long getMem() const;
 	unsigned long getMemForward() const;
+	void printTrainingDistribution() const;
 
 	bool save(const char* filename);
 private:
@@ -287,15 +289,31 @@ void maxSubtraction(std::vector<double>& vect);
 
 void meanSubtraction(std::vector<double>& vect);
 
+void vectorSubtraction(std::vector<std::vector<std::vector<double> > >& vect, double toSub);
+
+void vectorDivision(std::vector<std::vector<std::vector<double> > >& vect, double toDiv);
+
+void vectorDivision(std::vector<std::vector<std::vector<std::vector<double> > > >& vect, double toDiv);
+
 double mean(const std::vector<std::vector<std::vector<double> > >& vect);
+
+double mean(const std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
 
 double stddev(const std::vector<std::vector<std::vector<double> > >& vect);
 
 double stddev(const std::vector<std::vector<std::vector<double> > >& vect, double mean);
 
+double stddev(const std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
+
+double stddev(const std::vector<std::vector<std::vector<std::vector<double> > > >& vect, double mean);
+
 void preprocess(std::vector<std::vector<std::vector<double> > >& vect);
 
 void preprocess(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
+
+void preprocessCollective(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
+
+void preprocessByFeature(std::vector<std::vector<std::vector<std::vector<double> > > >& vect);
 
 void meanSubtraction(std::vector<std::vector<std::vector<double> > >& vect);
 

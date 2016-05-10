@@ -10,9 +10,11 @@
 //			in backprop search that array for your index and if they match, += the dneurons value into it
 
 
-#define RELU_CAP 5000 		 //max value that can pass through relu or leakyRelu
+#define RELU_CAP 5.0 		 //max value that can pass through relu or leakyRelu
 #define LEAKY_RELU_CONST .01 //multiplication constant for negative values in leakyRelu
-#define l2Lambda 0.05
+#define l2Lambda 0.05		 //multiplication constant for L2 Regularization
+#define MOMENT_CONST .9 	 //multiplication constant for momentum
+#define MAX_NORM_CAP 6.0 	 //max absolute value a weight can have
 
 /*************************************************
 *
@@ -286,10 +288,69 @@ __kernel void convolve_back_weights(__global double* weights, __global double* p
 		p += toNextBlockDown;
 	}
 
+	//L2 Reg
+	myDerivative += l2Lambda * weights[x];
+
+	//max-norm
+	double myWeight = weights[x];
+	myWeight -= stepSize * myDerivative;
+	if(myWeight > MAX_NORM_CAP)
+		weights[x] = MAX_NORM_CAP;
+	else if(myWeight < -MAX_NORM_CAP)
+		weights[x] = -MAX_NORM_CAP;
+	else
+		weights[x] = myWeight;
+
+	//w/out max-norm
+	//weights[x] -= stepSize * myDerivative;
+	
+}
+__kernel void convolve_back_weights_moment(__global double* weights, __global double* prevNeurons, __global double* dneurons,
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* velocity)
+{
+	
+	int x = get_global_id(0);
+	int numWeightsPerFilter = filterSize * filterSize * depth;
+	int d = x/numWeightsPerFilter; //myFilter
+
+	int p = x % numWeightsPerFilter; // my place in the filter
+
+	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
+	double myDerivative = 0;
+
+	int depxstr = depth * stride;
+	int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
+
+	for(int a=0; a < numBlocksPerRow; a++)
+	{
+		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
+		{
+			myDerivative += prevNeurons[p] * dneurons[d];
+			p += depxstr;
+			d += numFilters;
+		}
+		p += toNextBlockDown;
+	}
+
 	//L2 Reg?
 	myDerivative += l2Lambda * weights[x];// * weights[x];
 
-	weights[x] -= stepSize * myDerivative;
+	double myVel = velocity[x];
+	myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
+
+	//max-norm
+	double myWeight = weights[x];
+	myWeight += myVel;
+	if(myWeight > MAX_NORM_CAP)
+		weights[x] = MAX_NORM_CAP;
+	else if(myWeight < -MAX_NORM_CAP)
+		weights[x] = -MAX_NORM_CAP;
+	else
+		weights[x] = myWeight;
+
+	//w/out max-norm
+	//weights[x] += myVel;
+	//velocity[x] = myVel;
 	
 }
 

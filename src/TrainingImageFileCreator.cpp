@@ -84,7 +84,7 @@ void writeImage(const char* inPathandName, unsigned short trueVal, ofstream& out
 		}
 		//write trueVal
 		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(unsigned short));
-
+		/*
 		//write image rotated 90 degrees clockwise
 		for(int j=0; j < ysize; j++)
 		{
@@ -154,6 +154,7 @@ void writeImage(const char* inPathandName, unsigned short trueVal, ofstream& out
 			}
 		}
 		outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(short));
+		*/
 	}
 }
 
