@@ -244,7 +244,7 @@ int main(int argc, char** argv)
 	net.addSoftmaxLayer();
 	*/
 	
-	/*
+	
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(20, 1, 3, 1); //numfilters, stride, filtersize, padding
 	net.addActivLayer(); 			//32x32x20
@@ -265,10 +265,10 @@ int main(int argc, char** argv)
 	net.addMaxPoolLayer(2,2);		//1x1x20
 	net.addConvLayer(2,1,3,1);		//1x1x4
 	net.addSoftmaxLayer();
-	*/
 	
 	
 	
+	/*
 	net.setActivType(ActivLayer::LEAKY_RELU);
 	net.addConvLayer(6,1,5,0);
 	net.addActivLayer();
@@ -287,6 +287,7 @@ int main(int argc, char** argv)
 	net.addConvLayer(2,1,4,0);
 	net.addActivLayer();
 	net.addSoftmaxLayer();
+	*/
 	
 
 	//get images and preprocess them
@@ -311,7 +312,7 @@ int main(int argc, char** argv)
 	net.printTrainingDistribution();
 
 	starttime = time(NULL);
-	net.OpenCLTrain(epochs, false);
+	net.OpenCLTrain(epochs, true);
 	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
 

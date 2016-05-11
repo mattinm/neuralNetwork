@@ -68,19 +68,14 @@
 #include <cassert>
 #include <thread>
 //#include <time.h>
-
-
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
 #else
  	#include "CL/cl.h"
 #endif
 
-//#include "ConvNet_kernel.cl.h"
 
 #define GETMAX(x,y) (x > y) ? x: y
-
- typedef unsigned long ulong;
 
 using namespace std;
 
@@ -111,6 +106,11 @@ Net::Net(const char* filename)
 	load(filename);
 }
 
+bool Net::isActive() const
+{
+	return (n_layers.size() > 0) && (n_layers.back()->getType() == Net::SOFTMAX_LAYER);
+}
+
 Net::Net(int inputWidth, int inputHeight, int inputDepth)
 {
 	init(inputWidth,inputHeight,inputDepth);
@@ -127,8 +127,6 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 	resize3DVector(n_blankVector,inputWidth,inputHeight,inputDepth);
 	n_blankInput.setImage(&n_blankVector, &n_blankVector);
 	n_layers.push_back(&n_blankInput);
-
-	//Init OpenCL stuff
 }
 
 Net::~Net()
@@ -1365,10 +1363,12 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 	//build the program
 	cl_program CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), context);
+	cl_program CNForwardT = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), context);
 	const char* options = "-cl-single-precision-constant";
 	//cout << "Build Program " << clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), options, nullptr, nullptr) << endl;
 	const cl_device_id* deviceToBuild = &(deviceIds[q]);
 	CheckError(clBuildProgram(CNForward, 1, deviceToBuild, options, nullptr, nullptr));
+	CheckError(clBuildProgram(CNForwardT, 1, deviceToBuild, options, nullptr, nullptr));
 	cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel;
 
 	//Create the kernels
@@ -1425,7 +1425,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 			//cout << "get some weights" << endl;
 			double* w = conv->getWeights();
 			//cout << "weights got" << endl;
-			weights.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+			weights.push_back(clCreateBuffer(context, /*CL_MEM_READ_ONLY |*/ CL_MEM_COPY_HOST_PTR,
 				sizeof(double) * numWeights, w, &error));
 			weightSizes.push_back(numWeights);
 			CheckError(error);
@@ -1433,7 +1433,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 			//get biases too
 			int numBiases = conv->getNumBiases();
 			double *b = conv->getBiases();
-			biases.push_back(clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+			biases.push_back(clCreateBuffer(context, /*CL_MEM_READ_ONLY |*/ CL_MEM_COPY_HOST_PTR,
 				sizeof(double) * numBiases, b, &error));
 			biasSizes.push_back(numBiases);
 			CheckError(error);
@@ -1505,8 +1505,11 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	int softSize = n_layers.back()->getNumNeurons();
 	vector<double> neur(softSize);
 
+
+	//cout << "Starting going through the images" << endl;
 	for(int r=0; r < n_trainingData.size(); r++)
 	{
+		//cout << "image " << r << endl;
 		//set the new image(s)
 		int startForThisRound = r;
 		if(r < n_trainingData.size())
@@ -1544,6 +1547,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 				if(hyper[5] != 0) //if padding != 0
 				{
+					//cout << "running zeroPad" << endl;
 					//run the zeroPad Kernel
 					clSetKernelArg(zeroPadKernel, 0, sizeof(cl_mem), prevNeurons);
 					clSetKernelArg(zeroPadKernel, 1, sizeof(cl_mem), neurons);
@@ -1566,6 +1570,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 					neurons = prevNeurons;
 					prevNeurons = temp;
 
+					//cout << "end zero pad" << endl;
 				}
 				
 				clSetKernelArg(convKernel, 0, sizeof(cl_mem), prevNeurons);
@@ -1582,11 +1587,13 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 				globalWorkSize[0] = (size_t)n_layers[i]->getNumNeurons();
 				
+				//cout << "start kernel" << endl;
 				CheckError(clEnqueueNDRangeKernel(queue, convKernel, 1,
 					nullptr,
 					globalWorkSize,
 					nullptr, 0, nullptr, nullptr));
 				curConvLayer++;
+				//cout << "end kernel" << endl;
 			}
 			else if(layers[i] == &maxPoolKernel)
 			{
@@ -2439,7 +2446,10 @@ bool Net::load(const char* filename)
 	int lineNum = 0;
 
 	if(!file.is_open())
+	{
+		cout << "File was unable to open" << endl;
 		return false;
+	}
 
 	getline(file, line);
 	if(line == "NET1.0")
@@ -2640,6 +2650,7 @@ bool Net::load(const char* filename)
 		return true;
 	}
 	file.close();
+	cout << "Unknown file format" << endl;
 	return false;
 }
 

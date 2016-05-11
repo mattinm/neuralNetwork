@@ -232,6 +232,7 @@ public:
 	std::vector<std::vector<std::vector<double> > >* getBlankVectorPointer();
 	int getPredictedClass();
 	void gradientCheck();
+	bool isActive() const;
 	double calcLoss(int indexOfTrueVal);
 	void shuffleTrainingData(int times=1);
 	unsigned long getMem() const;

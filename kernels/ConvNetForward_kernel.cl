@@ -1,4 +1,4 @@
-#define RELU_CAP 5000
+#define RELU_CAP 5.0
 #define LEAKY_RELU_CONST .01
 
 
@@ -71,34 +71,35 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 }
 
 __kernel void convolve(__global double* prevNeurons, __global double* neurons,
-	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
+	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
 {
 	//int myHeight = myBlock/numBlocksPerRow;
 	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
 	//int myRowShift = (myBlock%numBlocksPerRow) * strxdep;
 
-	int width = prevwidth;
-	int depth = prevdepth;
+	//int width = prevwidth;
+	//int depth = prevdepth;
 
 	int i = get_global_id(0);
-	int numBlocksPerRow = (width - filterSize)/stride + 1;
+	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	
 	//int myFilter = i/(numBlocksPerRow * numBlocksPerRow);
 	int myFilter = i%numFilters;
-	int filterLayerSize = filterSize * depth;
+	int filterLayerSize = filterSize * prevdepth;
 	int j = myFilter * filterSize * filterLayerSize; // myFilterStartIndex
 	int myBlock = (i/numFilters) % (numBlocksPerRow*numBlocksPerRow);//numBlocksCanFitInSource;
 	
-	int strxdep = stride * depth;
-	int myStartIndex = ((myBlock/numBlocksPerRow) * width * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
-	int h = myStartIndex;
+	int strxdep = stride * prevdepth;
+	//int myStartIndex = ((myBlock/numBlocksPerRow) * width * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
+	//int h = myStartIndex;
+	int h = ((myBlock/numBlocksPerRow) * prevwidth * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
 
-	int amountToNextLayer = (width - filterSize) * depth;
+	int amountToNextLayer = (prevwidth - filterSize) * prevdepth;
 
 	//can I do the pointer arithmetic better?
 
 	double result = 0;
-	__constant double* curWeight = &(weights[j]);
+	__global double* curWeight = &(weights[j]);
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
@@ -120,7 +121,33 @@ __kernel void softmax(__global double *prevNeurons, __global double *neurons,
 	neurons[i] = exp(prevNeurons[i])/denominator;
 }
 
+__kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
+	int prevheight, int depth)
+{
+	int x = get_global_id(0);
 
+	//turn x into i, j, k
+	const int nw = prevwidth + 2*pad;
+	const int nh = prevheight + 2*pad;
+
+	int ourDepth = x%depth;
+	int ourCol = ((x-ourDepth)/depth) % nw;
+	int ourRow = ((x-ourDepth)/depth) / nw;
+
+	if(ourRow < pad || ourRow >= nh-pad || ourCol < pad || ourCol >= nw-pad)
+		neurons[x] = 0;
+	else
+	{
+		int i = ourRow - pad;
+		int j = ourCol - pad;
+		int k = ourDepth;
+		int oldIndex = (i * prevwidth * depth) + (j * depth) + k;
+
+		neurons[x] = prevNeurons[oldIndex];
+	}
+}
+
+/* old kernel?
 __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
@@ -146,6 +173,7 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 		neurons[x] = prevNeurons[oldIndex];
 	}
 }
+*/
 
 
 

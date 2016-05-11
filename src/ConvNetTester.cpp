@@ -185,6 +185,11 @@ int main(int argc, char** argv)
 
 	time_t starttime,endtime;
 
+	//set up net
+	Net net(argv[1]);
+	if(!net.isActive())
+		return 0;
+
 
 	ifstream in;
 	in.open(argv[2]);
@@ -210,8 +215,7 @@ int main(int argc, char** argv)
 		exit(0);
 	}
 
-	//set up net
-	Net net(argv[1]);
+	
 
 	//get images and preprocess them
 	vector<imVector> images(0);
@@ -227,8 +231,6 @@ int main(int argc, char** argv)
 	//preprocessCollective(images);
 	preprocess(images);
 	//meanSubtraction(images);
-
-	//net.shuffleTrainingData(10);
 
 	net.addTrainingData(images,trueVals);
 

@@ -335,12 +335,19 @@ __kernel void convolve_back_weights_moment(__global double* weights, __global do
 	//L2 Reg?
 	myDerivative += l2Lambda * weights[x];// * weights[x];
 
+	//normal momentum
+	//double myVel = velocity[x];
+	//myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
+
+	//Nesterov Accelerated Momentum
 	double myVel = velocity[x];
+	double prevVel = myVel;
 	myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
 
 	//max-norm
 	double myWeight = weights[x];
-	myWeight += myVel;
+	//myWeight += myVel; //normal momentum
+	myWeight += -MOMENT_CONST * prevVel + (1+MOMENT_CONST) * myVel; // Nesterov Momentum
 	if(myWeight > MAX_NORM_CAP)
 		weights[x] = MAX_NORM_CAP;
 	else if(myWeight < -MAX_NORM_CAP)
@@ -465,5 +472,76 @@ __kernel void copyArray(__global double* source, __global double* dest)
 {
 	int x = get_global_id(0);
 	dest[x] = source[x];
+}
+
+/*************************************************
+*
+*	Forward-only kernels
+*
+*************************************************/
+
+__kernel void reluF(__global double* prevNeurons, __global double* neurons)
+{
+	const int i = get_global_id(0);
+	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
+		neurons[i] = prevNeurons[i];
+	else if(prevNeurons < 0)
+		neurons[i] = 0;
+	else
+		neurons[i] = RELU_CAP;
+}
+
+//numthreads should be size of neurons and prevNeurons (should be same)
+__kernel void leakyReluF(__global double* prevNeurons, __global double* neurons)
+{
+	const int i = get_global_id(0);
+	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
+	double newVal;
+	if(prevNeurons[i] >= 0) 
+		newVal = prevNeurons[i];
+	else 
+		newVal = prevNeurons[i] * LEAKY_RELU_CONST;
+
+	if(-RELU_CAP <= newVal && newVal <= RELU_CAP)
+		neurons[i] = newVal;
+	else if(newVal < -RELU_CAP)
+		neurons[i] = -RELU_CAP;
+	else
+		neurons[i] = RELU_CAP;
+}
+
+__kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
+	int prevwidth, int prevdepth, int poolsize, int stride)
+{
+	int width = prevwidth;
+	int depth = prevdepth;
+	
+	//getting the start index of a flattened 3d array for maxPool
+	int x = get_global_id(0);
+	int i = x;
+	int strxdep = stride * depth;
+	int i_div_dep = i / depth;
+	int numBlocksPerRow = (width - poolsize)/stride + 1; 
+	//int ourHeight = i/numBlocksPerRow/depth;
+	//int ourRowStartIndex = ourHeight * width * stride * depth + i%depth;
+	//int ourRowShift = ((i/depth)%numBlocksPerRow) * stride * depth;
+	//int ourStartIndex = ourRowStartIndex + ourRowShift;
+	//i = ourRowStartIndex + ourRowShift;
+
+	i = (i_div_dep/numBlocksPerRow * width * strxdep + i%depth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
+	
+	int amountToNextLayer = (width - poolsize) * depth;
+	double maxVal = prevNeurons[i];
+	for(int row = 0; row < poolsize; row++)
+	{
+		for(int col = 0; col < poolsize; col++)
+		{
+			if(prevNeurons[i] > maxVal)
+				maxVal = prevNeurons[i];
+			i += depth;
+		}
+		i += amountToNextLayer;
+	}
+	neurons[x] = maxVal;
 }
 
