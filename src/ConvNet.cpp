@@ -1346,9 +1346,9 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	size_t valueSize;
 	CheckError(clGetDeviceInfo(deviceIds[q], CL_DEVICE_NAME, 0, NULL, &valueSize));
 	char* name = new char[valueSize];
-	cout << "Using device " << q << ": ";
+	//cout << "Using device " << q << ": ";
 	CheckError(clGetDeviceInfo(deviceIds[q], CL_DEVICE_NAME, valueSize, name, nullptr));
-	cout << name << endl;
+	//cout << name << endl;
 
 	//make the context
 	const cl_context_properties contextProperties[] = 
@@ -1674,7 +1674,11 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 		CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * softSize, 
 			neur.data(), 0, nullptr, nullptr));
-		calculatedClasses[startForThisRound++] = getMaxElementIndex(neur);
+		calculatedClasses[startForThisRound] = getMaxElementIndex(neur);
+
+		//cout << "confidences " << n_trainingData.size() << " " << n_confidences.size() << endl;
+		n_confidences[startForThisRound] = neur;
+		startForThisRound++;
 		//cout << getMaxElementIndex(neur) << " | " << neur[getMaxElementIndex(neur)] << endl;;
 	}
 
@@ -1683,12 +1687,23 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	if(calculatedClasses.size() == n_trainingDataTrueVals.size())
 	{
 		int numCorrect = 0;
+		int errorCounts[softSize];
+		for(int i=0; i < softSize; i++)
+			errorCounts[i] = 0;
 		for(int i=0; i< calculatedClasses.size(); i++)
 		{
 			if(calculatedClasses[i] == n_trainingDataTrueVals[i])
 				numCorrect++;
+			else
+				errorCounts[(int)n_trainingDataTrueVals[i]]++;
+
 		}
 		cout << "Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(double)calculatedClasses.size()*100 << "%" << endl;
+
+		for(int i=0; i < softSize; i++)
+		{
+			printf("Errors when trueVal was %d: %d\n",i,errorCounts[i]);
+		}
 	}/*
 	else
 	{
@@ -1718,6 +1733,18 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	clReleaseProgram(CNForward);
 
 	clReleaseContext(context);
+
+	//cout << "end newRun" << endl;
+}
+
+void Net::getConfidences(vector<vector<double> >& confidences) const
+{
+	confidences = n_confidences;
+}
+
+int Net::getNumCategories() const
+{
+	return n_numCategories;
 }
 
 void Net::run(bool useGPU) // run only goes forward and will be on the GPU if possible.
@@ -2331,6 +2358,7 @@ bool Net::addSoftmaxLayer()
 		SoftmaxLayer *soft = new SoftmaxLayer(*(n_layers.back()));
 		n_layers.push_back(soft);
 		n_hasSoftmax = true;
+		n_numCategories = soft->getNumNeurons();
 		return true;
 	}
 	catch(...)
@@ -2354,10 +2382,25 @@ void Net::addTrainingData(const vector<vector<vector<vector<double> > > >& train
 void Net::addRealData(const vector<vector<vector<vector<double> > > >& realData)
 {
 	const vector<vector<vector<vector<double> > > >& r = realData;
-	n_results.resize(r.size());	
+	n_results.resize(n_results.size() + r.size());	
 	for(int n=0; n< r.size(); n++)
 	{
 		InputLayer *in = new InputLayer(r[n],&n_blankVector);
+		n_trainingData.push_back(in);
+	}
+}
+
+void Net::setData(const vector<vector<vector<vector<double> > > >& data)
+{
+	n_results.clear(); n_results.resize(0);
+	n_confidences.clear(); n_confidences.resize(0);
+	n_trainingData.clear(); n_trainingData.resize(0);
+
+	n_results.resize(data.size());
+	n_confidences.resize(data.size());
+	for(int n=0; n < data.size(); n++)
+	{
+		InputLayer *in = new InputLayer(data[n],&n_blankVector);
 		n_trainingData.push_back(in);
 	}
 }
@@ -4658,6 +4701,22 @@ int getMaxElementIndex(const vector<double>& vect)
 	}
 
 	return maxIndex;
+}
+
+double getMaxElement(const vector<double>& vect)
+{
+	if(vect.size() < 1)
+		return -1;
+	double max = vect[0];
+	for(int i=1; i< vect.size(); i++)
+	{
+		if(vect[i] > max)
+		{
+			max = vect[i];
+		}
+	}
+
+	return max;
 }
 
 std::string LoadKernel (const char* name)

@@ -156,7 +156,7 @@ double getNextImage(ifstream& in, imVector& dest, short x, short y, short z, sho
 	}
 
 	//return the trueVal
-	return (double)readUShort(in);;
+	return (double)readUShort(in);
 }
 
 void convertBinaryToVector(ifstream& in, vector<imVector>& dest, vector<double>& trueVals, short sizeByte, short xSize, short ySize, short zSize)
@@ -314,7 +314,7 @@ int main(int argc, char** argv)
 	starttime = time(NULL);
 	net.OpenCLTrain(epochs, true);
 	endtime = time(NULL);
-	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
+	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". - " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
 
 	if(saveWeights)
 	{

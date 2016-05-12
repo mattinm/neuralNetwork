@@ -222,15 +222,18 @@ public:
 	void clear();
 	void OpenCLTrain(int epochs, bool useGPU = true);
 	void newRun(std::vector<int>& calculatedClasses, bool useGPU = true);
+	void getConfidences(std::vector<std::vector<double> >& confidences) const;
 	bool setActivType(int activationType);
 	void train(int epochs);
 	void splitTrain(int epochs, bool useGPU = true);
 	void runTrainingData();
 	void miniBatchTrain(int epochs, int batchSize);
 	void addRealData(const std::vector<std::vector<std::vector<std::vector<double> > > >& realData);
+	void setData(const std::vector<std::vector<std::vector<std::vector<double> > > >& data);
 	void run(bool useGPU=true);
 	std::vector<std::vector<std::vector<double> > >* getBlankVectorPointer();
 	int getPredictedClass();
+	int getNumCategories() const;
 	void gradientCheck();
 	bool isActive() const;
 	double calcLoss(int indexOfTrueVal);
@@ -244,18 +247,18 @@ private:
 	static int n_activationType;
 	std::vector<InputLayer*> n_trainingData;
 	std::vector<double> n_results;
+	std::vector<std::vector<double> > n_confidences;
 	std::vector<double> n_trainingDataTrueVals;
 	std::vector<std::vector<std::vector<double> > > n_blankVector;
 	InputLayer n_blankInput;
 	std::vector<Layer*> n_layers;
 	//bool n_training;
 	bool n_hasConvLayer, n_hasMaxPoolLayer, n_hasRELULayer, n_hasLeakyRELULayer, n_hasSoftmax;
+	int n_numCategories;
 
 	bool load(const char* filename);
 	void init(int, int, int);
 	unsigned long getMaxNeuronSize() const;
-	
-
 };
 
 
@@ -326,12 +329,10 @@ void compressImage(std::vector<std::vector<std::vector<double> > >& vect, double
 
 double vectorESum(const std::vector<double> &source);
 
-int getMaxElementIndex(const std::vector<double> &vect); 
+int getMaxElementIndex(const std::vector<double> &vect);
+
+double getMaxElement(const std::vector<double> &vect); 
 
 void vectorClone(const std::vector<std::vector<std::vector<double> > > &source, std::vector<std::vector<std::vector<double> > > &dest);
-
-
-
-
 
 #endif /* defined(____ConvNet__) */

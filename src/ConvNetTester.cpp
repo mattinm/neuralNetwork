@@ -7,7 +7,7 @@
 *	This program is for running trained CNNs that were trained using ConvNet.
 *
 *	Usage:
-*		./ConvNetTester CNNConfigFile.txt binaryTrainingImagesFile
+*		./ConvNetTester CNNConfigFile.txt binaryTrainingImagesFile <gpu=true>
 *
 *************************************/
 
@@ -177,10 +177,24 @@ void convertBinaryToVector(ifstream& in, vector<imVector>& dest, vector<double>&
 
 int main(int argc, char** argv)
 {
-	if(argc != 3)
+	if(argc != 3 && argc != 4)
 	{
-		cout << "Usage: ./ConvNetTester CNNConfigFile.txt binaryTrainingImagesFile" << endl;
+		cout << "Usage: ./ConvNetTester CNNConfigFile.txt binaryTrainingImagesFile <gpu=true>" << endl;
 		return 0;
+	}
+
+	bool useGPU = true;
+
+	if(argc == 4)
+	{
+		string gpu(argv[3]);
+		if(gpu.find("gpu=") != string::npos)
+		{
+			if(gpu.find("false") != string::npos || gpu.find("False") != string::npos)
+			{
+				useGPU = false;
+			}
+		}
 	}
 
 	time_t starttime,endtime;
@@ -239,7 +253,7 @@ int main(int argc, char** argv)
 	vector<int> calced(0);
 
 	starttime = time(NULL);
-	net.newRun(calced,false);
+	net.newRun(calced,useGPU);
 	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". " << endl;
 }
