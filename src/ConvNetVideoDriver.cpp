@@ -78,13 +78,13 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
  * (i.e. the stride is less than the subimage size), then the confidences from each subimage is added.
  */
-void breakUpImage(const char* imageName, Net& net)
+void breakUpImage(Mat& image, Net& net, VideoWriter& outVideo)
 {
 	//cout << "starting breakUpImage" << endl;
-	Mat image = imread(imageName,1);
+	//Mat image = imread(imageName,1);
 	int numrows = image.rows;
 	int numcols = image.cols;
-	printf("%s rows: %d, cols: %d\n",imageName, numrows,numcols);
+	//printf("%s rows: %d, cols: %d\n",imageName, numrows,numcols);
 	int length = 0;
 	char tempout[255];
 
@@ -98,11 +98,7 @@ void breakUpImage(const char* imageName, Net& net)
 
 	int numrowsm32 = numrows-32;
 	int numcolsm32 = numcols-32;
-	if(numrows < 32 || numcols < 32)
-	{
-		printf("The image %s is too small in at least one dimension. Minimum size is 32x32.\n",imageName);
-		return;
-	}
+
 	for(int i=0; i <= numrowsm32; i+=stride)
 	{
 		imageRow.resize(0);
@@ -110,10 +106,10 @@ void breakUpImage(const char* imageName, Net& net)
 		{
 			//cout << string(length,'\b');
 		}
-		sprintf(tempout,"row %d of %d (%d)\n",i,numrowsm32,numrows);
+		//sprintf(tempout,"row %d of %d (%d)\n",i,numrowsm32,numrows);
 		string tempstring(tempout); length = tempstring.length();
 		//cout << "row " << i << " of " << numrows << endl;
-		cout << tempout;
+		//cout << tempout;
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
@@ -176,25 +172,57 @@ void breakUpImage(const char* imageName, Net& net)
 			}
 		}
 	}
+	
+
+	outVideo << outputMat;
+}
+
+void breakUpVideo(const char* videoName, Net& net)
+{
+	VideoCapture video(videoName);
+	if(!video.isOpened())
+	{
+		cout << "Could not open video: " << videoName << endl;
+		return;
+	}
+
+	if(video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
+	{
+		printf("The video %s is too small in at least one dimension. Minimum size is 32x32.\n",videoName);
+		return;
+	}
+
+
+
 	char outName[255];
-	string origName(imageName);
+	string origName(videoName);
 	size_t dot = origName.rfind('.');
 	const char *noExtension = origName.substr(0,dot).c_str();
 	const char *extension = origName.substr(dot).c_str();
 
 	sprintf(outName,"%s_prediction%s",noExtension,extension);
-	cout << "writing " << outName << endl;
-	imwrite(outName, outputMat);
+	//cout << "writing " << outName << endl;
 
-	
+	VideoWriter outVideo(outName, 
+	 video.get(CV_CAP_PROP_FOURCC),
+	 video.get(CV_CAP_PROP_FPS), 
+	 Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
+
+	Mat frame;
+	unsigned long count = 0;
+	while(video.read(frame))
+	{
+		printf("Frame %ld of %.0lf\n", ++count, video.get(CV_CAP_PROP_FRAME_COUNT));
+		breakUpImage(frame, net, outVideo);
+	}
 }
 
 int checkExtensions(char* filename)
 {
 	string name = filename;
-	if(name.rfind(".jpg")  == name.length() - 4) return 1;
-	if(name.rfind(".jpeg") == name.length() - 5) return 1;
-	if(name.rfind(".png")  == name.length() - 4) return 1;
+	if(name.rfind(".avi")  == name.length() - 4) return 1;
+	if(name.rfind(".mpeg") == name.length() - 5) return 1;
+	if(name.rfind(".mp4")  == name.length() - 4) return 1;
 	return 0;
 }
 
@@ -202,7 +230,7 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetFullImageDriver cnnConfig.txt imageOrFolderPath (stride=1) (gpu=true)\n");
+		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath (stride=1) (gpu=true)\n");
 		return -1;
 	}
 
@@ -307,7 +335,7 @@ int main(int argc, char** argv)
 
 	for(int i=0; i < filenames.size(); i++)
 	{
-		breakUpImage(filenames[i].c_str(),net);
+		breakUpVideo(filenames[i].c_str(),net);
 	}
 
 	//cout << "returning" << endl;

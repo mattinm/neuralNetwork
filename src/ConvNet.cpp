@@ -104,6 +104,7 @@ void Net::debug()
 Net::Net(const char* filename)
 {
 	load(filename);
+	initOpenCL();
 }
 
 bool Net::isActive() const
@@ -127,6 +128,33 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 	resize3DVector(n_blankVector,inputWidth,inputHeight,inputDepth);
 	n_blankInput.setImage(&n_blankVector, &n_blankVector);
 	n_layers.push_back(&n_blankInput);
+
+	initOpenCL();
+}
+
+void Net::initOpenCL()
+{
+	cl_int error;
+	//get num of platforms and we will use the first one
+	platformIdCount = 0;
+	clGetPlatformIDs (0, nullptr, &platformIdCount);
+	platformIds.resize(platformIdCount);
+	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
+	deviceIdCount = 0;
+	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
+
+	deviceIds.resize(deviceIdCount);
+	clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_ALL, deviceIdCount, deviceIds.data(), nullptr);
+
+	const cl_context_properties contextProperties[] = 
+	{
+		CL_CONTEXT_PLATFORM,
+		reinterpret_cast<cl_context_properties>(platformIds[0]),
+		0,0
+	};
+	context = clCreateContext(contextProperties, deviceIdCount, deviceIds.data(), 
+	nullptr, nullptr, &error);
+	CheckError(error);
 }
 
 Net::~Net()
@@ -146,7 +174,7 @@ Net::~Net()
 		delete n_trainingData[i];
 	}
 	*/
-	
+	clReleaseContext(context);
 }
 
 void Net::printLayerDims()
@@ -1307,9 +1335,10 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 
 void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 {
+	//cout << "start newrun" << endl;
 	cl_int error = CL_SUCCESS;
-
 	calculatedClasses.resize(n_trainingData.size());
+	/*
 	//get num of platforms and we will use the first one
 	cl_uint platformIdCount = 0;
 	clGetPlatformIDs (0, nullptr, &platformIdCount);
@@ -1320,7 +1349,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 
 	vector<cl_device_id> deviceIds(deviceIdCount);
 	clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_ALL, deviceIdCount, deviceIds.data(), nullptr);
-
+	*/
 	//decide which one to use.
 	// if gpu available that can hold the mem, use it. 
 	unsigned long forwardMemNeeded = getMemForward();
@@ -1351,6 +1380,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	//cout << name << endl;
 
 	//make the context
+	/*
 	const cl_context_properties contextProperties[] = 
 	{
 		CL_CONTEXT_PLATFORM,
@@ -1360,15 +1390,16 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	cl_context context = clCreateContext(contextProperties, deviceIdCount, deviceIds.data(), 
 	nullptr, nullptr, &error);
 	CheckError(error);
+	*/
 
 	//build the program
 	cl_program CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), context);
-	cl_program CNForwardT = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), context);
-	const char* options = "-cl-single-precision-constant";
+	//cl_program CNForwardT = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), context);
+	//const char* options = "-cl-single-precision-constant";
 	//cout << "Build Program " << clBuildProgram(CNForward, gpudeviceIdCount, gpudeviceIds.data(), options, nullptr, nullptr) << endl;
 	const cl_device_id* deviceToBuild = &(deviceIds[q]);
-	CheckError(clBuildProgram(CNForward, 1, deviceToBuild, options, nullptr, nullptr));
-	CheckError(clBuildProgram(CNForwardT, 1, deviceToBuild, options, nullptr, nullptr));
+	CheckError(clBuildProgram(CNForward, 1, deviceToBuild, nullptr, nullptr, nullptr));
+	//CheckError(clBuildProgram(CNForwardT, 1, deviceToBuild, options, nullptr, nullptr));
 	cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel;
 
 	//Create the kernels
@@ -1732,7 +1763,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	clReleaseKernel(softmaxKernel);
 	clReleaseProgram(CNForward);
 
-	clReleaseContext(context);
+	//clReleaseContext(context);
 
 	//cout << "end newRun" << endl;
 }
@@ -2211,7 +2242,7 @@ void Net::run(bool useGPU) // run only goes forward and will be on the GPU if po
 		clReleaseKernel(softmaxKernel);
 		clReleaseProgram(CNForward);
 
-		clReleaseContext(context);
+		//clReleaseContext(context);
 
 
 	}

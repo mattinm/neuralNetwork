@@ -258,7 +258,17 @@ private:
 
 	bool load(const char* filename);
 	void init(int, int, int);
+	void initOpenCL();
 	unsigned long getMaxNeuronSize() const;
+
+	//opencl stuff
+	cl_uint platformIdCount;
+	cl_uint deviceIdCount;
+	std::vector<cl_platform_id> platformIds;
+	std::vector<cl_device_id> deviceIds;
+	cl_context context;
+	//cl_program CNForward;
+	//cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel;
 };
 
 
