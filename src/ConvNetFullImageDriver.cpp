@@ -26,6 +26,22 @@ int imageNum = 0;
 int stride = 1;
 bool __useGPU = true;
 
+double vectorSum(const vector<double>& vect)
+{
+	double sum=0;
+	for(int i=0; i<vect.size(); i++)
+		sum += vect[i];
+	return sum;
+}
+
+double vectorSumSq(const vector<double>& vect)
+{
+	double sum=0;
+	for(int i=0; i<vect.size(); i++)
+		sum += vect[i] * vect[i];
+	return sum;
+}
+
 bool allElementsEquals(vector<double>& array)
 {
 	for(int i=1; i < array.size(); i++)
@@ -150,8 +166,8 @@ void breakUpImage(const char* imageName, Net& net)
 			curImage++;
 		}
 	}
-	//cout << endl;
-	//printVector(fullImage);
+	
+
 
 	//now we have the confidences for every pixel in the image
 	//so get the category for each pixel and make a new image from it
@@ -160,12 +176,34 @@ void breakUpImage(const char* imageName, Net& net)
 	{
 		for(int j=0; j < numcols; j++)
 		{
+			/*//straight ratios
+			double sum = vectorSum(fullImage[i][j]);
+			for(int n=0; n < fullImage[i][j].size(); n++)
+			{
+				fullImage[i][j][n] /= sum;
+			}*/
+
+			//square ratios
+			double sumsq = vectorSumSq(fullImage[i][j]);
+			for(int n=0; n < fullImage[i][j].size(); n++)
+			{
+				fullImage[i][j][n] = fullImage[i][j][n] * fullImage[i][j][n] / sumsq;
+			}
+
+			//write the pixel
 			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
-			int maxEle = getMaxElementIndex(fullImage[i][j]);
+			//int maxEle = getMaxElementIndex(fullImage[i][j]);
 			if(allElementsEquals(fullImage[i][j]))
 			{
 				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
 			}
+			else
+			{
+				outPix[0] = 255*fullImage[i][j][0]; // blue
+				outPix[1] = 0;
+				outPix[2] = 255*fullImage[i][j][1]; // red
+			}
+			/*
 			else if(maxEle == 0)
 			{
 				outPix[0] = 255; outPix[1] = 0; outPix[2] = 0; // blue
@@ -174,6 +212,7 @@ void breakUpImage(const char* imageName, Net& net)
 			{
 				outPix[0] = 0; outPix[1] = 0; outPix[2] = 255; // red
 			}
+			*/
 		}
 	}
 	char outName[255];

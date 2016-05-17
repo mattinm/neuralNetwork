@@ -74,7 +74,7 @@ void writeImage(Mat& image, ofstream& outfile)
 		{
 			for(int j=0; j < ysize; j++)
 			{
-				const Vec3b curPixel = image.at<Vec3b>(i,j);
+				const Vec3b& curPixel = image.at<Vec3b>(i,j);
 				pixel[0] = (type)curPixel[0];
 				pixel[1] = (type)curPixel[1];
 				pixel[2] = (type)curPixel[2];
@@ -83,8 +83,13 @@ void writeImage(Mat& image, ofstream& outfile)
 				outfile.write(reinterpret_cast<const char *>(pixel),size);
 			}
 		}
+		outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
 	}
-	outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
+	else
+	{
+		cout << "Unsupported image type" << endl;
+	}
+	
 }
 
 template<typename type>
@@ -100,26 +105,14 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 		printf("The image %s is too small in at least one dimension. Minimum size is %dx%d.\n",imageName,xsize,ysize);
 		return;
 	}
-	for(int i=0; i < numrows-xsize; i+=stride)
-	{
-		for(int j=0; j< numcols-xsize; j+=stride)
-		{
-			//Mat out = image.create(i+96, j+32, CV_8UC3);
-			Mat out = image(Range(i,i+32),Range(j,j+32));
 
+	cout << "Breaking with stride = " << stride << " and true val " << __globalTrueVal << endl;
+	for(int i=0; i <= numrows-ysize; i+=stride)
+	{
+		for(int j=0; j<= numcols-xsize; j+=stride)
+		{
+			Mat out = image(Range(i,i+ysize),Range(j,j+xsize));
 			writeImage<type>(out,outfile);
-			/*
-			char outNumString[20];
-			string outPathandName = outPath;
-			if(outPathandName.rfind("/") != outPathandName.length()-1)
-			{
-				outPathandName.append(1,'/');
-			}
-			outPathandName.append(baseOutputName);
-			sprintf(outNumString,"%d",imageNum++);
-			outPathandName.append(outNumString);
-			outPathandName.append(extension);
-			imwrite(outPathandName,out);*/
 			numThisImage++;
 			imageNum++;
 		}

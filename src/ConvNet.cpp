@@ -129,6 +129,8 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 	n_blankInput.setImage(&n_blankVector, &n_blankVector);
 	n_layers.push_back(&n_blankInput);
 
+	__device = -1;
+
 	initOpenCL();
 }
 
@@ -1333,6 +1335,16 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	clReleaseContext(context);
 }
 
+bool Net::setDevice(unsigned int device)
+{
+	cl_uint canDouble;
+	CheckError(clGetDeviceInfo(deviceIds[device], CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE, sizeof(cl_uint), &canDouble, nullptr));
+	if(canDouble == 0)
+		return false;
+	__device = device;
+	return true;
+}
+
 void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 {
 	//cout << "start newrun" << endl;
@@ -1353,9 +1365,11 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	//decide which one to use.
 	// if gpu available that can hold the mem, use it. 
 	unsigned long forwardMemNeeded = getMemForward();
-
-	int q = 0; //device to use
-	if(useGPU)
+	int q = 0;
+	if(__device != -1)
+		q = __device;
+	 //device to use
+	else if(useGPU)
 	{
 		for(int i = 1; i < deviceIdCount; i++)
 		{

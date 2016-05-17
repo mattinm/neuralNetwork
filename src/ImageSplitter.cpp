@@ -32,9 +32,9 @@ void breakUpImage(char* imageName)
 		printf("The image %s is too small in at least one dimension. Minimum size is 32x32.\n",imageName);
 		return;
 	}
-	for(int i=0; i < numrows-32; i+=stride)
+	for(int i=0; i <= numrows-32; i+=stride)
 	{
-		for(int j=0; j< numcols-32; j+=stride)
+		for(int j=0; j<= numcols-32; j+=stride)
 		{
 			//Mat out = image.create(i+96, j+32, CV_8UC3);
 			Mat out = image(Range(i,i+32),Range(j,j+32));

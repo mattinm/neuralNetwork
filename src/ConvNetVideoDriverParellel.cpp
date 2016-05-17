@@ -14,44 +14,77 @@
 #include <fstream>
 #include <time.h>
 #include <thread>
-#include <cassert>
+#include <pthread.h>
+#ifdef __APPLE__
+ 	#include "OpenCL/opencl.h"
+#else
+ 	#include "CL/cl.h"
+#endif
 
 
 using namespace cv;
 using namespace std;
 
+pthread_mutex_t frameMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t submitMutex = PTHREAD_MUTEX_INITIALIZER;
+
+int curFrame = 0;
+int curSubmittedFrame = 0;
+
 typedef vector<vector<vector<double> > > imVector;
+
+struct Frame
+{
+	int frameNum;
+	Mat mat;
+};
+
+vector<Frame*> waitingFrames(0);
 
 char *inPath, *outPath;
 int imageNum = 0;
 int stride = 1;
 bool __useGPU = true;
 
-int __width;
-int __height;
+VideoCapture __video;
+VideoWriter __outVideo;
 
-string secondsToString(time_t seconds)
+//puts frame and frameNum in parameters
+void getNextFrame(Mat& frame, unsigned int& frameNum)
 {
-	time_t secs = seconds%60;
-	time_t mins = (seconds%3600)/60;
-	time_t hours = seconds/3600;
-	char out[100];
-	if(hours > 0)
-		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
-	else if(mins > 0)
-		sprintf(out,"%ld mins, %ld secs",mins,secs);
-	else
-		sprintf(out,"%ld secs",secs);
-	string outString = out;
-	return outString;
+	pthread_mutex_lock(&frameMutex);
+	__video.read(frame);
+	frameNum = count++;
+	pthread_mutex_unlock(&frameMutex);
+	//printf("Frame %ld of %.0lf\n", ++count, __video.get(CV_CAP_PROP_FRAME_COUNT));
+	//breakUpImage(frame, net, outVideo);
 }
 
-double vectorSumSq(const vector<double>& vect)
+void submitFrame(Mat& frame, unsigned int frameNum)
 {
-	double sum=0;
-	for(int i=0; i<vect.size(); i++)
-		sum += vect[i] * vect[i];
-	return sum;
+	pthread_mutex_lock(&submitMutex);
+	if(frameNum = curSubmittedFrame)
+	{
+		__outVideo << frame;
+		curSubmittedFrame++;
+		while()
+	}
+	else
+	{
+		Frame *newframe = new Frame;
+		newframe->mat = frame; newframe->frameNum
+		waitingFrames.resize(waitingFrames.size() + 1);
+		int i=0;
+		while(waitingFrames[i].frameNum < frameNum)
+			i++;
+		for(int j=waitingFrames.size()-1; j >= i+1; j--)
+		{
+			waitingFrames[j] = waitingFrames[j-1];
+		}
+		waitingFrames[i] = newframe;
+
+	}
+	pthread_mutex_unlock(&submitMutex);
 }
 
 bool allElementsEquals(vector<double>& array)
@@ -62,6 +95,20 @@ bool allElementsEquals(vector<double>& array)
 			return false;
 	}
 	return true;
+}
+
+int getNumDevices()
+{
+	cl_int error;
+	//get num of platforms and we will use the first one
+	cl_uint platformIdCount = 0;
+	clGetPlatformIDs (0, nullptr, &platformIdCount);
+	vector<cl_platform_id> platformIds(platformIdCount);
+	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
+	cl_uint deviceIdCount = 0;
+	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
+
+	return (int)deviceIdCount
 }
 
 void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
@@ -180,32 +227,10 @@ void breakUpImage(Mat& image, Net& net, VideoWriter& outVideo)
 	//now we have the confidences for every pixel in the image
 	//so get the category for each pixel and make a new image from it
 	Mat outputMat(numrows,numcols,CV_8UC3);
-	assert(__width == outputMat.cols);
-	assert(__height == outputMat.rows);
 	for(int i=0; i < numrows; i++)
 	{
 		for(int j=0; j < numcols; j++)
 		{
-			double sumsq = vectorSumSq(fullImage[i][j]);
-			for(int n=0; n < fullImage[i][j].size(); n++)
-			{
-				fullImage[i][j][n] = fullImage[i][j][n] * fullImage[i][j][n] / sumsq;
-			}
-
-			//write the pixel
-			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
-			//int maxEle = getMaxElementIndex(fullImage[i][j]);
-			if(allElementsEquals(fullImage[i][j]))
-			{
-				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
-			}
-			else
-			{
-				outPix[0] = 255*fullImage[i][j][0]; // blue
-				outPix[1] = 0;
-				outPix[2] = 255*fullImage[i][j][1]; // red
-			}
-			/*//old
 			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
 			int maxEle = getMaxElementIndex(fullImage[i][j]);
 			if(allElementsEquals(fullImage[i][j]))
@@ -219,23 +244,24 @@ void breakUpImage(Mat& image, Net& net, VideoWriter& outVideo)
 			else if(maxEle == 1)
 			{
 				outPix[0] = 0; outPix[1] = 0; outPix[2] = 255; // red
-			}*/
+			}
 		}
 	}
-	outVideo.write(outputMat);
-	//outVideo << outputMat;
+	
+
+	outVideo << outputMat;
 }
 
 void breakUpVideo(const char* videoName, Net& net)
 {
-	VideoCapture video(videoName);
-	if(!video.isOpened())
+	__video.open(videoName);
+	if(!__video.isOpened())
 	{
 		cout << "Could not open video: " << videoName << endl;
 		return;
 	}
 
-	if(video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
+	if(__video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || __video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
 	{
 		printf("The video %s is too small in at least one dimension. Minimum size is 32x32.\n",videoName);
 		return;
@@ -247,39 +273,33 @@ void breakUpVideo(const char* videoName, Net& net)
 	string origName(videoName);
 	size_t dot = origName.rfind('.');
 	const char *noExtension = origName.substr(0,dot).c_str();
-	//const char *extension = origName.substr(dot).c_str();
+	const char *extension = origName.substr(dot).c_str();
 
-	sprintf(outName,"%s_prediction%s",noExtension,".avi");//extension);
+	sprintf(outName,"%s_prediction%s",noExtension,extension);
 	//cout << "writing " << outName << endl;
 
-	VideoWriter outVideo(outName, 
-	 CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
-	 10,//video.get(CV_CAP_PROP_FPS), 
-	 Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
+	__outVideo.open(outName, 
+	 video.get(CV_CAP_PROP_FOURCC),
+	 video.get(CV_CAP_PROP_FPS), 
+	 Size(__video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
-	//cout << "FPS = " << video.get(CV_CAP_PROP_FPS) << endl;
-
-	__width = video.get(CV_CAP_PROP_FRAME_WIDTH);
-	__height = video.get(CV_CAP_PROP_FRAME_HEIGHT);
-
-	if(!outVideo.isOpened())
+	int numDevices = getNumDevices();
+	for(int i=0; i < numDevices; i++)
 	{
-		cout << "Could not open out video" << endl;
-		return;
+		//start new thread for each device. Any thread for a device that does not support double will return early.
+
 	}
 
+
+	/*
 	Mat frame;
 	unsigned long count = 0;
-	//int i=1;
-	while(video.read(frame))
+	while(__video.read(frame))
 	{
-		//printf("Frame %ld of %.0lf\n", ++count, video.get(CV_CAP_PROP_FRAME_COUNT));
-		printf("Frame %ld. \t%3.4lf%%\n", ++count, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
+		printf("Frame %ld of %.0lf\n", ++count, __video.get(CV_CAP_PROP_FRAME_COUNT));
 		breakUpImage(frame, net, outVideo);
-		//if(i == 20) break;
-		//i++;
 	}
-
+	/**/
 }
 
 int checkExtensions(char* filename)
@@ -300,8 +320,6 @@ int main(int argc, char** argv)
 	}
 
 	inPath = argv[2];
-
-	time_t starttime, endtime;
 
 	if(argc > 3)
 	{
@@ -402,10 +420,7 @@ int main(int argc, char** argv)
 
 	for(int i=0; i < filenames.size(); i++)
 	{
-		starttime = time(NULL);
 		breakUpVideo(filenames[i].c_str(),net);
-		endtime = time(NULL);
-		cout << "Time for video " << filenames[i] << ": " << secondsToString(endtime - starttime) << endl;
 	}
 
 	//cout << "returning" << endl;

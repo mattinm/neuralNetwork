@@ -239,6 +239,7 @@ public:
 	double calcLoss(int indexOfTrueVal);
 	void shuffleTrainingData(int times=1);
 	unsigned long getMem() const;
+	bool setDevice(unsigned int device);
 	unsigned long getMemForward() const;
 	void printTrainingDistribution() const;
 
@@ -267,8 +268,7 @@ private:
 	std::vector<cl_platform_id> platformIds;
 	std::vector<cl_device_id> deviceIds;
 	cl_context context;
-	//cl_program CNForward;
-	//cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel;
+	cl_uint __device;
 };
 
 
