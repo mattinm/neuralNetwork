@@ -295,13 +295,14 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath (stride=1) (gpu=true)\n");
+		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> gpu=<true/false> device=<device#>\n");
 		return -1;
 	}
 
 	inPath = argv[2];
 
 	time_t starttime, endtime;
+	int device = -1;
 
 	if(argc > 3)
 	{
@@ -319,6 +320,10 @@ int main(int argc, char** argv)
 					__useGPU = false;
 				}
 			}
+			else if(arg.find("device=") != string::npos)
+			{
+				device = stoi(arg.substr(arg.find("=")+1));
+			}
 		}
 	}
 
@@ -329,7 +334,7 @@ int main(int argc, char** argv)
 		return 0;
 
 
-
+	net.setDevice(device);
 	//go through all images in the folder
 	bool isDirectory;
 	struct stat s;
