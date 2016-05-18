@@ -28,31 +28,17 @@
  *		make a new add function. bool addNewLayer(Layer&, hyperparameters needed)
  *
  *
- *	Todo: For CPU maxPool forward and backprop, have forwardprop create a vector the size of m_neurons
- *		  and keep track of which indexes feed into each neuron. in backprop set all to 0 and += on the
- *		  saved indexes whatever m_dneurons is for that element
  *
  *	Todo: Fix batch gradient descent?
- *
- *	Todo: init random weights on Gaussian distr. w = np.random.randn(n) * sqrt(2.0/n)
- *		  where n is number of inputs to neuron
- *
- *	Todo: loss based on size of weights
  *
  *	Todo: fix miniBatchTrain?
  *
  *	Todo: implement a gradient check using numerical gradients.
  *
- * 	Todo: make a special forwardprop and backprop for ConvLayer for when padding = 0.
- *
  * 	Todo: make a semi-shallow copy of net (and layers?) that has it's own neurons but all point to the 
  *		  same weights?
- *	
- *	Todo: Threads! and GPUs!
  *
  *	Todo: Check build status for each device and run accordingly
- *
- *	Todo: zeroPad kernel
  *
  *************************************************************************************************/
 
@@ -223,10 +209,7 @@ void Net::runTrainingData()
 			numCorrect++;
 	}
 	cout << "Run on Training data: " <<  "Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
-
 }
-
-
 
 void Net::splitTrain(int epochs, bool useGPU)
 {
@@ -271,14 +254,12 @@ void Net::splitTrain(int epochs, bool useGPU)
 			//run backward pass beside the weight no
 			backprop();
 
-			//
-
 		}
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
 		cout << ", Accuracy: " << (double)numCorrect/(startValidationIndex)*100 << "%, " << numCorrect << " out of " << startValidationIndex << endl;
 
-		//shuffleTrainingData();
+		shuffleTrainingData();
 	}
 
 	cout << "Running Validation set" << endl;
@@ -341,9 +322,6 @@ void Net::train(int epochs)
 
 			//run backward pass beside the weight no
 			backprop();
-
-			//
-
 		}
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
@@ -418,9 +396,6 @@ void Net::miniBatchTrain(int epochs, int batchSize)
 		cout << "Epoch: " ;
 		cout << setw(ep.size()) << e+1;
 		cout << ", Accuracy: " << (double)numCorrect/n_trainingData.size()*100 << "%, " << numCorrect << " out of " << n_trainingData.size() << endl;
-
-		
-
 	}
 }
 
@@ -476,7 +451,9 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	// if gpu available that can hold the mem, use it. 
 	unsigned long memNeeded = getMem();
 	int q = 0; //device to use
-	if(useGPU)
+	if(__device != -1)
+		q = __device;
+	else if(useGPU)
 	{
 		for(int i = 1; i < deviceIdCount; i++)
 		{
@@ -696,8 +673,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	delete zeroVels;
 	zeroVels = NULL;
 
-
-	//cout << "GPU Layers initialized" << endl;
 	
 	cl_mem n = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(double) * maxNeuronSize,
 			nullptr, &error);
@@ -1060,10 +1035,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					hyper[6] = c_prevNeuronHeight;
 					*/
 
-					//backprop neurons
-
-					//problem is in convBackNeuronsKernel (probably)
-					
+					//backprop neurons					
 					//cout << "running convBackNeuronsKernel" << endl;
 					ConvLayer* conv = (ConvLayer*)n_layers[i];
 					vector<int> hyper = conv->getKernelHyperParameters();
@@ -1135,9 +1107,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 						getchar();
 					}
 					
-					
-					
-
 					//backprop weights
 					//cout << "stepSize host " << Net::stepSize << endl;
 					
@@ -1190,7 +1159,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					}
 
 					//backprop the padding if necessary
-					
 					if(hyper[5] != 0)
 					{
 						globalWorkSize[0] = (size_t)conv->getPaddedNeuronSize();
@@ -1234,9 +1202,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 							getchar();
 						}
 					}
-					
-					
-
 					curConvLayer--;
 				}
 
@@ -1257,7 +1222,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 				neurons = prevNeurons;
 				prevNeurons = temp;
 			}
-
 		}
 
 		//cout << "calculatedClasses" << endl;
@@ -1337,6 +1301,8 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 
 bool Net::setDevice(unsigned int device)
 {
+	if(device >= deviceIds.size())
+		return false;
 	cl_uint canDouble;
 	CheckError(clGetDeviceInfo(deviceIds[device], CL_DEVICE_NATIVE_VECTOR_WIDTH_DOUBLE, sizeof(cl_uint), &canDouble, nullptr));
 	if(canDouble == 0)
@@ -1350,6 +1316,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	//cout << "start newrun" << endl;
 	cl_int error = CL_SUCCESS;
 	calculatedClasses.resize(n_trainingData.size());
+	n_confidences.resize(n_trainingData.size());
 	/*
 	//get num of platforms and we will use the first one
 	cl_uint platformIdCount = 0;

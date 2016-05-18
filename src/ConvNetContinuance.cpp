@@ -186,15 +186,15 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		cout << "Usage: ./ConvNetTrainer newCNNConfigFile.txt binaryTrainingImagesFile outname=<outputName.txt> epochs=<#epochs> gpu=<true/false> device=<device#>";
-		cout << "\n\tThe outputName and epochs are optional keyword arguments. If no outname is specified the weights are not saved. Epochs defaults to 1. Defaults to using GPU" << endl;
+		cout << "Usage: ./ConvNetTrainer CNNConfigFile.txt binaryTrainingImagesFile outname=<outputName.txt> epochs=<#epochs> gpu=<true/false> device=<device#>";
+		cout << "\n\tThe outputName and epochs are optional keyword arguments. If no outname is specified the weights will be saved over the old weights. Epochs defaults to 1. Defaults to using GPU" << endl;
 		return 0;
 	}
 
 	time_t starttime,endtime;
 
 	string outputName;
-	bool saveWeights = false;
+	bool saveNewWeights = false;
 	int epochs = 1;
 	int device = -1;
 	bool useGPU = true;
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
 			if(arg.find("outname=") != string::npos)
 			{
 				outputName = arg.substr(arg.find("=") + 1);
-				saveWeights = true;
+				saveNewWeights = true;
 			}
 			else if(arg.find("epochs=") != string::npos || arg.find("epoch=") != string::npos)
 			{
@@ -252,87 +252,10 @@ int main(int argc, char** argv)
 	}
 
 	//set up net
-	Net net(xSize,ySize,zSize);
-
-	/*//64x64x3 net
-	net.setActivType(ActivLayer::LEAKY_RELU);
-	net.addConvLayer(10,1,3,1); //64x64x10
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2); 	//32x32x10
-	net.addConvLayer(6,1,5,0);	//28x28x6
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);	//14x14x6
-	net.addConvLayer(7,1,3,1);	//14x14x7
-	net.addActivLayer();
-	net.addConvLayer(10,1,3,0);	//12x12x10
-	net.addActivLayer();
-	net.addMaxPoolLayer(3,3);	//4x4x10
-	net.addConvLayer(5,1,3,1);	//4x4x5
-	net.addActivLayer();
-	net.addConvLayer(2,1,4,0);	//1x1x2
-	net.addActivLayer();
-	net.addSoftmaxLayer();
-	//*/
-
-	// failed fully connected net
-	/*
-	net.setActivType(ActivLayer::RELU);
-	net.addConvLayer(10,1,3,0); 		//30x30x10
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//15x15x10
-	net.addConvLayer(2,1,15,0);		//1x1x2
-	net.addActivLayer();
-	net.addSoftmaxLayer();
-	//*/
-	
-	/* large net
-	net.setActivType(ActivLayer::LEAKY_RELU);
-	net.addConvLayer(20, 1, 3, 1); //numfilters, stride, filtersize, padding
-	net.addActivLayer(); 			//32x32x20
-	net.addConvLayer(10,1,3,1);		//32x32x10
-	net.addActivLayer();			
-	net.addMaxPoolLayer(2,2);		//16x16x10
-	net.addConvLayer(20,1,3,1);		//16x16x20
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//8x8x20
-	net.addConvLayer(40,1,3,1);		//8x8x40
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//4x4x40
-	net.addConvLayer(30,1,3,1);		//4x4x30
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//2x2x30
-	net.addConvLayer(20,1,3,1);		//2x2x20
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//1x1x20
-	net.addConvLayer(2,1,3,1);		//1x1x4
-	net.addSoftmaxLayer();
-	//*/
-	
-	
-	//small net
-	net.setActivType(ActivLayer::LEAKY_RELU);
-	net.addConvLayer(6,1,5,0);
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);
-
-	net.addConvLayer(7,1,3,1);
-	net.addActivLayer();
-
-	net.addConvLayer(10,1,3,0);
-	net.addActivLayer();
-	net.addMaxPoolLayer(3,3);
-
-	net.addConvLayer(5,1,3,1);	//4x4x5
-	net.addActivLayer();
-
-	net.addConvLayer(2,1,4,0);
-	net.addActivLayer();
-	net.addSoftmaxLayer();
-	//*/
-
+	Net net(argv[1]);
 	if(!net.isActive())
 	{
-		cout << "Something went wrong making the net. Exiting." << endl;
+		cout << "Net did not load correctly. Exiting." << endl;
 		return 0;
 	}
 	
@@ -366,8 +289,12 @@ int main(int argc, char** argv)
 	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". - " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
 
-	if(saveWeights)
+	if(saveNewWeights)
 	{
 		net.save(outputName.c_str());
+	}
+	else
+	{
+		net.save(argv[1]);
 	}
 }

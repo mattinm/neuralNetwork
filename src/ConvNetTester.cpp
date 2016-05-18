@@ -248,7 +248,7 @@ int main(int argc, char** argv)
 
 	net.addTrainingData(images,trueVals);
 
-	net.printTrainingDistribution();
+	//net.printTrainingDistribution();
 
 	vector<int> calced(0);
 
