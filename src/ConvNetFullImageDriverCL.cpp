@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <vector>
-#include "ConvNet.h"
+#include "ConvNetCL.h"
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
@@ -41,6 +41,34 @@ string secondsToString(time_t seconds)
 	string outString = out;
 	return outString;
 }
+
+void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
+{
+	vect.resize(width);
+	for(int i=0; i < width; i++)
+	{
+		vect[i].resize(height);
+		for(int j=0; j < height; j++)
+		{
+			vect[i][j].resize(depth);
+		}
+	}
+}
+
+void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
+{
+	for(int i=0; i< vect.size(); i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				vect[i][j][k] = val;
+			}
+		}
+	}
+}
+
 double vectorSum(const vector<double>& vect)
 {
 	double sum=0;
@@ -120,7 +148,7 @@ void breakUpImage(const char* imageName, Net& net)
 	char tempout[255];
 
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
-	resize3DVector(fullImage,numrows,numcols,net.getNumCategories());
+	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
 	setAll3DVector(fullImage,0);
 	vector<imVector> imageRow(0); // this will hold all subimages from one row
 	vector<int> calcedClasses(0);
@@ -156,9 +184,9 @@ void breakUpImage(const char* imageName, Net& net)
 			convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
-		preprocess(imageRow);
+		//preprocess(imageRow);
 		net.setData(imageRow);
-		net.newRun(calcedClasses, __useGPU);
+		net.run(__useGPU);
 		net.getConfidences(confidences); //gets the confidence for each category for each image
 		//if((i == 0 || i == numrows-32))
 		//cout << "row: " << i << " ";
@@ -284,8 +312,12 @@ int main(int argc, char** argv)
 
 	//set up net
 	Net net(argv[1]);
-	if(!net.isActive())
+
+	net.setGPU(__useGPU);
+	//cout << "net loaded" << endl;
+	if(!net.finalize())
 		return 0;
+	//cout << "net finalized" << endl;
 
 
 

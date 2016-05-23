@@ -44,6 +44,7 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <unordered_map>
 
 using namespace std;
 using namespace cv;
@@ -54,6 +55,7 @@ int imageNum = 0;
 int stride = 1;
 int globalStride = 1;
 unsigned short __globalTrueVal;
+unordered_map<unsigned short, int> trueMap;
 
 template<typename type>
 void writeImage(Mat& image, ofstream& outfile)
@@ -84,6 +86,11 @@ void writeImage(Mat& image, ofstream& outfile)
 			}
 		}
 		outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
+		unordered_map<unsigned short, int>::const_iterator got = trueMap.find(__globalTrueVal);
+		if(got == trueMap.end()) // not found
+			trueMap[__globalTrueVal] = 1;
+		else // found
+			trueMap[__globalTrueVal]++;
 	}
 	else
 	{
@@ -315,6 +322,17 @@ int main (int argc, char** argv)
 	outfile.close();
 
 	cout << "Total: " << imageNum << " images created" << endl;
+
+	double sum = 0;
+	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
+	{
+		sum += it->second;
+	}
+	cout << "Distribution:" << endl;
+	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
+	{
+		cout << "True val " << it->first << ": " << it->second << "   " << it->second/sum * 100 << "%\n";
+	}
 
 	return 0;
 }

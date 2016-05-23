@@ -1516,7 +1516,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 	 **************************************/
 	int softSize = n_layers.back()->getNumNeurons();
 	vector<double> neur(softSize);
-
+	vector<double> test(maxNeuronSize);
 
 	//cout << "Starting going through the images" << endl;
 	for(int r=0; r < n_trainingData.size(); r++)
@@ -1525,8 +1525,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 		//set the new image(s)
 		int startForThisRound = r;
 		if(r < n_trainingData.size())
-			n_trainingData[r]->getImage(image, imageSize);
-		
+			n_trainingData[r]->getImage(image, imageSize);		
 
 		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
 				sizeof(double) * imageSize,
@@ -1654,6 +1653,15 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 			}
 			clFinish(queue);
 
+			if(Net::walkthrough)
+			{
+				cout << "Layer " << i << endl;
+				CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * n_layers[i]->getNumNeurons(),
+					test.data(), 0, nullptr, nullptr));
+				printArray(test.data(), n_layers[i]->getNumNeurons());
+				getchar();
+			}
+
 			//swap prev and cur neuron pointers
 			temp = neurons;
 			neurons = prevNeurons;
@@ -1689,6 +1697,7 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 		calculatedClasses[startForThisRound] = getMaxElementIndex(neur);
 
 		//cout << "confidences " << n_trainingData.size() << " " << n_confidences.size() << endl;
+		//printVector(neur);
 		n_confidences[startForThisRound] = neur;
 		startForThisRound++;
 		//cout << getMaxElementIndex(neur) << " | " << neur[getMaxElementIndex(neur)] << endl;;
@@ -1735,6 +1744,8 @@ void Net::newRun(vector<int>& calculatedClasses, bool useGPU)
 		clReleaseMemObject(weights[w]);
 		clReleaseMemObject(biases[w]);
 	}
+	//weights.resize(0);
+	//biases.resize(0);
 
 	clReleaseKernel(convKernel);
 	clReleaseKernel(zeroPadKernel);
@@ -4541,6 +4552,9 @@ void preprocess(vector<vector<vector<double> > > & vect)
 	//preprocess using (val - mean)/stdDeviation for all elements
 	double m = mean(vect);
 	double stddv = stddev(vect,m);
+
+	//cout << "mean"<<m<<endl;
+	//cout<<"stddev"<<stddv<<endl;
 	for(int i=0; i< vect.size();i++)
 	{
 		for(int j=0; j< vect[i].size(); j++)
@@ -4584,7 +4598,7 @@ double mean(const vector<vector<vector<vector<double> > > > & vect)
 				}
 			}
 		}
-	mean /= vect.size() * vect[0].size() * vect[0][0].size();
+	mean /= vect.size() * vect[0].size() * vect[0][0].size() * vect[0][0][0].size();
 	return mean;
 }
 

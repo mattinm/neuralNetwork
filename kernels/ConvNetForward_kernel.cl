@@ -114,11 +114,62 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 	neurons[i] = result + biases[myFilter];
 }
 
+__kernel void convolveConstant(__global double* prevNeurons, __global double* neurons,
+	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
+{
+	//int myHeight = myBlock/numBlocksPerRow;
+	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
+	//int myRowShift = (myBlock%numBlocksPerRow) * strxdep;
+
+	//int width = prevwidth;
+	//int depth = prevdepth;
+
+	int i = get_global_id(0);
+	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
+	
+	//int myFilter = i/(numBlocksPerRow * numBlocksPerRow);
+	int myFilter = i%numFilters;
+	int filterLayerSize = filterSize * prevdepth;
+	int j = myFilter * filterSize * filterLayerSize; // myFilterStartIndex
+	int myBlock = (i/numFilters) % (numBlocksPerRow*numBlocksPerRow);//numBlocksCanFitInSource;
+	
+	int strxdep = stride * prevdepth;
+	//int myStartIndex = ((myBlock/numBlocksPerRow) * width * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
+	//int h = myStartIndex;
+	int h = ((myBlock/numBlocksPerRow) * prevwidth * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
+
+	int amountToNextLayer = (prevwidth - filterSize) * prevdepth;
+
+	//can I do the pointer arithmetic better?
+
+	double result = 0;
+	__constant double* curWeight = &(weights[j]);
+	for(int a = 0; a < filterSize; a++) //for each layer in the filter
+	{
+		for(int b = 0; b < filterLayerSize; b++)
+		{
+			//result += weights[j++] * prevNeurons[h++];
+			result += *(curWeight++) * prevNeurons[h++];
+		}
+		h += amountToNextLayer;
+	}
+	//printf("numFil: %d id: %d myBlock: %d\n",numFilters,get_global_id(0), myBlock);
+	//printf("In convolve. Global id = %d\n\tmyFilter = %d\n\tresult = %f\n",i,myFilter,result);
+	neurons[i] = result + biases[myFilter];
+}
+
 __kernel void softmax(__global double *prevNeurons, __global double *neurons,
 	double denominator)
 {
 	int i = get_global_id(0);
 	neurons[i] = exp(prevNeurons[i])/denominator;
+}
+
+__kernel void softmax_allCL(__global double *prevNeurons, __global double *neurons,
+	__global double* denominator)
+{
+	int i = get_global_id(0);
+	neurons[i] = exp(prevNeurons[i])/(*denominator);
 }
 
 __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
@@ -146,34 +197,6 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 		neurons[x] = prevNeurons[oldIndex];
 	}
 }
-
-/* old kernel?
-__kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
-	int prevheight, int depth)
-{
-	int x = get_global_id(0);
-
-	//turn x into i, j, k
-	int nw = prevwidth + 2*pad;
-	int nh = prevheight + 2*pad;
-
-	int ourRow = x/(nw * depth);
-	int ourCol = (x/depth) % nw;
-	int ourDepth = x%depth;
-
-	if(ourRow < pad || ourRow >= nh-pad || ourCol < pad || ourCol >= nw-pad)
-		neurons[x] = 0;
-	else
-	{
-		int i = ourRow - pad;
-		int j = ourCol - pad;
-		int k = ourDepth;
-		int oldIndex = (i * prevwidth * depth) + (j * depth) + k;
-
-		neurons[x] = prevNeurons[oldIndex];
-	}
-}
-*/
 
 
 

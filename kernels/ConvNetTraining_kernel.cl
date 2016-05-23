@@ -474,6 +474,33 @@ __kernel void copyArray(__global double* source, __global double* dest)
 	dest[x] = source[x];
 }
 
+//make this 2 kernels? one to get max, one to subtract? Prob not worth it without a lot of classes
+__kernel void maxSubtraction(__global double* source, int size)
+{
+	if(size <= 0)
+		return;
+	double max = source[0];
+	double cur;
+	for(int i = 1; i < size; i ++)
+	{
+		cur = source[i];
+		if(cur > max)
+			max = cur;
+	}
+	for(int i=0; i < size; i++)
+		source[i] -= max;
+}
+
+__kernel void vectorESum(__global double* source, int size, __global double* denom)
+{
+	if(size <= 0)
+		return;
+	double sum = 0;
+	for(int i=0; i < size; i++)
+		sum += exp(source[i]);
+	*denom = sum;
+}
+
 /*************************************************
 *
 *	Forward-only kernels
