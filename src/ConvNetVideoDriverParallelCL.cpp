@@ -353,6 +353,7 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 void __parallelVideoProcessor(int device)
 {
 	Net net(__netName);
+	net.setConstantMem(true);
 	if(!net.setDevice(device) || !net.finalize())
 		return;
 	printf("Thread using device %d\n",device);

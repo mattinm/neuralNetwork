@@ -514,19 +514,39 @@ bool Net::finalize()
 					prevNeurons = temp;
 				}
 
-				clSetKernelArg(convKernelF, 0, sizeof(cl_mem), prevNeurons);
-				clSetKernelArg(convKernelF, 1, sizeof(cl_mem), neurons);
-				clSetKernelArg(convKernelF, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
-				clSetKernelArg(convKernelF, 3, sizeof(cl_mem), &clBiases[curConvLayer]);
-				clSetKernelArg(convKernelF, 4, sizeof(int), &(conv->numBiases)); //numFilters
-				clSetKernelArg(convKernelF, 5, sizeof(int), &(conv->filterSize));
-				clSetKernelArg(convKernelF, 6, sizeof(int), &(conv->stride));
-				clSetKernelArg(convKernelF, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
-				clSetKernelArg(convKernelF, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
+				if(__constantMem)
+				{
+					//cout << "using constant" << endl;
+					clSetKernelArg(convKernelFC, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(convKernelFC, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(convKernelFC, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
+					clSetKernelArg(convKernelFC, 3, sizeof(cl_mem), &clBiases[curConvLayer]);
+					clSetKernelArg(convKernelFC, 4, sizeof(int), &(conv->numBiases)); //numFilters
+					clSetKernelArg(convKernelFC, 5, sizeof(int), &(conv->filterSize));
+					clSetKernelArg(convKernelFC, 6, sizeof(int), &(conv->stride));
+					clSetKernelArg(convKernelFC, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
+					clSetKernelArg(convKernelFC, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
 
-				globalWorkSize[0] = (size_t)__neuronSizes[i];
-				CheckError(clEnqueueNDRangeKernel(queue, convKernelF, 1,
-					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, convKernelFC, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				}
+				else
+				{
+					clSetKernelArg(convKernelF, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(convKernelF, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(convKernelF, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
+					clSetKernelArg(convKernelF, 3, sizeof(cl_mem), &clBiases[curConvLayer]);
+					clSetKernelArg(convKernelF, 4, sizeof(int), &(conv->numBiases)); //numFilters
+					clSetKernelArg(convKernelF, 5, sizeof(int), &(conv->filterSize));
+					clSetKernelArg(convKernelF, 6, sizeof(int), &(conv->stride));
+					clSetKernelArg(convKernelF, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
+					clSetKernelArg(convKernelF, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
+
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, convKernelF, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				}
 				curConvLayer++;
 			}
 			else if(__layers[i]->layerType == MAX_POOL_LAYER)
