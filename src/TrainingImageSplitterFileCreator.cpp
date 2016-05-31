@@ -54,6 +54,8 @@ short xsize = -1, ysize = -1, zsize = -1;
 int imageNum = 0;
 int stride = 1;
 int globalStride = 1;
+long byteCount = 0;
+long imageCount = 0;
 unsigned short __globalTrueVal;
 unordered_map<unsigned short, int> trueMap;
 
@@ -91,6 +93,17 @@ void writeImage(Mat& image, ofstream& outfile)
 			trueMap[__globalTrueVal] = 1;
 		else // found
 			trueMap[__globalTrueVal]++;
+		byteCount += xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short); //extra 2 for the ushort trueVal
+		imageCount++;
+		if(imageCount % 100000 == 0)
+		{
+			printf("Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
+			if(byteCount/1.0e9 > 30)
+			{
+				outfile.close();
+				exit(0);
+			}
+		}
 	}
 	else
 	{
@@ -252,7 +265,7 @@ int main (int argc, char** argv)
 	getline(imageConfig,line);
 	short sizeByte = stoi(line);
 
-	cout << "Size: " << sizeByte << " x: " << xsize << " y: " << ysize << " z: " << zsize << endl;
+	cout << "SizeByte: " << sizeByte << " x: " << xsize << " y: " << ysize << " z: " << zsize << endl;
 
 	/*
 	double testd = 559.236;
@@ -276,8 +289,12 @@ int main (int argc, char** argv)
 	outfile.write(reinterpret_cast<const char *>(&ysize),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&zsize),sizeof(short));
 
+	byteCount += 4 * sizeof(short);
+
 	while(getline(imageConfig, line))
 	{
+		if(line.size() == 0 || line[0] == '#' || line[0] == '\n')
+			continue;
 		int comma1 = line.find(',');
 		int comma2 = line.find(',',comma1+1);
 		string folder = line.substr(0,comma1);
@@ -291,7 +308,7 @@ int main (int argc, char** argv)
 			stride = globalStride;
 		else
 		{
-			string stri = line.substr(comma2);
+			string stri = line.substr(comma2+1);
 			if(stri.find("stride=") != string::npos)
 			{
 				stride = stoi(stri.substr(stri.find('=') + 1));
