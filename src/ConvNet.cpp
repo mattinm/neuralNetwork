@@ -668,8 +668,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 			CheckError(error);
 		}
 	}
-
-
 	delete zeroVels;
 	zeroVels = NULL;
 
@@ -703,10 +701,9 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	vector<double> test(maxNeuronSize);
 	cl_mem *temp;
 	//cout << "Starting run on GPU(s)" << endl;
+	string ep = to_string(epochs);
 	for(int e=0; e < epochs; e++)
 	{
-		string ep = to_string(epochs);
-
 		shuffleTrainingData();
 
 		if(epochs != 0 && epochs%5 == 0)

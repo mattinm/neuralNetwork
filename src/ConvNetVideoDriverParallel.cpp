@@ -107,6 +107,7 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 	{
 		//printf("sub if\n");
 		__outVideo << *frame;
+		__outcsv << red << "," << (frameNum/10.0) << "\n";
 		curSubmittedFrame++;
 		delete frame;
 		printf("Frame %d completed.\n",frameNum);
@@ -116,7 +117,7 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 		{
 			//printf("in while\n");
 			__outVideo << (*(waitingFrames[i]->mat));
-			__outcsv << waitingFrames[i]->redElement << ",";
+			__outcsv << waitingFrames[i]->redElement << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
 			//printf("pushed\n");
 			//printf("++\n");
 			printf("Frame %d completed.\n",waitingFrames[i]->frameNum);

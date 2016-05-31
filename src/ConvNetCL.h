@@ -29,6 +29,10 @@
 #define LEAKY_RELU 1
 #define MAX_ACTIV 2
 
+//defines for training types
+#define TRAIN_AS_IS 0
+#define TRAIN_EQUAL_PROP 1
+
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 class Net{
@@ -69,6 +73,7 @@ private: 	// members
 	int __maxNeuronSize;
 	std::vector<std::vector<int> > __neuronDims;  //[0] is input layer
 	int __defaultActivType = 0;
+	int __maxWeightSize = 0;
 
 	bool __isFinalized = false;
 	std::string __errorLog;
@@ -78,11 +83,23 @@ private: 	// members
 		//training
 		//should this be a map?
 		bool __trainingDataPreprocessed = false;
-		std::vector<std::vector<std::vector<double> > > __trainingData; // class<list of<flattenedImages> >
-		std::vector<double> __trueVals; // parallel vector of true values for __data
+		double __mean = 0;
+		double __stddev = 0;
+		double __trainingSize = 0;
+		bool __isTraining = false;
+		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<flattenedImages> >
+		std::vector<double> __trueVals; // parallel vector of true values for __trainingData
+		std::vector<std::vector<double> > __testData;
+		std::vector<double> __testTrueVals;
+		double __learningRate = 1e-3;
+		bool __useMomentum = true;
+		int __trainingType = TRAIN_AS_IS;
+		int __smallestClassSize;
+		bool __useHorizontalReflections = true;
 		//running
 		bool __dataPreprocessed = false;
 		std::vector<std::vector<double> > __data; // list of<flattened images>
+		std::vector<std::vector<double> > *__dataPointer;
 		std::vector<std::vector<double> > __confidences; // image<list of confidences for each class<confidence> > 
 
 	//OpenCL related members
@@ -131,6 +148,11 @@ public: 	// functions
 		bool addTrainingData(const std::vector<imVector>& trainingData, const std::vector<double>& trueVals);
 		bool setTrainingData(const std::vector<imVector>& trainingData, const std::vector<double>& trueVals);
 		void clearTrainingData();
+		bool addTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
+		bool setTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
+		void clearTestData();
+		bool setTrainingType(int type);
+		void setHorizontalReflections(bool use);
 		//running
 		void addData(const std::vector<imVector>& data);
 		void setData(const std::vector<imVector>& data);
@@ -140,8 +162,12 @@ public: 	// functions
 
 	//running
 	void run(bool useGPU=true);
-	void getCalculatedClasses(std::vector<int>& dest);
-	void getConfidences(std::vector<std::vector<double> >& confidences);
+	void getCalculatedClasses(std::vector<int>& dest) const;
+	void getConfidences(std::vector<std::vector<double> >& confidences) const;
+
+	//training
+	void train(int epochs=-1);
+	void setMomentum(bool useMomentum);
 
 	//OpenCL functions
 	int getDevice() const;
@@ -160,12 +186,21 @@ private:	// functions
 
 	//weights and biases
 	void initRandomWeights(ConvLayer* conv);
-	void initWeights(ConvLayer* conv, std::string& weights);
+	void initWeights(ConvLayer* conv, const std::string& weights);
 
 	//functions dealing with data
 	int getTrueValIndex(double trueVal);
-	int getMaxElementIndex(const std::vector<double>& vect);
+	int getMaxElementIndex(const std::vector<double>& vect) const;
 	void preprocessData();
+	void preprocessTrainingDataCollective();
+
+	//training
+	void setupLayerNeeds(std::vector<cl_mem>& layerNeeds);
+	void getTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals);
+	void initVelocities(std::vector<cl_mem>& velocities);
+	void pullCLWeights();
+	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
+	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
 
 	//load and save
 	bool load(const char* filename);

@@ -1,12 +1,24 @@
 
 #include "ConvNetCL.h"
 #include <iostream>
+#include <iomanip>
+#include <cfloat>
 #include <random>
 #include <fstream>
+#include <random>
+
+// includes brought in from ConvNetCL.h
+// #include <vector>	
+// #include <string> 
+// #ifdef __APPLE__
+//  	#include "OpenCL/opencl.h"
+// #else
+//  	#include "CL/cl.h"
+// #endif
 
 using namespace std;
 
-typedef std::vector<std::vector<std::vector<double> > > imVector;
+//typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 #define GETMAX(x,y) (x > y) ? x: y
 
@@ -40,6 +52,10 @@ Net::~Net()
 		__layers.pop_back();
 		delete point;
 	}
+
+	for(int t=0; t < __trainingData.size(); t++) // class
+		for(int i = 0; i < __trainingData[t].size(); i++) // image in class
+			delete __trainingData[t][i];
 
 	if(__isFinalized)
 	{
@@ -189,6 +205,10 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, stri
 	__layers.push_back(conv);
 	pushBackLayerSize(newWidth, newHeight, newDepth);
 
+	//check to see if it has max weights
+	if(conv->numWeights > __maxWeightSize)
+		__maxWeightSize = conv->numWeights;
+
 	if(__autoActivLayer)
 		addActivLayer();
 	__isFinalized = false;
@@ -256,7 +276,7 @@ void Net::initRandomWeights(ConvLayer* conv)
 		conv->biases[b] = 0;
 }
 
-void Net::initWeights(ConvLayer* conv, string& weights)
+void Net::initWeights(ConvLayer* conv, const string& weights)
 {
 	int startIndex = 0, endIndex;
 	for(int f = 0; f < conv->numWeights; f++)
@@ -287,7 +307,6 @@ void Net::setAutoActivLayer(bool isAuto)
 {
 	__autoActivLayer = isAuto;
 }
-
 
 bool Net::finalize()
 {
@@ -327,7 +346,7 @@ bool Net::finalize()
 		}
 	}
 
-	cout << "Finalizing CNN using device " << q << endl;
+	printf("Finalizing CNN using device %d\n",q);
 
 	cl_int error;
 
@@ -448,8 +467,8 @@ bool Net::finalize()
  * Running and Training
  *****************************************/
 
- void Net::run(bool useGPU)
- {
+void Net::run(bool useGPU)
+{
  	// if(useGPU != __useGPU)
  	// {
  	// 	__useGPU = useGPU;
@@ -462,30 +481,33 @@ bool Net::finalize()
  	if(!__dataPreprocessed)
  		preprocessData();
 
+ 	if(!__isTraining)
+ 		__dataPointer = &__data;
+ 	else
+ 	{
+ 		__confidences.resize(__dataPointer->size());
+ 	}
+
  	//set some softmax related args that won't change
  	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
  	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
  	for(int i=0; i < __confidences.size(); i++)
  		__confidences[i].resize(__neuronSizes.back());
 
- 	vector<double> test(__maxNeuronSize);
+ 	//vector<double> test(__maxNeuronSize);
 
- 	for(int r = 0; r < __data.size(); r++)
+	cl_mem *temp;
+
+ 	for(int r = 0; r < __dataPointer->size(); r++)
  	{
- 		// for(int c=0; c< __data[r].size(); c++)
- 		// 	cout << "|" << __data[r][c];
- 		// cout << endl;
- 		// exit(0);
- 		// cout << "image " << r << " of " << __data.size() << endl;
  		//put in the next image
  		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
 				sizeof(double) * __neuronSizes[0],
-				__data[r].data(), 0, nullptr, nullptr));
+				(*__dataPointer)[r].data(), 0, nullptr, nullptr));
 		clFinish(queue);
 
 		int curConvLayer = 0;
 		size_t globalWorkSize[] = {0,0,0};
-		cl_mem *temp;
 		//go through the layers
 		for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
 		{
@@ -493,7 +515,7 @@ bool Net::finalize()
 			if(__layers[i]->layerType == CONV_LAYER)
 			{
 				ConvLayer* conv = (ConvLayer*)__layers[i];
-				if(conv->padding != 0) //if padding != 0
+				if(conv->padding != 0) //if we need to do padding on the input
 				{
 					clSetKernelArg(zeroPadKernelF, 0, sizeof(cl_mem), prevNeurons);
 					clSetKernelArg(zeroPadKernelF, 1, sizeof(cl_mem), neurons);
@@ -558,7 +580,6 @@ bool Net::finalize()
 				clSetKernelArg(maxPoolKernelF, 3, sizeof(int), &(__neuronDims[i-1][2])); //prevdepth
 				clSetKernelArg(maxPoolKernelF, 4, sizeof(int), &(pool->poolSize)); //poolsize
 				clSetKernelArg(maxPoolKernelF, 5, sizeof(int), &(pool->stride)); //stride
-				//printf("Size: %d, w: %d, h: %d, d: %d, str: %d, pool: %d\n", __neuronSizes[i], __neuronDims[i-1][0], __neuronDims[i-1][1], __neuronDims[i-1][2], pool->stride, pool->poolSize);
 				globalWorkSize[0] = (size_t)__neuronSizes[i];
 				CheckError(clEnqueueNDRangeKernel(queue, maxPoolKernelF, 1,
 					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
@@ -605,7 +626,6 @@ bool Net::finalize()
 
 		//cout << "Softmax" << endl;
 		//softmax. 
-		//cout << "soft size: " << __neuronSizes.back() << endl;
 		globalWorkSize[0] = 1;
 		//maxSubtraction. arg 1 set above
 		clSetKernelArg(maxSubtractionKernel, 0, sizeof(cl_mem), prevNeurons);
@@ -613,22 +633,12 @@ bool Net::finalize()
 			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 		clFinish(queue);
 
-	// CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
-	// 	__confidences[r].data(), 0, nullptr, nullptr));
-	// for(int c=0; c < __confidences[r].size(); c++)
-	// 	cout << __confidences[r][c] << " ";
-	// cout << endl;
-
 		//vectorESum. arg 1 set above
 		clSetKernelArg(vectorESumKernel, 0, sizeof(cl_mem), prevNeurons);
 		clSetKernelArg(vectorESumKernel, 2, sizeof(cl_mem), &denom);
 		CheckError(clEnqueueNDRangeKernel(queue, vectorESumKernel, 1,
 			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 		clFinish(queue);
-
-	// CheckError(clEnqueueReadBuffer(queue, (denom), CL_TRUE, 0, sizeof(double),
-	// 	__confidences[r].data(), 0, nullptr, nullptr));
-	// cout << __confidences[r][0] << endl;
 		
 		//softmax
 		globalWorkSize[0] = (size_t)__neuronSizes.back();
@@ -649,21 +659,21 @@ bool Net::finalize()
 
 
  	}
- }
+}
 
- void Net::getCalculatedClasses(vector<int>& dest)
- {
+void Net::getCalculatedClasses(vector<int>& dest) const
+{
  	dest.resize(__confidences.size());
  	for(int i=0; i < dest.size(); i++)
  		dest[i] = getMaxElementIndex(__confidences[i]);
- }
+}
 
- void Net::getConfidences(vector<vector<double> >& confidences)
- {
+void Net::getConfidences(vector<vector<double> >& confidences) const
+{
  	confidences = __confidences;
- }
+}
 
-int Net::getMaxElementIndex(const vector<double>& vect)
+int Net::getMaxElementIndex(const vector<double>& vect) const
 {
 	if(vect.size() < 1)
 		return -1;
@@ -676,6 +686,582 @@ int Net::getMaxElementIndex(const vector<double>& vect)
 			maxIndex = i;
 		}
 	return maxIndex;
+}
+
+void Net::train(int epochs)
+{
+ 	if(!__isFinalized || __constantMem)
+ 	{
+ 		__constantMem = false;
+ 		if(!finalize())
+ 		{
+ 			printf("Net was unable to finalize. Aborting training.\n");
+ 			return;
+ 		}
+ 	}
+
+ 	__isTraining = true;
+
+ 	if(!__dataPreprocessed)
+ 		preprocessData();
+
+ 	//set up stuff so we can exit based on error on test data
+ 	vector<vector<double> > confidences;
+ 	double prevError = DBL_MAX;
+ 	double curError;
+ 	if(__testData.size() != 0)
+ 	{
+ 		__dataPointer = &__testData;
+ 	}
+
+ 	//set up all the layerNeeds for training.
+ 	vector<cl_mem> layerNeeds;
+ 	setupLayerNeeds(layerNeeds);
+
+ 	//set up velocity stuff
+	vector<cl_mem> velocities; // still needs to exist even if not using momentum so it compiles.
+	if(__useMomentum)
+		initVelocities(velocities);
+
+ 	//set some softmax related args that won't change
+ 	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
+ 	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
+
+ 	//vector<double> test(__maxNeuronSize);
+
+ 	if(epochs == -1)
+ 	{
+ 		if(__testData.size() == 0)
+ 			epochs = 1;
+ 		else
+ 			epochs = 2100000000;
+ 	}
+
+	cl_mem *temp;
+	string ep = to_string(epochs);
+	int epSize = ep.size();
+
+	vector<double> soft(__numClasses);
+
+	vector<vector<double>* > trainingData(0);
+	vector<double> trueVals(0);
+
+	for(int e = 0; e < epochs; e++)
+	{
+		//adjust learning rate
+		if(epochs % 5 == 0 && epochs != 0)
+		{
+			__learningRate *= .5;
+		}
+
+		getTrainingData(trainingData, trueVals); // this needs to shuffle it
+		int numCorrect = 0;
+
+	 	for(int r = 0; r < trainingData.size(); r++)
+	 	{
+	 		//put in the next image
+	 		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
+					sizeof(double) * __neuronSizes[0],
+					trainingData[r]->data(), 0, nullptr, nullptr));
+			clFinish(queue);
+
+			int curConvLayer = 0;
+			size_t globalWorkSize[] = {(size_t)__neuronSizes[0],0,0}; // initialized for copyArrayKernel
+
+			////////////////////////////
+			// start forwardprop
+			////////////////////////////
+			for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
+			{
+				//printf("Layer %d, type %d\n", i, __layers[i]->layerType);
+				if(__layers[i]->layerType == CONV_LAYER)
+				{
+					ConvLayer* conv = (ConvLayer*)__layers[i];
+					if(conv->padding != 0) //if we need to do padding on the input
+					{
+						clSetKernelArg(zeroPadKernel, 0, sizeof(cl_mem), prevNeurons);
+						clSetKernelArg(zeroPadKernel, 1, sizeof(cl_mem), neurons);
+						clSetKernelArg(zeroPadKernel, 2, sizeof(int), &(conv->padding)); // padding
+						clSetKernelArg(zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
+						clSetKernelArg(zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
+						clSetKernelArg(zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+
+						// run it for the size of the new array
+						globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
+						CheckError(clEnqueueNDRangeKernel(queue, zeroPadKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+						clFinish(queue);
+
+						//swap the buffers so prevNeurons holds the zero padded data
+						temp = neurons;
+						neurons = prevNeurons;
+						prevNeurons = temp;
+					}
+
+					//save the source array into the layerNeeds for this conv layer
+					clSetKernelArg(copyArrayKernel, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(copyArrayKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
+					// global work size will either have been set by the zeroPadKernel, the previous layer, or its initialization
+					CheckError(clEnqueueNDRangeKernel(queue, copyArrayKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+					clSetKernelArg(convKernel, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(convKernel, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(convKernel, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
+					clSetKernelArg(convKernel, 3, sizeof(cl_mem), &clBiases[curConvLayer]);
+					clSetKernelArg(convKernel, 4, sizeof(int), &(conv->numBiases)); //numFilters
+					clSetKernelArg(convKernel, 5, sizeof(int), &(conv->filterSize));
+					clSetKernelArg(convKernel, 6, sizeof(int), &(conv->stride));
+					clSetKernelArg(convKernel, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
+					clSetKernelArg(convKernel, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
+
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, convKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+					curConvLayer++;
+				}
+				else if(__layers[i]->layerType == MAX_POOL_LAYER)
+				{
+					MaxPoolLayer* pool = (MaxPoolLayer*)__layers[i];
+					clSetKernelArg(maxPoolKernel, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(maxPoolKernel, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(maxPoolKernel, 2, sizeof(int), &(__neuronDims[i-1][0])); //prevwidth
+					clSetKernelArg(maxPoolKernel, 3, sizeof(int), &(__neuronDims[i-1][2])); //prevdepth
+					clSetKernelArg(maxPoolKernel, 4, sizeof(int), &(pool->poolSize)); //poolsize
+					clSetKernelArg(maxPoolKernel, 5, sizeof(int), &(pool->stride)); //stride
+					clSetKernelArg(maxPoolKernel, 6, sizeof(cl_mem), &(layerNeeds[i])); // for maxIndexes
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, maxPoolKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				}
+				else if(__layers[i]->layerType == ACTIV_LAYER)
+				{
+					int type = ((ActivLayer*)__layers[i])->activationType;
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					if(type == RELU)
+					{
+						clSetKernelArg(reluKernel, 0, sizeof(cl_mem), prevNeurons);
+						clSetKernelArg(reluKernel, 1, sizeof(cl_mem), neurons);
+						clSetKernelArg(reluKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); //dneuronInfo
+						CheckError(clEnqueueNDRangeKernel(queue, reluKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+					else if(type == LEAKY_RELU)
+					{
+						clSetKernelArg(leakyReluKernel, 0, sizeof(cl_mem), prevNeurons);
+						clSetKernelArg(leakyReluKernel, 1, sizeof(cl_mem), neurons);
+						clSetKernelArg(leakyReluKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
+						CheckError(clEnqueueNDRangeKernel(queue, leakyReluKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+				}
+
+				clFinish(queue);
+
+				// cout << "Forward Layer " << i << endl;
+				// 	CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+				// 		test.data(), 0, nullptr, nullptr));
+				// 	for(int j=0; j< __neuronSizes[i]; j++)
+				// 	{
+				// 		cout << test[j] << ", ";
+				// 	}
+				// 	cout << endl << endl;
+				// 	getchar();
+
+				temp = neurons;
+				neurons = prevNeurons;
+				prevNeurons = temp;
+			}
+
+			//cout << "Softmax" << endl;
+			//softmax. 
+			globalWorkSize[0] = 1;
+			//maxSubtraction. arg 1 set above
+			clSetKernelArg(maxSubtractionKernel, 0, sizeof(cl_mem), prevNeurons);
+			CheckError(clEnqueueNDRangeKernel(queue, maxSubtractionKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+
+			//vectorESum. arg 1 set above
+			clSetKernelArg(vectorESumKernel, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(vectorESumKernel, 2, sizeof(cl_mem), &denom);
+			CheckError(clEnqueueNDRangeKernel(queue, vectorESumKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+			
+			//softmax
+			globalWorkSize[0] = (size_t)__neuronSizes.back();
+			clSetKernelArg(softmaxKernelF, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(softmaxKernelF, 1, sizeof(cl_mem), neurons);
+			clSetKernelArg(softmaxKernelF, 2, sizeof(cl_mem), &denom);
+			CheckError(clEnqueueNDRangeKernel(queue, softmaxKernelF, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+
+			//get the output and see if it was right
+			CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+			 	soft.data(), 0, nullptr, nullptr));
+			if(getMaxElementIndex(soft) == trueVals[r])
+				numCorrect++;
+
+
+			////////////////////////////
+			// start backprop
+			////////////////////////////
+
+			clSetKernelArg(softmaxBackKernel, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(softmaxBackKernel, 1, sizeof(cl_mem), neurons);
+			clSetKernelArg(softmaxBackKernel, 2, sizeof(int), &(trueVals[r]));
+			//globalWorkSize[0] = (size_t)__neuronSizes.back(); // this is still true
+			CheckError(clEnqueueNDRangeKernel(queue,softmaxBackKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+
+			temp = neurons;
+			neurons = prevNeurons;
+			prevNeurons = temp;
+
+			curConvLayer--;
+			//prevNeurons has become prevdNeurons
+			//neurons has become dneurons
+			for(int i = __layers.size() -1; i > 0; i--)
+			{
+				if(__layers[i]->layerType == ACTIV_LAYER)
+				{
+					int type = ((ActivLayer*)__layers[i])->activationType;
+					globalWorkSize[0] = (size_t)__neuronSizes[i-1];
+					if(type == RELU)
+					{
+						//cout << "running reluBackKernel " << endl;
+						clSetKernelArg(reluBackKernel, 0, sizeof(cl_mem), prevNeurons);
+						clSetKernelArg(reluBackKernel, 1, sizeof(cl_mem), neurons);
+						clSetKernelArg(reluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
+						CheckError(clEnqueueNDRangeKernel(queue, reluBackKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+					else if(type == LEAKY_RELU)
+					{
+						//cout << "running leakyReluBackKernel " << endl;
+						clSetKernelArg(leakyReluBackKernel, 0, sizeof(cl_mem), prevNeurons);
+						clSetKernelArg(leakyReluBackKernel, 1, sizeof(cl_mem), neurons);
+						clSetKernelArg(leakyReluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
+						CheckError(clEnqueueNDRangeKernel(queue, leakyReluBackKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+				}
+				else if(__layers[i]->layerType == MAX_POOL_LAYER)
+				{
+					//cout << "running maxPoolBackKernel " << endl;
+					int numIndexes = __neuronSizes[i];
+					clSetKernelArg(maxPoolBackKernel, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(maxPoolBackKernel, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(maxPoolBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i]));
+					clSetKernelArg(maxPoolBackKernel, 3, sizeof(int), &numIndexes);
+					globalWorkSize[0] = (size_t)__neuronSizes[i-1];
+					CheckError(clEnqueueNDRangeKernel(queue, maxPoolBackKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				}
+				else if(__layers[i]->layerType == CONV_LAYER)
+				{
+					//backprop neurons					
+					//cout << "running convBackNeuronsKernel" << endl;
+					ConvLayer* conv = (ConvLayer*)__layers[i];
+					clSetKernelArg(convBackNeuronsKernel, 0, sizeof(cl_mem), prevNeurons);
+					clSetKernelArg(convBackNeuronsKernel, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(convBackNeuronsKernel, 2, sizeof(cl_mem), &(clWeights[curConvLayer]));
+					clSetKernelArg(convBackNeuronsKernel, 3, sizeof(int), &(conv->numBiases)); //numFilters
+					clSetKernelArg(convBackNeuronsKernel, 4, sizeof(int), &(conv->filterSize)); //filterSize
+					clSetKernelArg(convBackNeuronsKernel, 5, sizeof(int), &(conv->stride)); //stride
+					clSetKernelArg(convBackNeuronsKernel, 6, sizeof(int), &(conv->paddedNeuronWidth));
+					clSetKernelArg(convBackNeuronsKernel, 7, sizeof(int), &(__neuronDims[i-1][2])); //depth
+
+					globalWorkSize[0] = (size_t) conv->paddedNeuronSize;					
+					CheckError(clEnqueueNDRangeKernel(queue, convBackNeuronsKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+					clFinish(queue); //MUST finish before weights start getting updated
+
+					//backprop and update biases
+					//cout << "running convBackBiasesKernel " << curConvLayer << ": " << sizeOfNeurons << "/" << hyper[4] << endl;
+					clSetKernelArg(convBackBiasesKernel, 0, sizeof(cl_mem), &(clBiases[curConvLayer]));
+					clSetKernelArg(convBackBiasesKernel, 1, sizeof(cl_mem), neurons);
+					clSetKernelArg(convBackBiasesKernel, 2, sizeof(int), &(__neuronSizes[i]));
+					clSetKernelArg(convBackBiasesKernel, 3, sizeof(int), &(conv->numBiases)); // numFilters = dneuronsDepth
+					clSetKernelArg(convBackBiasesKernel, 4, sizeof(double), &(__learningRate));
+					globalWorkSize[0] = (size_t) conv->numBiases;
+					CheckError(clEnqueueNDRangeKernel(queue, convBackBiasesKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+					//backprop and update weights					
+					//cout << "running convBackWeightsKernel" << endl;
+					if(!__useMomentum) // no momentum
+					{
+						clSetKernelArg(convBackWeightsKernel, 0, sizeof(cl_mem), &(clWeights[curConvLayer]));
+						clSetKernelArg(convBackWeightsKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
+						clSetKernelArg(convBackWeightsKernel, 2, sizeof(cl_mem), neurons);
+						clSetKernelArg(convBackWeightsKernel, 3, sizeof(int), &(__neuronDims[i-1][2])); // depth
+						clSetKernelArg(convBackWeightsKernel, 4, sizeof(int), &(conv->stride)); // stride
+						clSetKernelArg(convBackWeightsKernel, 5, sizeof(int), &(conv->paddedNeuronWidth));
+						clSetKernelArg(convBackWeightsKernel, 6, sizeof(int), &(conv->filterSize)); // filterSize
+						clSetKernelArg(convBackWeightsKernel, 7, sizeof(int), &(conv->numBiases)); // numFilters
+						clSetKernelArg(convBackWeightsKernel, 8, sizeof(double), &__learningRate);
+						globalWorkSize[0] = (size_t)conv->numWeights;
+						CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+					else // with momentum
+					{
+						clSetKernelArg(convBackWeightsMomentKernel, 0, sizeof(cl_mem), &(clWeights[curConvLayer]));
+						clSetKernelArg(convBackWeightsMomentKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
+						clSetKernelArg(convBackWeightsMomentKernel, 2, sizeof(cl_mem), neurons);
+						clSetKernelArg(convBackWeightsMomentKernel, 3, sizeof(int), &(__neuronDims[i-1][2])); // depth
+						clSetKernelArg(convBackWeightsMomentKernel, 4, sizeof(int), &(conv->stride)); // stride
+						clSetKernelArg(convBackWeightsMomentKernel, 5, sizeof(int), &(conv->paddedNeuronWidth));
+						clSetKernelArg(convBackWeightsMomentKernel, 6, sizeof(int), &(conv->filterSize)); // filterSize
+						clSetKernelArg(convBackWeightsMomentKernel, 7, sizeof(int), &(conv->numBiases)); // numFilters
+						clSetKernelArg(convBackWeightsMomentKernel, 8, sizeof(double), &__learningRate);
+						clSetKernelArg(convBackWeightsMomentKernel, 9, sizeof(cl_mem), &(velocities[curConvLayer]));
+						globalWorkSize[0] = (size_t)conv->numWeights;
+						CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsMomentKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+
+					//backprop zeroPad if necessary
+					if(conv->padding != 0) 
+					{
+						clFinish(queue); //so the weights finish updating before zeroPadBackKernel starts changing prevNeurons and neurons
+
+						//swap prev and cur neuron pointers
+						temp = neurons;
+						neurons = prevNeurons;
+						prevNeurons = temp;
+
+						clSetKernelArg(zeroPadBackKernel, 0, sizeof(cl_mem), prevNeurons);
+						clSetKernelArg(zeroPadBackKernel, 1, sizeof(cl_mem), neurons);
+						clSetKernelArg(zeroPadBackKernel, 2, sizeof(int), &(conv->padding)); //padding
+						clSetKernelArg(zeroPadBackKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); //prevWidth (non-padded)
+						clSetKernelArg(zeroPadBackKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); //prevHeight(non-padded)
+						clSetKernelArg(zeroPadBackKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); //depth
+						//cout << "Running zeroPadBackKernel" << endl;
+						globalWorkSize[0] = (size_t)conv->paddedNeuronSize;
+						CheckError(clEnqueueNDRangeKernel(queue,zeroPadBackKernel, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+					curConvLayer--;
+				} // end if-elseif for backprop of single layer
+
+				clFinish(queue);
+				temp = neurons;
+				neurons = prevNeurons;
+				prevNeurons = temp;
+			}// end for loop for backprop
+	 	}// end for loop for training data (end of epoch)
+	 	cout << "Epoch: ";
+	 	cout << setw(epSize) << e+1;
+	 	cout << ", Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%" << endl;
+	 	if(__testData.size() != 0)
+	 	{
+	 		run(); //this will update __confidences
+	 		curError = 0;
+	 		int testCorrect = 0;
+	 		for(int c = 0; c < __confidences.size(); c++)
+	 		{
+	 			for(int im = 0; im < __confidences[c].size(); im++)
+	 				curError += __confidences[c][im];
+		 		if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
+		 			testCorrect++;
+		 	}
+	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
+	 		printf("\tAccuracy on test data: %d out of %lu. %lf%%\n",testCorrect,__testData.size(), testAccuracy);
+
+	 		//stop training when the curError is greater than the previous data and accuracy is more than 80
+	 		if(curError > prevError && testAccuracy >= 80.0)
+	 			break;
+	 		prevError = curError;
+	 	}
+	}
+	pullCLWeights();
+	//clean up anything we may have messed with in order to use run.
+	__confidences.resize(__data.size());
+	__isTraining = false;
+}
+
+void Net::setupLayerNeeds(vector<cl_mem>& layerNeeds)
+{
+	layerNeeds.clear();
+	layerNeeds.resize(__layers.size());
+	cl_int error;
+	for(int i = 0; i < __layers.size(); i++)
+	{
+		if(__layers[i]->layerType == CONV_LAYER)
+		{
+			layerNeeds[i] = clCreateBuffer(__context, CL_MEM_READ_WRITE, 
+				sizeof(double) * ((ConvLayer*)__layers[i])->paddedNeuronSize, nullptr, &error);
+		}
+		else if(__layers[i]->layerType == MAX_POOL_LAYER)
+		{
+			layerNeeds[i] = clCreateBuffer(__context, CL_MEM_READ_WRITE,
+				sizeof(double) * __neuronSizes[i], nullptr, &error);
+		}
+		else if(__layers[i]->layerType == ACTIV_LAYER)
+		{
+			layerNeeds[i] = clCreateBuffer(__context, CL_MEM_READ_WRITE,
+				sizeof(double) * __neuronSizes[i], nullptr, &error);
+		}
+		CheckError(error);
+	}
+}
+
+void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>& trueVals)
+{
+	if(__trainingType == TRAIN_AS_IS)
+	{
+		if(trainingData.size() != 0) // this means we've run this function at least once
+		{
+			shuffleTrainingData(trainingData, trueVals);
+			return;
+		}
+		//if it's our first time through
+		//add all data in order into the trainingData and trueVals
+		for(int t = 0; t < __trainingData.size(); t++) // for all possible classes
+		{
+			int oldSize = trainingData.size();
+			trainingData.resize(oldSize + __trainingData[t].size());
+			trueVals.resize(oldSize + __trainingData[t].size());
+			for(int i = 0; i < __trainingData[t].size(); i++) // for all training images in the class
+			{
+				trainingData[oldSize + i] = __trainingData[t][i];
+				trueVals[oldSize + i] = __trueVals[t];
+			}
+		}
+		//shuffle 10 times to start
+		shuffleTrainingData(trainingData, trueVals, 10);
+	}
+	else if(__trainingType == TRAIN_EQUAL_PROP)
+	{
+		if(trainingData.size() == 0) //first time through. find the smallest class size
+		{
+			__smallestClassSize = __trainingData[0].size();
+			for(int t = 1; t < __trainingData.size(); t++)
+				if(__trainingData[t].size() < __smallestClassSize)
+					__smallestClassSize = __trainingData[t].size();
+			trainingData.clear();
+			trainingData.resize(__smallestClassSize * __trainingData.size());
+			trueVals.clear();
+			trueVals.resize(__smallestClassSize * __trainingData.size());
+		}
+		int index = 0;
+		//for each class, shuffle it (global __trainingData) and bring in the smallestClassSize to trainingData.
+		for(int t = 0; t < __trainingData.size(); t ++) // class
+		{
+			shuffleData(__trainingData[t]);	//shuffling brings randomness without duplicates
+			for(int i = 0; i < __smallestClassSize; i++) // image. take the first __smallestClassSize amount of images
+			{
+				trainingData[index] = __trainingData[t][i];
+				trueVals[index] = __trueVals[t];
+				index++;
+			}
+		}
+		//shuffle trainingData to mix up the classes
+		shuffleTrainingData(trainingData,trueVals);
+	}
+}
+
+void Net::shuffleData(vector<vector<double>* >& data, int times)
+{
+	if(times < 1)
+		return;
+	default_random_engine gen(time(0));
+	uniform_int_distribution<int> distr(0,data.size()-1);
+	vector<double>* temp;
+	for(int t=0; t < times; t++)
+	{
+		for(int i=0; i< data.size(); i++)
+		{
+			int swapIndex = distr(gen);
+			temp = data[i];
+			data[i] = data[swapIndex];
+			data[swapIndex] = temp;
+		}
+	}
+}
+
+void Net::shuffleTrainingData(vector<vector<double>* >& trainingData, vector<double>& trueVals, int times)
+{
+	if(times < 1)
+		return;
+	default_random_engine gen(time(0));
+	uniform_int_distribution<int> distr(0,trainingData.size()-1);
+	vector<double>* temp;
+	int tempTrue;
+	for(int t=0; t< times; t++)
+	{
+		for(int i=0; i< trainingData.size(); i++)
+		{
+			int swapIndex = distr(gen);
+
+			temp  	 = trainingData[i];
+			tempTrue = trueVals[i];
+
+			trainingData[i]  = trainingData[swapIndex];
+			trueVals[i] 	 = trueVals[swapIndex];
+
+			trainingData[swapIndex] = temp;
+			trueVals[swapIndex] 	= tempTrue;
+		}
+	}
+}
+
+bool Net::setTrainingType(int type)
+{
+	if(type < 0 || 1 < type)
+		return false;
+	__trainingType = type;
+	return true;
+}
+
+void Net::setHorizontalReflections(bool useHReflect)
+{
+	__useHorizontalReflections = useHReflect;
+}
+
+void Net::pullCLWeights()
+{
+ 	int curConvLayer = 0;
+	for(int i = 1; i < __layers.size(); i++)
+		if(__layers[i]->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)__layers[i];
+			CheckError(clEnqueueReadBuffer(queue, clWeights[curConvLayer], CL_TRUE, 0, sizeof(double) * conv->numWeights,
+				conv->weights, 0, nullptr, nullptr));
+			CheckError(clEnqueueReadBuffer(queue, clBiases[curConvLayer], CL_TRUE, 0, sizeof(double) * conv->numBiases,
+				conv->biases, 0, nullptr, nullptr));	
+			curConvLayer++;	
+		}
+ }
+
+void Net::setMomentum(bool useMomentum)
+{
+ 	__useMomentum = useMomentum;
+}
+
+void Net::initVelocities(vector<cl_mem>& velocities)
+{
+ 	cl_int error;
+ 	double *zeroVels = new double[__maxWeightSize];
+	for(int i=0; i< __maxWeightSize; i++)
+		zeroVels[i] = 0.0;
+	for(int l=0; l < __layers.size(); l++)
+	{
+		if(__layers[l]->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)__layers[l];
+			velocities.push_back(clCreateBuffer(__context, CL_MEM_COPY_HOST_PTR, sizeof(double) * conv->numWeights, zeroVels, &error));
+			CheckError(error);
+		}
+	}
+	delete zeroVels;
 }
 
 /*****************************************
@@ -716,17 +1302,48 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 	if(trainingData.size() != trueVals.size())
 		return false;
 
+	int width = __neuronDims[0][0];
+	int height = __neuronDims[0][1];
+	int depth = __neuronDims[0][2];
+	double temp;
+
 	for(int t = 0; t < trainingData.size(); t++)
 	{
 		int trueIndex = getTrueValIndex(trueVals[t]);
 
 		__trainingData[trueIndex].resize(__trainingData[trueIndex].size() + 1);
-		__trainingData[trueIndex].back().resize(__neuronSizes[0]);
+		__trainingData[trueIndex].back() = new vector<double>(__neuronSizes[0]);
 		int dat = 0;
 		for(int i=0; i < trainingData[t].size(); i++)
 			for(int j=0; j < trainingData[t][i].size(); j++)
 				for(int k=0; k < trainingData[t][i][j].size(); k++)
-					__trainingData[trueIndex].back()[dat++] = trainingData[t][i][j][k];
+				{
+					(*(__trainingData[trueIndex].back()))[dat++] = trainingData[t][i][j][k];
+					if(__useHorizontalReflections)
+					{
+						__trainingData[trueIndex].resize(__trainingData[trueIndex].size() + 1);
+						__trainingData[trueIndex].back() = new vector<double>(__neuronSizes[0]);
+						//copy in original from prev vector
+						for(int c = 0; c < __neuronSizes[0]; c++)
+							(*(__trainingData[trueIndex].back()))[c] = (*(__trainingData[trueIndex][__trainingData.size() - 2]))[c];
+						//horizontally reflect new vector
+						for(int ii = 0; ii < height; ii++)
+						{
+							int rowstart = ii * width * depth;
+							for(int jj = 0; jj < width/2; jj++)
+							{
+								int colstart = rowstart + jj * depth;
+								int revcolstart = rowstart + (width - jj) * depth;
+								for(int kk = 0; kk < depth; kk++)
+								{
+									temp = (*(__trainingData[trueIndex].back()))[colstart + k];
+									(*(__trainingData[trueIndex].back()))[colstart + k] = (*(__trainingData[trueIndex].back()))[revcolstart + k];
+									(*(__trainingData[trueIndex].back()))[revcolstart + k] = temp;
+								}
+							}
+						}
+					}
+				}
 	}
 
 	__numClasses = __trueVals.size();
@@ -741,6 +1358,8 @@ void Net::clearTrainingData()
 
 bool Net::setTrainingData(const vector<imVector>& trainingData, const vector<double>& trueVals)
 {
+	if(trainingData.size() != trueVals.size())
+		return false;
 	clearTrainingData();
 	return addTrainingData(trainingData,trueVals);
 }
@@ -758,9 +1377,44 @@ int Net::getTrueValIndex(double trueVal)
 	return __trueVals.size();
 }
 
+bool Net::addTestData(const vector<imVector>& testData, const vector<double>& trueVals)
+{
+	if(testData.size() != trueVals.size())
+		return false;
+	int oldSize = __testData.size();
+	__testData.resize(oldSize + testData.size());
+	__testTrueVals.resize(oldSize + testData.size());
+	int curIndex;
+	for(int t=0; t< testData.size(); t++)
+	{
+		int dat = 0;
+		curIndex = oldSize + t;
+		__testTrueVals[curIndex] = trueVals[t];
+		for(int i=0; i < testData[t].size(); i++)
+			for(int j=0; j < testData[t][i].size(); j++)
+				for(int k=0; k < testData[t][i][j].size(); k++)
+					__testData[curIndex][dat++] = testData[t][i][j][k];
+	}
+	return true;
+}
+
+void Net::clearTestData()
+{
+	__testData.resize(0);
+	__testTrueVals.resize(0);
+}
+
+bool Net::setTestData(const vector<imVector>& testData, const vector<double>& trueVals)
+{
+	if(testData.size() != trueVals.size())
+		return false;
+	clearTestData();
+	return addTestData(testData, trueVals);
+}
+
 int Net::getNumClasses() const
 {
-	return __neuronSizes.back();
+	return __numClasses;
 }
 
 void Net::preprocessData() // thread this 
@@ -774,8 +1428,6 @@ void Net::preprocessData() // thread this
 			mean += __data[i][pix];
 		mean /= __data[i].size();
 
-		//cout << "mean = " << mean << endl;
-
 		//get stddev
 		double stddev = 0; 
 		double temp;
@@ -786,13 +1438,69 @@ void Net::preprocessData() // thread this
 		}
 		stddev = sqrt(stddev / __data[i].size());
 
-		//cout << "stddev = " << stddev << endl;
-		//exit(0);
-
 		//adjust the values
 		for(int pix=0; pix < __data[i].size(); pix++)
 			__data[i][pix] = (__data[i][pix] - mean)/stddev;
 	}
+
+	__dataPreprocessed = true;
+}
+
+void Net::preprocessTrainingDataCollective()
+{
+	//getting mean and stddev on num pixels, storing and adjusting
+	//based on num images to keep numbers smaller
+	double mean = 0;
+	double stddev = 0;
+	long numPixels = 0;
+	long numImages  = 0;
+	double temp;
+	for(int i = 0; i < __trainingData.size(); i++) // class
+	{
+		for(int im = 0; im < __trainingData[i].size(); im++) // image
+		{
+			for(int pix = 0; pix < __trainingData[i][im]->size(); pix++)
+				mean += __trainingData[i][im]->at(pix);
+			numPixels += __trainingData[i][im]->size();
+		}
+		numImages++;
+	}
+	mean /= numPixels;
+
+	for(int i = 0; i < __trainingData.size(); i++) // class
+	{
+		for(int im = 0; im < __trainingData[i].size(); im++) // image
+		{
+			for(int pix = 0; pix < __trainingData[i][im]->size(); pix++)
+			{
+				temp = __data[i][pix] - mean;
+				stddev += temp * temp;
+			}
+		}
+	}
+	stddev = sqrt(stddev / numPixels);
+
+	//if already trained network is adding more data, adjust mean and stddev
+	if(false) // if new training data
+	{
+		long totalSize = __trainingSize + numImages; 
+		__mean = (__mean * __trainingSize)/totalSize + (mean * numImages)/totalSize;
+
+		__stddev = __stddev * stddev/__trainingSize + stddev * stddev/numImages;
+		__stddev = sqrt(stddev);
+	}
+	else
+	{
+		__mean = mean;
+		__stddev = stddev;
+	}
+	
+
+	//adjust the values
+	for(int i=0; i < __trainingData.size(); i++)
+		for(int im = 0; im  < __trainingData[i].size();)
+			for(int pix=0; pix < __trainingData[i][im]->size(); pix++)
+				__trainingData[i][im]->at(pix) = (__trainingData[i][im]->at(pix) - __mean)/__stddev;
 
 	__dataPreprocessed = true;
 }
