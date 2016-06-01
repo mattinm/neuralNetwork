@@ -254,24 +254,24 @@ int main(int argc, char** argv)
 	//set up net
 	Net net(xSize,ySize,zSize);
 
-	/*//64x64x3 net
-	net.setActivType(ActivLayer::LEAKY_RELU);
-	net.addConvLayer(10,1,3,1); //64x64x10
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2); 	//32x32x10
-	net.addConvLayer(6,1,5,0);	//28x28x6
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);	//14x14x6
-	net.addConvLayer(7,1,3,1);	//14x14x7
-	net.addActivLayer();
-	net.addConvLayer(10,1,3,0);	//12x12x10
-	net.addActivLayer();
-	net.addMaxPoolLayer(3,3);	//4x4x10
-	net.addConvLayer(5,1,3,1);	//4x4x5
-	net.addActivLayer();
-	net.addConvLayer(2,1,4,0);	//1x1x2
-	net.addActivLayer();
-	net.addSoftmaxLayer();
+	//64x64x3 net
+//	net.setActivType(ActivLayer::LEAKY_RELU);
+//	net.addConvLayer(10,1,3,1); //64x64x10
+//	net.addActivLayer();
+//	net.addMaxPoolLayer(2,2); 	//32x32x10
+//	net.addConvLayer(6,1,5,0);	//28x28x6
+//	net.addActivLayer();
+//	net.addMaxPoolLayer(2,2);	//14x14x6
+//	net.addConvLayer(7,1,3,1);	//14x14x7
+//	net.addActivLayer();
+//	net.addConvLayer(10,1,3,0);	//12x12x10
+//	net.addActivLayer();
+//	net.addMaxPoolLayer(3,3);	//4x4x10
+//	net.addConvLayer(5,1,3,1);	//4x4x5
+//	net.addActivLayer();
+//	net.addConvLayer(4,1,4,0);	//1x1x4
+//	net.addActivLayer();
+//	net.addSoftmaxLayer();
 	//*/
 
 	// failed fully connected net
@@ -352,7 +352,7 @@ int main(int argc, char** argv)
 	preprocess(images);
 	//meanSubtraction(images);
 
-	net.shuffleTrainingData(10);
+	//net.shuffleTrainingData(10);
 
 	cout << "Adding training data" << endl;
 	net.addTrainingData(images,trueVals);

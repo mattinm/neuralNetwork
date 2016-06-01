@@ -95,7 +95,7 @@ private: 	// members
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
 		int __smallestClassSize;
-		bool __useHorizontalReflections = true;
+		bool __useHorizontalReflections = false;
 		//running
 		bool __dataPreprocessed = false;
 		std::vector<std::vector<double> > __data; // list of<flattened images>
@@ -153,6 +153,8 @@ public: 	// functions
 		void clearTestData();
 		bool setTrainingType(int type);
 		void setHorizontalReflections(bool use);
+        void printTrainingDistribution() const;
+
 		//running
 		void addData(const std::vector<imVector>& data);
 		void setData(const std::vector<imVector>& data);
@@ -174,6 +176,9 @@ public: 	// functions
 	bool setDevice(unsigned int device);
 	void setGPU(bool useGPU);
 	void setConstantMem(bool useConstantMem);
+    
+    //save
+    bool save(const char* filename);
 
 private:	// functions
 	//inits
@@ -192,6 +197,7 @@ private:	// functions
 	int getTrueValIndex(double trueVal);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
 	void preprocessData();
+    void preprocessTrainingDataIndividual();
 	void preprocessTrainingDataCollective();
 
 	//training
@@ -202,9 +208,8 @@ private:	// functions
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
 
-	//load and save
+	//load
 	bool load(const char* filename);
-	bool save(const char* filename);
 
 	//OpenCL functions
 	void CheckError(cl_int error);

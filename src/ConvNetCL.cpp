@@ -100,7 +100,9 @@ Net::~Net()
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
 	pushBackLayerSize(inputWidth,inputHeight,inputDepth);
+    Layer* abstract = new Layer;
 	__layers.resize(1);
+    __layers.back() = abstract;
 	initOpenCL();
 }
 
@@ -259,6 +261,7 @@ void Net::pushBackLayerSize(int width, int height, int depth)
 
 void Net::initRandomWeights(ConvLayer* conv)
 {
+    cout << "making random weights" << endl;
 	default_random_engine gen(time(0));
 
 	//use the number of inputs to get the random start weights
@@ -699,11 +702,14 @@ void Net::train(int epochs)
  			return;
  		}
  	}
+    
+    printf("Starting training with device %d\n",__device);
 
  	__isTraining = true;
 
- 	if(!__dataPreprocessed)
- 		preprocessData();
+ 	if(!__trainingDataPreprocessed)
+ 		//preprocessTrainingDataCollective();
+        preprocessTrainingDataIndividual();
 
  	//set up stuff so we can exit based on error on test data
  	vector<vector<double> > confidences;
@@ -713,19 +719,18 @@ void Net::train(int epochs)
  	{
  		__dataPointer = &__testData;
  	}
-
  	//set up all the layerNeeds for training.
- 	vector<cl_mem> layerNeeds;
+ 	vector<cl_mem> layerNeeds(0);
  	setupLayerNeeds(layerNeeds);
 
  	//set up velocity stuff
-	vector<cl_mem> velocities; // still needs to exist even if not using momentum so it compiles.
+	vector<cl_mem> velocities(0); // still needs to exist even if not using momentum so it compiles.
 	if(__useMomentum)
 		initVelocities(velocities);
 
  	//set some softmax related args that won't change
- 	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
- 	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
+ 	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__numClasses));
+ 	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__numClasses));
 
  	//vector<double> test(__maxNeuronSize);
 
@@ -736,6 +741,8 @@ void Net::train(int epochs)
  		else
  			epochs = 2100000000;
  	}
+    
+    cout << "neuron[0] = " << __neuronSizes[0] << endl;
 
 	cl_mem *temp;
 	string ep = to_string(epochs);
@@ -748,6 +755,7 @@ void Net::train(int epochs)
 
 	for(int e = 0; e < epochs; e++)
 	{
+        cout << "Starting epoch " << e+1 << endl;
 		//adjust learning rate
 		if(epochs % 5 == 0 && epochs != 0)
 		{
@@ -801,7 +809,7 @@ void Net::train(int epochs)
 					//save the source array into the layerNeeds for this conv layer
 					clSetKernelArg(copyArrayKernel, 0, sizeof(cl_mem), prevNeurons);
 					clSetKernelArg(copyArrayKernel, 1, sizeof(cl_mem), &(layerNeeds[i]));
-					// global work size will either have been set by the zeroPadKernel, the previous layer, or its initialization
+					// global work size for the copy will either have been set by the zeroPadKernel, the previous layer, or its initialization
 					CheckError(clEnqueueNDRangeKernel(queue, copyArrayKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 
@@ -902,14 +910,20 @@ void Net::train(int epochs)
 			//get the output and see if it was right
 			CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 			 	soft.data(), 0, nullptr, nullptr));
+            clFinish(queue);
 			if(getMaxElementIndex(soft) == trueVals[r])
 				numCorrect++;
+            
+            //print soft
+            for(int s = 0; s < soft.size(); s++)
+                cout << "| " << soft[s] << " ";
+            cout << "|\n";
+            cout << "max element: " << getMaxElementIndex(soft) << ". TrueVal: " << trueVals[r] << endl;
 
 
 			////////////////////////////
 			// start backprop
 			////////////////////////////
-
 			clSetKernelArg(softmaxBackKernel, 0, sizeof(cl_mem), prevNeurons);
 			clSetKernelArg(softmaxBackKernel, 1, sizeof(cl_mem), neurons);
 			clSetKernelArg(softmaxBackKernel, 2, sizeof(int), &(trueVals[r]));
@@ -1091,8 +1105,8 @@ void Net::setupLayerNeeds(vector<cl_mem>& layerNeeds)
 {
 	layerNeeds.clear();
 	layerNeeds.resize(__layers.size());
-	cl_int error;
-	for(int i = 0; i < __layers.size(); i++)
+	cl_int error = CL_SUCCESS;
+	for(int i = 1; i < __layers.size(); i++)
 	{
 		if(__layers[i]->layerType == CONV_LAYER)
 		{
@@ -1252,7 +1266,7 @@ void Net::initVelocities(vector<cl_mem>& velocities)
  	double *zeroVels = new double[__maxWeightSize];
 	for(int i=0; i< __maxWeightSize; i++)
 		zeroVels[i] = 0.0;
-	for(int l=0; l < __layers.size(); l++)
+	for(int l=1; l < __layers.size(); l++)
 	{
 		if(__layers[l]->layerType == CONV_LAYER)
 		{
@@ -1374,7 +1388,7 @@ int Net::getTrueValIndex(double trueVal)
 	__trueVals.resize(newSize);
 	__trueVals.back() = trueVal;
 	__trainingData.resize(newSize);
-	return __trueVals.size();
+	return newSize-1;
 }
 
 bool Net::addTestData(const vector<imVector>& testData, const vector<double>& trueVals)
@@ -1446,14 +1460,52 @@ void Net::preprocessData() // thread this
 	__dataPreprocessed = true;
 }
 
+void Net::preprocessTrainingDataIndividual()
+{
+    cout << "preprocess individual" << endl;
+    for(int i = 0; i < __trainingData.size(); i++)
+    {
+        for(int im = 0; im < __trainingData[i].size(); im++)
+        {
+            //get mean
+            double mean = 0;
+            for(int pix = 0; pix < __trainingData[i][im]->size(); pix++)
+            {
+                mean += __trainingData[i][im]->at(pix);
+            }
+            mean /= __trainingData[i][im]->size();
+            
+            //get stddev
+            double stddev = 0;
+            double temp;
+            for(int pix = 0; pix < __trainingData[i][im]->size(); pix++)
+            {
+                temp = __trainingData[i][im]->at(pix) - mean;
+                stddev += temp * temp;
+            }
+            stddev = sqrt(stddev / __trainingData[i][im]->size());
+            
+            //adjust the values
+            for(int pix=0; pix < __trainingData[i][im]->size(); pix++)
+            {
+                __trainingData[i][im]->at(pix) = (__trainingData[i][im]->at(pix) - mean)/stddev;
+                cout << __trainingData[i][im]->at(pix) << ", ";
+            }
+            cout << endl;
+            exit(0);
+        }
+    }
+    __trainingDataPreprocessed = true;
+}
+
 void Net::preprocessTrainingDataCollective()
 {
 	//getting mean and stddev on num pixels, storing and adjusting
 	//based on num images to keep numbers smaller
 	double mean = 0;
 	double stddev = 0;
-	long numPixels = 0;
-	long numImages  = 0;
+	unsigned long numPixels = 0;
+	unsigned long numImages = 0;
 	double temp;
 	for(int i = 0; i < __trainingData.size(); i++) // class
 	{
@@ -1466,14 +1518,14 @@ void Net::preprocessTrainingDataCollective()
 		numImages++;
 	}
 	mean /= numPixels;
-
+    
 	for(int i = 0; i < __trainingData.size(); i++) // class
 	{
 		for(int im = 0; im < __trainingData[i].size(); im++) // image
 		{
 			for(int pix = 0; pix < __trainingData[i][im]->size(); pix++)
 			{
-				temp = __data[i][pix] - mean;
+				temp = __trainingData[i][im]->at(pix) - mean;
 				stddev += temp * temp;
 			}
 		}
@@ -1495,14 +1547,28 @@ void Net::preprocessTrainingDataCollective()
 		__stddev = stddev;
 	}
 	
-
 	//adjust the values
 	for(int i=0; i < __trainingData.size(); i++)
-		for(int im = 0; im  < __trainingData[i].size();)
+		for(int im = 0; im  < __trainingData[i].size(); im++)
 			for(int pix=0; pix < __trainingData[i][im]->size(); pix++)
 				__trainingData[i][im]->at(pix) = (__trainingData[i][im]->at(pix) - __mean)/__stddev;
 
-	__dataPreprocessed = true;
+	__trainingDataPreprocessed = true;
+}
+
+void Net::printTrainingDistribution() const
+{
+    double numImages = 0;
+    //get total num of images
+    for(int i = 0; i < __trainingData.size(); i++)
+    {
+        numImages += __trainingData[i].size();
+    }
+    
+    for(int i = 0; i < __trainingData.size(); i++)
+    {
+        printf("True val: %.0lf. Amount %lu.   %.4lf%%\n", __trueVals[i], __trainingData[i].size(), __trainingData[i].size()/numImages * 100.0);
+    }
 }
 
 /*****************************************
@@ -1836,6 +1902,7 @@ bool Net::setDevice(unsigned int device)
 	if(canDouble == 0)
 		return false;
 	__device = device;
+    __isFinalized = false;
 	return true;
 }
 

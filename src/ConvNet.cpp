@@ -697,6 +697,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	 *
 	 **************************************/
 	int softSize = n_layers.back()->getNumNeurons();
+    cout << "softSize = " << softSize << endl;
 	vector<double> neur(softSize);
 	vector<double> test(maxNeuronSize);
 	cl_mem *temp;
@@ -3597,6 +3598,7 @@ MaxPoolLayer::MaxPoolLayer(const Layer& prevLayer, int poolSize, int stride)
  	if(fabs(fnewHeight - newHeight) > .01 || fabs(fnewWidth - newWidth) > .01 )
 	{
 		cout << "Hyperparameters lead to bad size. Must have this equation be an int.\n\t(prevWidth - poolSize)/stride + 1;";
+        cout << "MaxPoolLayer with poolsize "<<poolSize<< " and stride " << stride <<endl;
 		throw "Incorrect hyperparameters";
 	}
 
@@ -4546,6 +4548,12 @@ void preprocess(vector<vector<vector<vector<double> > > >& vect)
 
 void preprocess(vector<vector<vector<double> > > & vect)
 {
+//    for(int i=0; i< vect.size();i++)
+//        for(int j=0; j< vect[i].size(); j++)
+//            for(int k=0; k< vect[i][j].size(); k++)
+    
+    
+
 	//preprocess using (val - mean)/stdDeviation for all elements
 	double m = mean(vect);
 	double stddv = stddev(vect,m);
@@ -4559,9 +4567,12 @@ void preprocess(vector<vector<vector<double> > > & vect)
 			for(int k=0; k< vect[i][j].size(); k++)
 			{
 				vect[i][j][k] = (vect[i][j][k] - m)/stddv;
+                cout << vect[i][j][k] << ", ";
 			}
 		}
 	}
+    cout << endl;
+    exit(0);
 }
 
 double mean(const vector<vector<vector<double> > > & vect)
