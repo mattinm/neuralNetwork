@@ -199,8 +199,16 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		cout << "Usage: ./ConvNetTrainerCL binaryTrainingImagesFile outname=<outputName.txt> epochs=<epochs> gpu=<true/false> device=<device#>";
-		cout << "\n\tThe outputName and epochs are optional keyword arguments. If no outname is specified the weights are not saved. Epochs defaults to -1. Defaults to using GPU" << endl;
+		cout << "Usage (Required to come first):\n   ./ConvNetTrainerCL binaryTrainingImagesFile";
+		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
+		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified new weights will be saved over old file.\n";
+		cout << "   testSet=<name.txt>       A binary training file to be used as a test/validation set. Never trained on.\n";
+		cout << "   epochs=<#epochs>         Number of epochs to train for. Defaults to 1 if no testSet, else defaults to \"How long it takes\"\n";
+		cout << "   device=<device#>         Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
+		cout << "   -train_as_is             Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
+		cout << "   -train_equal_prop        Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";
+		cout << "                            the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
+		return 0;
 		return 0;
 	}
 
@@ -210,11 +218,15 @@ int main(int argc, char** argv)
 	bool saveWeights = false;
 	int epochs = -1;
 	int device = -1;
-	bool useGPU = true;
+	int haveTrainMethod = 0;
+	int trainMethod = TRAIN_AS_IS;
+	string testSetName;
+	bool haveTest = false;
+
 
 	if(argc > 2)
 	{
-		for(int i = 3; i < argc; i++)
+		for(int i = 2; i < argc; i++)
 		{
 			string arg(argv[i]);
 			if(arg.find("outname=") != string::npos)
@@ -223,21 +235,33 @@ int main(int argc, char** argv)
 				saveWeights = true;
 			}
 			else if(arg.find("epochs=") != string::npos || arg.find("epoch=") != string::npos)
-			{
 				epochs = stoi(arg.substr(arg.find("=")+1));
-			}
-			else if(arg.find("gpu=") != string::npos)
-			{
-				if(arg.find("false") != string::npos || arg.find("False") != string::npos)
-				{
-					useGPU = false;
-				}
-			}
 			else if(arg.find("device=") != string::npos)
-			{
 				device = stoi(arg.substr(arg.find("=")+1));
+			else if(arg.find("testSet=") != string::npos)
+			{
+				testSetName = arg.substr(arg.find("=") + 1);
+				haveTest = true;
+			}
+			else if(arg.find("-train_equal_prop") != string::npos)
+			{
+				trainMethod = TRAIN_EQUAL_PROP;
+				haveTrainMethod++;
+			}
+			else if(arg.find("-train_as_is") != string::npos)
+				haveTrainMethod++; // this is on by default
+			else
+			{
+				printf("Unknown arg %s. Aborting.\n", argv[i]);
+				return 0;
 			}
 		}
+	}
+
+	if(haveTrainMethod > 1)
+	{
+		printf("You cannot have multiple training methods simultaneously.\n");
+		return 0;
 	}
 
 	ifstream in;
@@ -245,13 +269,15 @@ int main(int argc, char** argv)
 
 	if(!in.is_open())
 	{
-		cout << "Unable to open file \"" << argv[2] << "\". Exiting." << endl;
+		cout << "Unable to open training file \"" << argv[1] << "\". Exiting." << endl;
 		return 0;
 	}
 
 	in.seekg(0, in.end);
 	__ifstreamend = in.tellg();
 	in.seekg(0, in.beg);
+	vector<imVector> images(0);
+	vector<double> trueVals(0);
 
 	short sizeByte = readShort(in);
 	short xSize = readShort(in);
@@ -330,33 +356,75 @@ int main(int argc, char** argv)
 	net.addConvLayer(2,1,4,0);
 	//*/
     
-    //net.setTrainingType(TRAIN_EQUAL_PROP);
-    
-    net.setDevice(device);
 
+    net.setDevice(device);
+    net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{
+		cout << net.getErrorLog() << endl;
 		cout << "Something went wrong making the net. Exiting." << endl;
 		return 0;
 	}
 	
 
-	//get images
-	vector<imVector> images(0);
-	vector<double> trueVals(0);
+	//get training images
+	
 
+	printf("Bringing in training data from file: %s\n", argv[1]);
 	starttime = time(NULL);
 	convertBinaryToVector(in,images,trueVals,sizeByte,xSize,ySize,zSize);
 	endtime = time(NULL);
 	cout << "Time to bring in training data: " << secondsToString(endtime - starttime) << endl;
 	in.close();
 
-    //add images to net
+	//add images to net
 	net.addTrainingData(images,trueVals);
     
-    cout << "Training Distribution" << endl;
+    cout << "Training Distribution:" << endl;
 	net.printTrainingDistribution();
+	printf("\n");
 
+	//get test images if needed
+	vector<imVector> testImages(0);
+	vector<double> testTrueVals(0);
+	if(haveTest)
+	{
+		ifstream testIn;
+		in.open(testSetName.c_str());
+		if(!in.is_open())
+		{
+			cout << "Unable to open test file \"" << testSetName << "\". Exiting." << endl;
+			return 0;
+		}
+		in.seekg(0, in.end);
+		__ifstreamend = in.tellg();
+		in.seekg(0, in.beg);
+
+		short tsizeByte = readShort(in);
+		short txSize = readShort(in);
+		short tySize = readShort(in);
+		short tzSize = readShort(in);
+		if(txSize != xSize || tySize != ySize || tzSize != zSize)
+		{
+			printf("Training and test images must be of same size.\n");
+			return 0;
+		}
+
+		printf("Bringing in testing data from file: %s\n", testSetName.c_str());
+		starttime = time(NULL);
+		convertBinaryToVector(in,testImages,testTrueVals,tsizeByte,txSize,tySize,tzSize);
+		endtime = time(NULL);
+		cout << "Time to bring in test data: " << secondsToString(endtime - starttime) << endl;
+		in.close();
+
+		net.addTestData(testImages, testTrueVals);
+
+		printf("Test Set Distribution:\n");
+		net.printTestDistribution();
+		printf("\n");
+	}
+
+	
 	starttime = time(NULL);
 	net.train(epochs);
 	endtime = time(NULL);

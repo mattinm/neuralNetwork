@@ -356,8 +356,8 @@ __kernel void convolve_back_weights_moment(__global double* weights, __global do
 		weights[x] = myWeight;
 
 	//w/out max-norm
-	//weights[x] += myVel;
-	//velocity[x] = myVel;
+	//weights[x] += myVel; i don't think this is true
+	//velocity[x] = myVel; this is normal momentum, not nesterov
 	
 }
 
@@ -447,6 +447,8 @@ __kernel void softmax(__global double *prevNeurons, __global double *neurons, do
 __kernel void softmax_back(__global double* dNeurons, __global double* neurons, int trueVal)
 {
 	int i = get_global_id(0);
+
+	//printf("thread %d: trueIndex %d\n",i,trueVal);
 
 	if(i == trueVal)
 	{

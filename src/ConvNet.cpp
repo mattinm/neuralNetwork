@@ -703,13 +703,14 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 	cl_mem *temp;
 	//cout << "Starting run on GPU(s)" << endl;
 	string ep = to_string(epochs);
-	for(int e=0; e < epochs; e++)
+	for(int e=1; e <= epochs; e++)
 	{
 		shuffleTrainingData();
 
-		if(epochs != 0 && epochs%5 == 0)
+		if(e%5 == 0)
 		{
 			Net::stepSize *= .5;
+			printf("Epoch %d: Changed learning rate from %e to %e\n",e,Net::stepSize*2,Net::stepSize);
 		}
 		
 		for(int r=0; r < n_trainingData.size(); r++)
@@ -824,6 +825,12 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					clSetKernelArg(convKernel, 6, sizeof(int), &(hyper[1])); // stride
 					clSetKernelArg(convKernel, 7, sizeof(int), &paddedWidth); // prevWidth
 					clSetKernelArg(convKernel, 8, sizeof(int), &(hyper[3])); // prevDepth
+
+					if(Net::walkthrough)
+					{
+						printf("Conv %d, numFil %d, filSize %d, str %d, padWid %d\n", 
+							curConvLayer, numFilters, hyper[0], hyper[1], paddedWidth);
+					}
 
 					globalWorkSize[0] = (size_t)n_layers[i]->getNumNeurons();
 					
@@ -957,12 +964,15 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 				globalWorkSize,
 				nullptr, 0, nullptr, nullptr));
 			clFinish(queue);
-			/*
-			CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * softSize, 
-				neur.data(), 0, nullptr, nullptr));
-			cout << "Backprop Softmax" << endl;
-			printVector(neur);
-			*/
+			
+			if(Net::showErrors && !Net::walkthrough)
+			{
+				CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * softSize, 
+					neur.data(), 0, nullptr, nullptr));
+				cout << "Backprop Softmax" << endl;
+				printVector(neur);
+			}
+			
 
 			//swap prev and cur neuron pointers
 			temp = neurons;
@@ -1067,17 +1077,6 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 						printArray(test.data(), globalWorkSize[0]);
 						getchar();
 					}
-					/*
-					if(Net::walkthrough)
-					{
-						size_t amount = (size_t)conv->getPaddedNeuronSize();
-						//printf("pwid %d, phei %d, dep %d, pad %d, size %ld\n",hyper[2],hyper[6],hyper[3],hyper[5],globalWorkSize[0]);
-						cout << "Back Layer new prevNeurons " << i << " ConvLayer " << curConvLayer << endl;
-						CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * amount,
-							test.data(), 0, nullptr, nullptr));
-						printArray(test.data(), amount);
-						getchar();
-					}*/
 
 					//backprop biases
 					
@@ -1232,7 +1231,7 @@ void Net::OpenCLTrain(int epochs, bool useGPU)
 					numCorrect++;
 			}
 			cout << "Epoch: " ;
-			cout << setw(ep.size()) << e+1;
+			cout << setw(ep.size()) << e;
 			cout << ", Accuracy on training data run: " << numCorrect << " out of " << n_trainingDataTrueVals.size() << ". " << numCorrect/(double)calculatedClasses.size()*100 << "%" << endl;
 		}
 	}
@@ -3129,6 +3128,9 @@ void ConvLayer::initRandomWeights()
 	//normal_distribution<double> distr(0,1);
 	normal_distribution<double> distr(0,sqrtIn);
 
+	//printf("num weights: %lu sqrtIn %lf\n", c_weights.size()*c_weights[0].size()*c_weights[0][0].size()
+	//	*c_weights[0][0][0].size(), sqrtIn);
+
 	//uniform_real_distribution<double> distr(-.05,.05); // + - .005 using meanSub or +- .05 worked better
 	for(int f = 0;f<c_weights.size(); f++)
 	{
@@ -4567,12 +4569,15 @@ void preprocess(vector<vector<vector<double> > > & vect)
 			for(int k=0; k< vect[i][j].size(); k++)
 			{
 				vect[i][j][k] = (vect[i][j][k] - m)/stddv;
-                cout << vect[i][j][k] << ", ";
+                //if(v == 1) {cout << vect[i][j][k] << ", ";}
 			}
 		}
 	}
-    cout << endl;
-    exit(0);
+	// if(v==1)
+	// {
+	//     cout << endl;
+	//     exit(0);
+	// }
 }
 
 double mean(const vector<vector<vector<double> > > & vect)

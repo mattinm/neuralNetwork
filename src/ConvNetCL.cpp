@@ -6,8 +6,10 @@
 #include <random>
 #include <fstream>
 #include <random>
+#include <unordered_map>
 
-// includes brought in from ConvNetCL.h
+// 	includes brought in from ConvNetCL.h
+//
 // #include <vector>	
 // #include <string> 
 // #ifdef __APPLE__
@@ -22,9 +24,18 @@ using namespace std;
 
 #define GETMAX(x,y) (x > y) ? x: y
 
+// void printArray(double* array, int size)
+// {
+// 	for(int i=0; i< size; i++)
+// 	{
+// 		cout << array[i] << ", ";
+// 	}
+// 	cout << endl << endl;
+// }
+
 
 /*****************************************
- * Constructors and Destructors and init
+ * Constructors and Destructors and inits
  *****************************************/
 
 Net::Net(const char* filename)
@@ -261,13 +272,15 @@ void Net::pushBackLayerSize(int width, int height, int depth)
 
 void Net::initRandomWeights(ConvLayer* conv)
 {
-    cout << "making random weights" << endl;
+    //cout << "making random weights" << endl;
 	default_random_engine gen(time(0));
 
 	//use the number of inputs to get the random start weights
 	double numInputs = conv->filterSize * conv->filterSize + 1;
 	double sqrtIn = pow(2/numInputs,.5);
 	normal_distribution<double> distr(0,sqrtIn);
+
+	//printf("num weights: %d sqrtIn %lf\n", conv->numWeights, sqrtIn);
 
 	conv->weights = new double[conv->numWeights];
 	conv->biases  = new double[conv->numBiases];
@@ -309,6 +322,11 @@ bool Net::setActivType(int activationType)
 void Net::setAutoActivLayer(bool isAuto)
 {
 	__autoActivLayer = isAuto;
+}
+
+string Net::getErrorLog() const
+{
+	return __errorLog;
 }
 
 bool Net::finalize()
@@ -400,7 +418,7 @@ bool Net::finalize()
 	int numConvLayers = 0;
 	__maxNeuronSize = __neuronSizes[0];
 
-	//if it has been previous finalized there might be stuff in the weights and biases, so remove it
+	//if it has been previously finalized there might be stuff in the weights and biases, so remove it
 	for(int i = 0; i < clWeights.size(); i++)
 	{
 		clReleaseMemObject(clWeights[i]);
@@ -445,8 +463,9 @@ bool Net::finalize()
 		else if (type == ACTIV_LAYER);
 		else
 		{
-			cout << "Unknown layer type for the GPU implemenation. Defaulting to CPU." << endl;
+			cout << "Unknown layer type. Aborting finalize." << endl;
 			cout << "Type: " << type << endl;
+			return false;
 		}
 	}
 	n = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __maxNeuronSize,
@@ -703,7 +722,16 @@ void Net::train(int epochs)
  		}
  	}
     
-    printf("Starting training with device %d\n",__device);
+    size_t valueSize;
+	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_NAME, 0, NULL, &valueSize));
+	char* name = new char[valueSize];
+	printf("Training with device %d: ",__device);
+	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_NAME, valueSize, name, nullptr));
+	printf("%s\n",name);
+   	if(__trainingType == TRAIN_AS_IS)
+   		printf("Training using AS IS\n");
+   	else if(__trainingType == TRAIN_EQUAL_PROP)
+   		printf("Training using EQUAL PROPORTIONS\n");
 
  	__isTraining = true;
 
@@ -729,40 +757,47 @@ void Net::train(int epochs)
 		initVelocities(velocities);
 
  	//set some softmax related args that won't change
- 	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__numClasses));
- 	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__numClasses));
+ 	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
+ 	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
 
- 	//vector<double> test(__maxNeuronSize);
+ 	vector<double> test(__maxNeuronSize);
 
  	if(epochs == -1)
  	{
  		if(__testData.size() == 0)
  			epochs = 1;
  		else
- 			epochs = 2100000000;
+ 			epochs = 9999; // if you need more than this set it yourself
  	}
     
-    cout << "neuron[0] = " << __neuronSizes[0] << endl;
-
 	cl_mem *temp;
 	string ep = to_string(epochs);
 	int epSize = ep.size();
 
-	vector<double> soft(__numClasses);
+	vector<double> soft(__neuronSizes.back());
 
 	vector<vector<double>* > trainingData(0);
 	vector<double> trueVals(0);
 
-	for(int e = 0; e < epochs; e++)
-	{
-        cout << "Starting epoch " << e+1 << endl;
+	////////////////////////////
+	// start of training
+	// start of epochs
+	////////////////////////////
+	setbuf(stdout,NULL);
+	for(int e = 1; e <= epochs; e++)
+	{   
 		//adjust learning rate
-		if(epochs % 5 == 0 && epochs != 0)
+		if(e % 5 == 0 && e != 0)
 		{
 			__learningRate *= .5;
+			printf("Changed learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e);
 		}
+		cout << "Epoch: ";
+	 	cout << setw(epSize) << e;
+	 	// printf("Epoch: %d",e);
 
-		getTrainingData(trainingData, trueVals); // this needs to shuffle it
+		getTrainingData(trainingData, trueVals); // this gets the training data for this epoch
+		
 		int numCorrect = 0;
 
 	 	for(int r = 0; r < trainingData.size(); r++)
@@ -868,14 +903,14 @@ void Net::train(int epochs)
 				clFinish(queue);
 
 				// cout << "Forward Layer " << i << endl;
-				// 	CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
-				// 		test.data(), 0, nullptr, nullptr));
-				// 	for(int j=0; j< __neuronSizes[i]; j++)
-				// 	{
-				// 		cout << test[j] << ", ";
-				// 	}
-				// 	cout << endl << endl;
-				// 	getchar();
+				// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+				// 	test.data(), 0, nullptr, nullptr));
+				// for(int j=0; j< __neuronSizes[i]; j++)
+				// {
+				// 	cout << test[j] << ", ";
+				// }
+				// cout << endl << endl;
+				// getchar();
 
 				temp = neurons;
 				neurons = prevNeurons;
@@ -914,23 +949,34 @@ void Net::train(int epochs)
 			if(getMaxElementIndex(soft) == trueVals[r])
 				numCorrect++;
             
-            //print soft
-            for(int s = 0; s < soft.size(); s++)
-                cout << "| " << soft[s] << " ";
-            cout << "|\n";
-            cout << "max element: " << getMaxElementIndex(soft) << ". TrueVal: " << trueVals[r] << endl;
+        //print soft
+        // cout << "Softmax forward" << endl;
+        // for(int s = 0; s < soft.size(); s++)
+        //     cout << "| " << soft[s] << " ";
+        // cout << "|\n";
+        // cout << "max element: " << getMaxElementIndex(soft) << ". TrueVal: " << trueVals[r] << endl;
 
 
 			////////////////////////////
 			// start backprop
 			////////////////////////////
+        	int curTrueVal = trueVals[r];
 			clSetKernelArg(softmaxBackKernel, 0, sizeof(cl_mem), prevNeurons);
 			clSetKernelArg(softmaxBackKernel, 1, sizeof(cl_mem), neurons);
-			clSetKernelArg(softmaxBackKernel, 2, sizeof(int), &(trueVals[r]));
+			clSetKernelArg(softmaxBackKernel, 2, sizeof(int), &curTrueVal);
 			//globalWorkSize[0] = (size_t)__neuronSizes.back(); // this is still true
 			CheckError(clEnqueueNDRangeKernel(queue,softmaxBackKernel, 1,
 				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 			clFinish(queue);
+
+		// CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+		//  	soft.data(), 0, nullptr, nullptr));
+  //       clFinish(queue);
+  //       //print soft
+  //       // cout << "Softmax back" << endl;
+  //       for(int s = 0; s < soft.size(); s++)
+  //           cout << "| " << soft[s] << " ";
+  //       cout << "|\n";
 
 			temp = neurons;
 			neurons = prevNeurons;
@@ -1007,6 +1053,13 @@ void Net::train(int epochs)
 					CheckError(clEnqueueNDRangeKernel(queue, convBackBiasesKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 
+				// clFinish(queue);
+				// cout << "ConvLayer back biases " << curConvLayer << endl;
+				// CheckError(clEnqueueReadBuffer(queue, clBiases[curConvLayer], CL_TRUE, 0, sizeof(double) * globalWorkSize[0],
+				// 	test.data(), 0, nullptr, nullptr));
+				// printArray(test.data(), globalWorkSize[0]);
+				// getchar();
+
 					//backprop and update weights					
 					//cout << "running convBackWeightsKernel" << endl;
 					if(!__useMomentum) // no momentum
@@ -1041,6 +1094,14 @@ void Net::train(int epochs)
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					}
 
+			// clFinish(queue);
+			// cout << "ConvLayer back weights " << curConvLayer << endl;
+			// cout << "numWeights " << conv->numWeights << endl;
+			// CheckError(clEnqueueReadBuffer(queue, clWeights[curConvLayer], CL_TRUE, 0, sizeof(double) * conv->numWeights,
+			// 	test.data(), 0, nullptr, nullptr));
+			// printArray(test.data(), conv->numWeights);
+			// getchar();
+
 					//backprop zeroPad if necessary
 					if(conv->padding != 0) 
 					{
@@ -1066,16 +1127,28 @@ void Net::train(int epochs)
 				} // end if-elseif for backprop of single layer
 
 				clFinish(queue);
+
+				// cout << "Backprop Layer " << i << endl;
+				// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+				// 	test.data(), 0, nullptr, nullptr));
+				// for(int j=0; j< __neuronSizes[i]; j++)
+				// {
+				// 	cout << test[j] << ", ";
+				// }
+				// cout << endl << endl;
+				// getchar();
+
 				temp = neurons;
 				neurons = prevNeurons;
 				prevNeurons = temp;
 			}// end for loop for backprop
-	 	}// end for loop for training data (end of epoch)
-	 	cout << "Epoch: ";
-	 	cout << setw(epSize) << e+1;
-	 	cout << ", Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%" << endl;
+	 	}// end for loop for training data (meaning the epoch has finished)
+	 	
+	 	//beginning of this line is at the top of the epoch loop
+	 	cout << ". Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%" << endl;
 	 	if(__testData.size() != 0)
 	 	{
+	 		printf("\tTest Set. ");
 	 		run(); //this will update __confidences
 	 		curError = 0;
 	 		int testCorrect = 0;
@@ -1087,14 +1160,14 @@ void Net::train(int epochs)
 		 			testCorrect++;
 		 	}
 	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
-	 		printf("\tAccuracy on test data: %d out of %lu. %lf%%\n",testCorrect,__testData.size(), testAccuracy);
+	 		printf("Accuracy on test data: %d out of %lu. %lf%%\n",testCorrect,__testData.size(), testAccuracy);
 
 	 		//stop training when the curError is greater than the previous data and accuracy is more than 80
 	 		if(curError > prevError && testAccuracy >= 80.0)
 	 			break;
 	 		prevError = curError;
 	 	}
-	}
+	}// end of all epochs
 	pullCLWeights();
 	//clean up anything we may have messed with in order to use run.
 	__confidences.resize(__data.size());
@@ -1149,6 +1222,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 				trueVals[oldSize + i] = __trueVals[t];
 			}
 		}
+		//printf("Sizes! data %lu, true %lu\n",trainingData.size(), trueVals.size());
 		//shuffle 10 times to start
 		shuffleTrainingData(trainingData, trueVals, 10);
 	}
@@ -1167,9 +1241,10 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 		}
 		int index = 0;
 		//for each class, shuffle it (global __trainingData) and bring in the smallestClassSize to trainingData.
-		for(int t = 0; t < __trainingData.size(); t ++) // class
+		for(int t = 0; t < __trainingData.size(); t++) // class
 		{
-			shuffleData(__trainingData[t]);	//shuffling brings randomness without duplicates
+			shuffleData(__trainingData[t]);	//shuffling brings randomness without duplicates. It should be shuffleData 
+			                                //not shuffleTrainingData because it doesn't have a vector of trueVals
 			for(int i = 0; i < __smallestClassSize; i++) // image. take the first __smallestClassSize amount of images
 			{
 				trainingData[index] = __trainingData[t][i];
@@ -1203,6 +1278,8 @@ void Net::shuffleData(vector<vector<double>* >& data, int times)
 
 void Net::shuffleTrainingData(vector<vector<double>* >& trainingData, vector<double>& trueVals, int times)
 {
+	//if debugging, don't shuffle
+	//return;
 	if(times < 1)
 		return;
 	default_random_engine gen(time(0));
@@ -1319,24 +1396,28 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 	int width = __neuronDims[0][0];
 	int height = __neuronDims[0][1];
 	int depth = __neuronDims[0][2];
-	double temp;
+	double temp; // only used if __useHorizontalReflections == true
+
+	int inputSize = __neuronSizes[0];
 
 	for(int t = 0; t < trainingData.size(); t++)
 	{
+		//if the trueVal does not yet have an index, this will resize the private class vectors and give it one.
 		int trueIndex = getTrueValIndex(trueVals[t]);
 
-		__trainingData[trueIndex].resize(__trainingData[trueIndex].size() + 1);
-		__trainingData[trueIndex].back() = new vector<double>(__neuronSizes[0]);
+		//__trainingData[trueIndex].resize(__trainingData[trueIndex].size() + 1);
+		//__trainingData[trueIndex].back() = new vector<double>(__neuronSizes[0]);
+		__trainingData[trueIndex].push_back(new vector<double>(inputSize));
 		int dat = 0;
 		for(int i=0; i < trainingData[t].size(); i++)
 			for(int j=0; j < trainingData[t][i].size(); j++)
 				for(int k=0; k < trainingData[t][i][j].size(); k++)
 				{
-					(*(__trainingData[trueIndex].back()))[dat++] = trainingData[t][i][j][k];
+					(__trainingData[trueIndex].back())->at(dat++) = trainingData[t][i][j][k];
 					if(__useHorizontalReflections)
 					{
-						__trainingData[trueIndex].resize(__trainingData[trueIndex].size() + 1);
-						__trainingData[trueIndex].back() = new vector<double>(__neuronSizes[0]);
+						cout << "horizontally reflecting" << endl;
+						__trainingData[trueIndex].push_back(new vector<double>(__neuronSizes[0]));
 						//copy in original from prev vector
 						for(int c = 0; c < __neuronSizes[0]; c++)
 							(*(__trainingData[trueIndex].back()))[c] = (*(__trainingData[trueIndex][__trainingData.size() - 2]))[c];
@@ -1384,9 +1465,9 @@ int Net::getTrueValIndex(double trueVal)
 		if(__trueVals[i] == trueVal)
 			return i;
 
-	int newSize = __trueVals.size() + 1;
-	__trueVals.resize(newSize);
-	__trueVals.back() = trueVal;
+	
+	__trueVals.push_back(trueVal);
+	int newSize = __trueVals.size();
 	__trainingData.resize(newSize);
 	return newSize-1;
 }
@@ -1401,8 +1482,9 @@ bool Net::addTestData(const vector<imVector>& testData, const vector<double>& tr
 	int curIndex;
 	for(int t=0; t< testData.size(); t++)
 	{
-		int dat = 0;
 		curIndex = oldSize + t;
+		__testData[curIndex].resize(__neuronSizes[0]);
+		int dat = 0;
 		__testTrueVals[curIndex] = trueVals[t];
 		for(int i=0; i < testData[t].size(); i++)
 			for(int j=0; j < testData[t][i].size(); j++)
@@ -1462,7 +1544,8 @@ void Net::preprocessData() // thread this
 
 void Net::preprocessTrainingDataIndividual()
 {
-    cout << "preprocess individual" << endl;
+    cout << "Preprocessing Individually" << endl;
+    unsigned long count = 0;
     for(int i = 0; i < __trainingData.size(); i++)
     {
         for(int im = 0; im < __trainingData[i].size(); im++)
@@ -1489,10 +1572,14 @@ void Net::preprocessTrainingDataIndividual()
             for(int pix=0; pix < __trainingData[i][im]->size(); pix++)
             {
                 __trainingData[i][im]->at(pix) = (__trainingData[i][im]->at(pix) - mean)/stddev;
-                cout << __trainingData[i][im]->at(pix) << ", ";
+                //if(im==1)cout << __trainingData[i][im]->at(pix) << ", ";
             }
-            cout << endl;
-            exit(0);
+            count++;
+         //    if(im==1)
+         //    {
+	        //     cout << endl;
+	        //     exit(0);
+	        // }
         }
     }
     __trainingDataPreprocessed = true;
@@ -1569,6 +1656,31 @@ void Net::printTrainingDistribution() const
     {
         printf("True val: %.0lf. Amount %lu.   %.4lf%%\n", __trueVals[i], __trainingData[i].size(), __trainingData[i].size()/numImages * 100.0);
     }
+}
+
+void Net::printTestDistribution() const 
+{
+	unordered_map<double, int> trueMap;
+
+	for(int i = 0; i < __testTrueVals.size(); i++)
+	{
+		double val = __testTrueVals[i];
+		unordered_map<double, int>::const_iterator got = trueMap.find(val);
+		if(got == trueMap.end()) // not found
+			trueMap[val] = 1;
+		else // found
+			trueMap[val]++;
+	}
+
+	double sum = 0;
+	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
+	{
+		sum += it->second;
+	}
+	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
+	{
+		cout << "True val " << it->first << ": " << it->second << "   " << it->second/sum * 100 << "%\n";
+	}
 }
 
 /*****************************************

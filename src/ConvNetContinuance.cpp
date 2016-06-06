@@ -186,8 +186,8 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		cout << "Usage: ./ConvNetTrainer CNNConfigFile.txt binaryTrainingImagesFile outname=<outputName.txt> epochs=<#epochs> gpu=<true/false> device=<device#>";
-		cout << "\n\tThe outputName and epochs are optional keyword arguments. If no outname is specified the weights will be saved over the old weights. Epochs defaults to 1. Defaults to using GPU" << endl;
+		cout << "Usage: ./ConvNetContinuance CNNConfigFile.txt binaryTrainingImagesFile outname=<outputName.txt> epochs=<#epochs> gpu=<true/false> device=<device#>";
+		cout << "\n\tThe outputName and epochs are optional keyword arguments. If no outname is specified the new weights will be saved over the old weights. Epochs defaults to 1. Defaults to using GPU" << endl;
 		return 0;
 	}
 

@@ -87,7 +87,7 @@ private: 	// members
 		double __stddev = 0;
 		double __trainingSize = 0;
 		bool __isTraining = false;
-		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<flattenedImages> >
+		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<pointers-to-flattenedImages> >
 		std::vector<double> __trueVals; // parallel vector of true values for __trainingData
 		std::vector<std::vector<double> > __testData;
 		std::vector<double> __testTrueVals;
@@ -141,7 +141,7 @@ public: 	// functions
 	void setAutoActivLayer(bool isAuto);
 
 	bool finalize();
-	std::string getErrorLog();
+	std::string getErrorLog() const;
 
 	//functions dealing with data
 		//training
@@ -154,6 +154,7 @@ public: 	// functions
 		bool setTrainingType(int type);
 		void setHorizontalReflections(bool use);
         void printTrainingDistribution() const;
+        void printTestDistribution() const;
 
 		//running
 		void addData(const std::vector<imVector>& data);
