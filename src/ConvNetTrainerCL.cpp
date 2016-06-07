@@ -294,67 +294,66 @@ int main(int argc, char** argv)
 	Net net(xSize,ySize,zSize);
 
 	//64x64x3 net
-//	net.setActivType(LEAKY_RELU);
-//	net.addConvLayer(10,1,3,1); //64x64x10
-//	net.addMaxPoolLayer(2,2); 	//32x32x10
-//	net.addConvLayer(10,1,3,1);	//32x32x10
-//	net.addMaxPoolLayer(2,2);	//16x16x10
-//    net.addConvLayer(10,1,3,1);	//16x16x10
-//	net.addMaxPoolLayer(2,2);	//8x8x10
-//	net.addConvLayer(10,1,3,1);	//8x8x10
-//    net.addFullyConnectedLayer(10);
-//    net.addFullyConnectedLayer(4);
-	//*/
+	// net.setActivType(RELU);
+	// net.addConvLayer(10,1,3,1);     //64x64x10
+	// net.addMaxPoolLayer(2,2); 	    //32x32x10
+	// net.addConvLayer(10,1,3,1);	    //32x32x10
+	// net.addMaxPoolLayer(2,2);	    //16x16x10
+	// net.addConvLayer(10,1,3,1);	    //16x16x10
+	// net.addMaxPoolLayer(2,2);	    //8x8x10
+	// net.addConvLayer(10,1,3,1);	    //8x8x10
+	// net.addFullyConnectedLayer(10); //1x1x10
+	// net.addFullyConnectedLayer(4);  //1x1x4
+
+	//shallow 64x64x3 net
+	net.setActivType(LEAKY_RELU);		//64x64x3
+	net.addConvLayer(25,1,5,0);     	//60x60x5
+	net.addMaxPoolLayer(2,2); 	    	//30x30x5
+	net.addConvLayer(25,1,3,0);	  	  	//28x28x6
+	net.addMaxPoolLayer(2,2); 			//14x14x6
+	net.addConvLayer(25,1,3,0);			//12x12x7
+	net.addMaxPoolLayer(3,3);			//4x4x7
+	//net.addConvLayer(4,1,4,0);		//1x1x4	
+	net.addFullyConnectedLayer(4);
+
 
 	// failed fully connected net
-	/*
-	net.setActivType(RELU);
-	net.addConvLayer(10,1,3,0); 		//30x30x10
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//15x15x10
-	net.addConvLayer(2,1,15,0);		//1x1x2
-	net.addActivLayer();
-	net.addSoftmaxLayer();
-	//*/
+	// net.setActivType(RELU);
+	// net.addConvLayer(10,1,3,0); 	//30x30x10
+	// net.addMaxPoolLayer(2,2);		//15x15x10
+	// net.addFullyConnectedLayer(100);//1x1x100
+	// net.addFullyConnectedLayer(2);	//1x1x2
 	
-	/* large net
-	net.setActivType(LEAKY_RELU);
-	net.addConvLayer(20, 1, 3, 1); //numfilters, stride, filtersize, padding
-	net.addActivLayer(); 			//32x32x20
-	net.addConvLayer(10,1,3,1);		//32x32x10
-	net.addActivLayer();			
-	net.addMaxPoolLayer(2,2);		//16x16x10
-	net.addConvLayer(20,1,3,1);		//16x16x20
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//8x8x20
-	net.addConvLayer(40,1,3,1);		//8x8x40
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//4x4x40
-	net.addConvLayer(30,1,3,1);		//4x4x30
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//2x2x30
-	net.addConvLayer(20,1,3,1);		//2x2x20
-	net.addActivLayer();
-	net.addMaxPoolLayer(2,2);		//1x1x20
-	net.addConvLayer(2,1,3,1);		//1x1x4
-	net.addSoftmaxLayer();
+	///large net
+	// net.setActivType(LEAKY_RELU);
+	// net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
+	// net.addConvLayer(10,1,3,1);		//32x32x10
+	// net.addMaxPoolLayer(2,2);		//16x16x10
+	// net.addConvLayer(20,1,3,1);		//16x16x20
+	// net.addMaxPoolLayer(2,2);		//8x8x20
+	// net.addConvLayer(40,1,3,1);		//8x8x40
+	// net.addMaxPoolLayer(2,2);		//4x4x40
+	// net.addConvLayer(30,1,3,1);		//4x4x30
+	// net.addMaxPoolLayer(2,2);		//2x2x30
+	// net.addConvLayer(20,1,3,1);		//2x2x20
+	// net.addMaxPoolLayer(2,2);		//1x1x20
+	// net.addConvLayer(2,1,3,1);		//1x1x4
 	//*/
 	
 	
 	//small net
-	net.setActivType(LEAKY_RELU);
-	net.addConvLayer(6,1,5,0);
-	net.addMaxPoolLayer(2,2);
+	// net.setActivType(LEAKY_RELU);
+	// net.addConvLayer(6,1,5,0);
+	// net.addMaxPoolLayer(2,2);
 
-	//net.addConvLayer(7,1,3,1);
+	// //net.addConvLayer(7,1,3,1);
 
-	net.addConvLayer(10,1,3,0);
-	net.addMaxPoolLayer(3,3);
+	// net.addConvLayer(10,1,3,0);
+	// net.addMaxPoolLayer(3,3);
 
-	//net.addConvLayer(5,1,3,1);	//4x4x5
+	// //net.addConvLayer(5,1,3,1);	//4x4x5
 
-	net.addConvLayer(2,1,4,0);
-	//*/
+	// net.addConvLayer(2,1,4,0);
     
 
     net.setDevice(device);
@@ -366,10 +365,10 @@ int main(int argc, char** argv)
 		return 0;
 	}
 	
+	printf("CNN Layer Sizes\n");
+	net.printLayerDims();
 
 	//get training images
-	
-
 	printf("Bringing in training data from file: %s\n", argv[1]);
 	starttime = time(NULL);
 	convertBinaryToVector(in,images,trueVals,sizeByte,xSize,ySize,zSize);

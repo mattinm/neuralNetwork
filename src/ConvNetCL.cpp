@@ -319,6 +319,24 @@ bool Net::setActivType(int activationType)
 	return true;
 }
 
+void Net::printLayerDims() const 
+{
+	printf("Input         %d x %d x %d\n", __neuronDims[0][0], __neuronDims[0][1], __neuronDims[0][2]);
+	for(int i=1; i < __neuronDims.size(); i++)
+		if(__layers[i]->layerType == CONV_LAYER)
+			printf("Conv          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+		else if(__layers[i]->layerType == MAX_POOL_LAYER)
+			printf("Max Pool      %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+		else if(__layers[i]->layerType == ACTIV_LAYER)
+		{
+			ActivLayer* act = (ActivLayer*)__layers[i];
+			if(act->activationType == LEAKY_RELU)
+			printf("Leaky RELU    %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+			else if(act->activationType == RELU)
+			printf("RELU          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+		}
+}
+
 void Net::setAutoActivLayer(bool isAuto)
 {
 	__autoActivLayer = isAuto;
@@ -790,10 +808,11 @@ void Net::train(int epochs)
 		if(e % 5 == 0 && e != 0)
 		{
 			__learningRate *= .5;
-			printf("Changed learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e);
+			printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e);
 		}
 		cout << "Epoch: ";
 	 	cout << setw(epSize) << e;
+	 	cout << ". ";
 	 	// printf("Epoch: %d",e);
 
 		getTrainingData(trainingData, trueVals); // this gets the training data for this epoch
@@ -1145,7 +1164,7 @@ void Net::train(int epochs)
 	 	}// end for loop for training data (meaning the epoch has finished)
 	 	
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << ". Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%" << endl;
+	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%" << endl;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");

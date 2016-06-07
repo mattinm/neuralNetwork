@@ -91,7 +91,7 @@ private: 	// members
 		std::vector<double> __trueVals; // parallel vector of true values for __trainingData
 		std::vector<std::vector<double> > __testData;
 		std::vector<double> __testTrueVals;
-		double __learningRate = 1e-3;
+		double __learningRate = 1e-4;
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
 		int __smallestClassSize;
@@ -139,6 +139,7 @@ public: 	// functions
 	bool addFullyConnectedLayer(int outputSize);
 	bool setActivType(int activationType);
 	void setAutoActivLayer(bool isAuto);
+	void printLayerDims() const;
 
 	bool finalize();
 	std::string getErrorLog() const;
