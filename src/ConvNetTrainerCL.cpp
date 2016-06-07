@@ -201,7 +201,7 @@ int main(int argc, char** argv)
 	{
 		cout << "Usage (Required to come first):\n   ./ConvNetTrainerCL binaryTrainingImagesFile";
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
-		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified new weights will be saved over old file.\n";
+		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified weights will not be saved.\n";
 		cout << "   testSet=<name.txt>       A binary training file to be used as a test/validation set. Never trained on.\n";
 		cout << "   epochs=<#epochs>         Number of epochs to train for. Defaults to 1 if no testSet, else defaults to \"How long it takes\"\n";
 		cout << "   device=<device#>         Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
