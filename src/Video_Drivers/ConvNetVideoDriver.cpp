@@ -1,3 +1,4 @@
+
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -8,51 +9,28 @@
 #include <unistd.h>
 #include <iostream>
 #include <vector>
-#include "ConvNetCL.h"
+#include "ConvNet.h"
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
 #include <thread>
-#include <pthread.h>
-#ifdef __APPLE__
- 	#include "OpenCL/opencl.h"
-#else
- 	#include "CL/cl.h"
-#endif
+#include <cassert>
 
 
 using namespace cv;
 using namespace std;
 
-pthread_mutex_t frameMutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t submitMutex = PTHREAD_MUTEX_INITIALIZER;
-
-int curFrame = 0;
-int curSubmittedFrame = 0;
-
 typedef vector<vector<vector<double> > > imVector;
 
-struct Frame
-{
-	int frameNum = -1;
-	Mat* mat;
-	int redElement = 0;
-};
-
-vector<Frame*> waitingFrames(0);
-
 char *inPath, *outPath;
+int imageNum = 0;
 int stride = 1;
 bool __useGPU = true;
 
-VideoCapture __video;
-VideoWriter __outVideo;
-ofstream __outcsv;
-char* __netName;
+int __width;
+int __height;
 
-int __rows, __cols;
-
-bool done = false;
+int __momentRed = 0;
 
 string secondsToString(time_t seconds)
 {
@@ -70,34 +48,13 @@ string secondsToString(time_t seconds)
 	return outString;
 }
 
-void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
+double vectorSumSq(const vector<double>& vect)
 {
-	vect.resize(width);
-	for(int i=0; i < width; i++)
-	{
-		vect[i].resize(height);
-		for(int j=0; j < height; j++)
-		{
-			vect[i][j].resize(depth);
-		}
-	}
+	double sum=0;
+	for(int i=0; i<vect.size(); i++)
+		sum += vect[i] * vect[i];
+	return sum;
 }
-
-void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
-{
-	for(int i=0; i< vect.size(); i++)
-	{
-		for(int j=0; j< vect[i].size(); j++)
-		{
-			for(int k=0; k< vect[i][j].size(); k++)
-			{
-				vect[i][j][k] = val;
-			}
-		}
-	}
-}
-
-
 double vectorSum(const vector<double>& vect)
 {
 	double sum=0;
@@ -114,85 +71,6 @@ void squareElements(vector<vector<vector<double> > >& vect)
 				vect[i][j][k] = vect[i][j][k] * vect[i][j][k];
 }
 
-//puts frame and frameNum in parameters
-void getNextFrame(Mat& frame, unsigned int& frameNum)
-{
-	pthread_mutex_lock(&frameMutex);
-	bool val = __video.read(frame);
-	frameNum = curFrame++;
-	//printf("got frame %d\n",curFrame-1);
-	if(val == false) //this means the last frame was grabbed.
-		done = true;
-	pthread_mutex_unlock(&frameMutex);
-}
-
-void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
-{
-	pthread_mutex_lock(&submitMutex);
-	//printf("frame %d submitted by thread %d\n", frameNum, device);
-	if(frameNum == curSubmittedFrame)
-	{
-		//printf("sub if\n");
-		__outVideo << *frame;
-		__outcsv << red << "," << (frameNum/10.0) << "\n";
-		curSubmittedFrame++;
-		delete frame;
-		printf("Frame %d completed.\n",frameNum);
-		int i=0; 
-		//printf("starting while\n");
-		while(i < waitingFrames.size() && waitingFrames[i]->frameNum == curSubmittedFrame)
-		{
-			//printf("in while\n");
-			__outVideo << (*(waitingFrames[i]->mat));
-			__outcsv << waitingFrames[i]->redElement << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
-			//printf("pushed\n");
-			//printf("++\n");
-			printf("Frame %d completed.\n",waitingFrames[i]->frameNum);
-			delete waitingFrames[i]->mat;
-			delete waitingFrames[i];
-
-			curSubmittedFrame++;
-			i++;
-		}
-		//printf("after while\n");
-		if(i != 0) //if we took any away from the waitingFrames
-		{
-			for(int j=i; j < waitingFrames.size(); j++)
-			{
-				frame[j-i] = frame[j];
-			}
-			waitingFrames.resize(waitingFrames.size() - i);
-		}
-		//printf("end sub if\n");
-	}
-	else
-	{
-		//printf("sub else\n");
-		Frame *newframe = new Frame;
-		newframe->mat = frame; 
-		newframe->frameNum = frameNum;
-		newframe->redElement = red;
-		waitingFrames.resize(waitingFrames.size() + 1);
-		waitingFrames.back() = nullptr;
-
-		int i=0;
-		//sorted insertion into list
-		if(waitingFrames[0] != nullptr) //make sure not first element in list
-		{
-			while(i < waitingFrames.size() -1 && waitingFrames[i]->frameNum < frameNum)
-				i++;
-			for(int j=waitingFrames.size()-1; j >= i+1; j--)
-			{
-				waitingFrames[j] = waitingFrames[j-1];
-			}
-		}
-		waitingFrames[i] = newframe;
-		//printf("frame %d is first frame waiting\n",waitingFrames[0]->frameNum);
-		//printf("end sub else\n");
-	}
-	pthread_mutex_unlock(&submitMutex);
-}
-
 bool allElementsEquals(vector<double>& array)
 {
 	for(int i=1; i < array.size(); i++)
@@ -201,19 +79,6 @@ bool allElementsEquals(vector<double>& array)
 			return false;
 	}
 	return true;
-}
-
-int getNumDevices()
-{
-	//get num of platforms and we will use the first one
-	cl_uint platformIdCount = 0;
-	clGetPlatformIDs (0, nullptr, &platformIdCount);
-	vector<cl_platform_id> platformIds(platformIdCount);
-	clGetPlatformIDs(platformIdCount,platformIds.data(), nullptr);
-	cl_uint deviceIdCount = 0;
-	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
-
-	return (int)deviceIdCount;
 }
 
 void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
@@ -258,41 +123,58 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
  * (i.e. the stride is less than the subimage size), then the confidences from each subimage is added.
  */
-void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
+void breakUpImage(Mat& image, Net& net, VideoWriter& outVideo, ofstream& outcsv)
 {
+	//cout << "starting breakUpImage" << endl;
+	//Mat image = imread(imageName,1);
 	int numrows = image.rows;
 	int numcols = image.cols;
-
-	//printf("%d %d\n",numrows, numcols);
+	//printf("%s rows: %d, cols: %d\n",imageName, numrows,numcols);
+	int length = 0;
+	char tempout[255];
 
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
-	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
+	resize3DVector(fullImage,numrows,numcols,net.getNumCategories());
 	setAll3DVector(fullImage,0);
 	vector<imVector> imageRow(0); // this will hold all subimages from one row
 	vector<int> calcedClasses(0);
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
+	//cout << "here" << endl;
 	int numrowsm32 = numrows-32;
 	int numcolsm32 = numcols-32;
 
 	for(int i=0; i <= numrowsm32; i+=stride)
 	{
 		imageRow.resize(0);
-
+		if(i != 0)
+		{
+			//cout << string(length,'\b');
+		}
+		//sprintf(tempout,"row %d of %d (%d)\n",i,numrowsm32,numrows);
+		string tempstring(tempout); length = tempstring.length();
+		//cout << "row " << i << " of " << numrows << endl;
+		//cout << tempout;
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
 			const Mat out = image(Range(i,i+32),Range(j,j+32));
+			//if((i == 0 || i == numrows-32) && j== 0)
+				//cout << out << endl << endl;
+			//printf("i: %d, j: %d\n",i,j);
 			imageRow.resize(imageRow.size()+1);
 			convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
-		//preprocess(imageRow);
+		preprocess(imageRow);
 		net.setData(imageRow);
-		net.run();
+		net.newRun(calcedClasses, __useGPU);
 		net.getConfidences(confidences); //gets the confidence for each category for each image
-
+		//if((i == 0 || i == numrows-32))
+		//cout << "row: " << i << endl;
+		//printVector(confidences[0]);
+		//cout << "conf got" << endl;
 		int curImage = 0;
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
 		{
@@ -310,15 +192,21 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 			curImage++;
 		}
 	}
-	//printf("starting red element\n");
-	squareElements(fullImage);
+	//cout << endl;
+	//printVector(fullImage);
 
+	squareElements(fullImage);
+	
+	//now we have the confidences for every pixel in the image
+	//so get the category for each pixel and make a new image from it
+	Mat outputMat(numrows,numcols,CV_8UC3);
+	assert(__width == outputMat.cols);
+	assert(__height == outputMat.rows);
 	int redElement = 0;
 	for(int i=0; i < numrows; i++)
 	{
 		for(int j=0; j < numcols; j++)
 		{
-			//printf("pixel %d %d - %d %d\n",i,j, outputMat.rows, outputMat.cols );
 			double sumsq = vectorSum(fullImage[i][j]);
 			for(int n=0; n < fullImage[i][j].size(); n++)
 			{
@@ -329,7 +217,6 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 			//write the pixel
 			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
 			//int maxEle = getMaxElementIndex(fullImage[i][j]);
-			//printf("writing\n");
 			if(allElementsEquals(fullImage[i][j]))
 			{
 				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
@@ -344,86 +231,97 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 				if(red > 150) //red > 50 || red > blue
 					redElement += (int)(red);
 
+				//if(red > 200)
+				//	cout << red << endl;
 			}
+			/*//old
+			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
+			int maxEle = getMaxElementIndex(fullImage[i][j]);
+			if(allElementsEquals(fullImage[i][j]))
+			{
+				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
+			}
+			else if(maxEle == 0)
+			{
+				outPix[0] = 255; outPix[1] = 0; outPix[2] = 0; // blue
+			}
+			else if(maxEle == 1)
+			{
+				outPix[0] = 0; outPix[1] = 0; outPix[2] = 255; // red
+			}*/
 		}
 	}
-	inred = redElement;
+	__momentRed = .8*__momentRed + .8*redElement;
+
+	outVideo.write(outputMat);
+	outcsv << __momentRed;
+	//outVideo << outputMat;
 }
 
-void __parallelVideoProcessor(int device)
+void breakUpVideo(const char* videoName, Net& net)
 {
-	Net net(__netName);
-	net.setConstantMem(true);
-	if(!net.setDevice(device) || !net.finalize())
-		return;
-	printf("Thread using device %d\n",device);
-
-	unsigned int frameNum=0;
-	Mat frame;
-	int red;
-	getNextFrame(frame, frameNum);
-	while(!done)
-	{
-		//printf("thread %d got frame %d\n", device, frameNum);
-		Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
-		//printf("thread %d: starting breakUpImage %d\n",device,frameNum);
-		breakUpImage(frame, net, *outFrame, red);
-		//printf("thread %d: submitting frame %d\n",device,frameNum);
-		submitFrame(outFrame, frameNum, red);//, device);
-
-		getNextFrame(frame,frameNum);
-	}
-}
-
-void breakUpVideo(const char* videoName)
-{
-	__video.open(videoName);
-	if(!__video.isOpened())
+	VideoCapture video(videoName);
+	if(!video.isOpened())
 	{
 		cout << "Could not open video: " << videoName << endl;
 		return;
 	}
 
-	if(__video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || __video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
+	if(video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
 	{
 		printf("The video %s is too small in at least one dimension. Minimum size is 32x32.\n",videoName);
 		return;
 	}
 
-
+	__momentRed = 0;
 
 	char outName[255], outNameCSV[255];
 	string origName(videoName);
 	size_t dot = origName.rfind('.');
 	const char *noExtension = origName.substr(0,dot).c_str();
+	//const char *extension = origName.substr(dot).c_str();
 
-	sprintf(outName,"%s_prediction%s",noExtension,".avi");
+	sprintf(outName,"%s_prediction%s",noExtension,".avi");//extension);
 	sprintf(outNameCSV,"%s_prediction.csv",noExtension);
+	
 	//cout << "writing " << outName << endl;
 
-	__outcsv.open(outNameCSV);
-
-	__outVideo.open(outName, 
+	VideoWriter outVideo(outName, 
 	 CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
 	 10,//video.get(CV_CAP_PROP_FPS), 
-	 Size(__video.get(CV_CAP_PROP_FRAME_WIDTH), __video.get(CV_CAP_PROP_FRAME_HEIGHT)));
+	 Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
-	__rows = __video.get(CV_CAP_PROP_FRAME_HEIGHT);
-	__cols = __video.get(CV_CAP_PROP_FRAME_WIDTH);
-	int numDevices = getNumDevices();
-	thread* t = new thread[numDevices];
-	for(int i=0; i < numDevices; i++)
+	ofstream outcsv;
+	outcsv.open(outNameCSV);
+
+	//cout << "FPS = " << video.get(CV_CAP_PROP_FPS) << endl;
+
+	__width = video.get(CV_CAP_PROP_FRAME_WIDTH);
+	__height = video.get(CV_CAP_PROP_FRAME_HEIGHT);
+
+	if(!outVideo.isOpened())
 	{
-		//start new thread for each device. Any thread for a device that does not support double will return early.
-		t[i] = thread(__parallelVideoProcessor, i);
+		cout << "Could not open out video" << endl;
+		return;
 	}
 
-	for(int i=0; i < numDevices; i++)
-	{
-		t[i].join();
-	}
+	Mat frame;
+	unsigned long count = 0;
 
-	__outcsv.close();
+	if(video.read(frame))
+	{
+		printf("Frame %ld. \t%3.4lf%%\n", ++count, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
+		breakUpImage(frame, net, outVideo, outcsv);
+		while(video.read(frame))
+		{
+			outcsv << ",";
+			//printf("Frame %ld of %.0lf\n", ++count, video.get(CV_CAP_PROP_FRAME_COUNT));
+			printf("Frame %ld. \t%3.4lf%%\n", ++count, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
+			breakUpImage(frame, net, outVideo, outcsv);
+		}
+	}
+	
+	outcsv.close();
 }
 
 int checkExtensions(char* filename)
@@ -439,11 +337,14 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath (stride=1) (gpu=true)\n");
+		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> gpu=<true/false> device=<device#>\n");
 		return -1;
 	}
-	time_t starttime, endtime;
+
 	inPath = argv[2];
+
+	time_t starttime, endtime;
+	int device = -1;
 
 	if(argc > 3)
 	{
@@ -461,17 +362,21 @@ int main(int argc, char** argv)
 					__useGPU = false;
 				}
 			}
+			else if(arg.find("device=") != string::npos)
+			{
+				device = stoi(arg.substr(arg.find("=")+1));
+			}
 		}
 	}
 
-	__netName = argv[1];
+
 	//set up net
-	//Net net(argv[1]);
-	//if(!net.isActive())
-		//return 0;
+	Net net(argv[1]);
+	if(!net.isActive())
+		return 0;
 
 
-
+	net.setDevice(device);
 	//go through all images in the folder
 	bool isDirectory;
 	struct stat s;
@@ -545,8 +450,7 @@ int main(int argc, char** argv)
 	for(int i=0; i < filenames.size(); i++)
 	{
 		starttime = time(NULL);
-		curFrame=0;
-		breakUpVideo(filenames[i].c_str());
+		breakUpVideo(filenames[i].c_str(),net);
 		endtime = time(NULL);
 		cout << "Time for video " << filenames[i] << ": " << secondsToString(endtime - starttime) << endl;
 	}

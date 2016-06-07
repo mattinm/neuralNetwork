@@ -306,15 +306,14 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(4);  //1x1x4
 
 	//shallow 64x64x3 net
-	net.setActivType(LEAKY_RELU);		//64x64x3
-	net.addConvLayer(25,1,5,0);     	//60x60x5
-	net.addMaxPoolLayer(2,2); 	    	//30x30x5
-	net.addConvLayer(25,1,3,0);	  	  	//28x28x6
-	net.addMaxPoolLayer(2,2); 			//14x14x6
-	net.addConvLayer(25,1,3,0);			//12x12x7
-	net.addMaxPoolLayer(3,3);			//4x4x7
-	//net.addConvLayer(4,1,4,0);		//1x1x4	
-	net.addFullyConnectedLayer(4);
+	net.setActivType(LEAKY_RELU);		//64x64x40
+	net.addConvLayer(40,1,5,0);     	//60x60x40
+	net.addMaxPoolLayer(2,2); 	    	//30x30x40
+	net.addConvLayer(40,1,3,0);	  	  	//28x28x40
+	net.addMaxPoolLayer(2,2); 			//14x14x40
+	net.addConvLayer(40,1,3,0);			//12x12x40
+	net.addMaxPoolLayer(3,3);			//4x4x  40
+	net.addFullyConnectedLayer(4);		//1x1x4	
 
 
 	// failed fully connected net

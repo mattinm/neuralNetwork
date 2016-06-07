@@ -1,4 +1,4 @@
-#define RELU_CAP 5.0
+#define RELU_CAP 5000.0
 #define LEAKY_RELU_CONST .01
 
 

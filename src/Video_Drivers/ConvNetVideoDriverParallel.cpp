@@ -1,3 +1,4 @@
+
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -8,7 +9,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <vector>
-#include "ConvNetCL.h"
+#include "ConvNet.h"
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
@@ -69,34 +70,6 @@ string secondsToString(time_t seconds)
 	string outString = out;
 	return outString;
 }
-
-void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
-{
-	vect.resize(width);
-	for(int i=0; i < width; i++)
-	{
-		vect[i].resize(height);
-		for(int j=0; j < height; j++)
-		{
-			vect[i][j].resize(depth);
-		}
-	}
-}
-
-void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
-{
-	for(int i=0; i< vect.size(); i++)
-	{
-		for(int j=0; j< vect[i].size(); j++)
-		{
-			for(int k=0; k< vect[i][j].size(); k++)
-			{
-				vect[i][j][k] = val;
-			}
-		}
-	}
-}
-
 
 double vectorSum(const vector<double>& vect)
 {
@@ -266,7 +239,7 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 	//printf("%d %d\n",numrows, numcols);
 
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
-	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
+	resize3DVector(fullImage,numrows,numcols,net.getNumCategories());
 	setAll3DVector(fullImage,0);
 	vector<imVector> imageRow(0); // this will hold all subimages from one row
 	vector<int> calcedClasses(0);
@@ -288,9 +261,9 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 			convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
-		//preprocess(imageRow);
+		preprocess(imageRow);
 		net.setData(imageRow);
-		net.run();
+		net.newRun(calcedClasses, __useGPU);
 		net.getConfidences(confidences); //gets the confidence for each category for each image
 
 		int curImage = 0;
@@ -353,8 +326,7 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 void __parallelVideoProcessor(int device)
 {
 	Net net(__netName);
-	net.setConstantMem(true);
-	if(!net.setDevice(device) || !net.finalize())
+	if(!net.isActive() || !net.setDevice(device))
 		return;
 	printf("Thread using device %d\n",device);
 

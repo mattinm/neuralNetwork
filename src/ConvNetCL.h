@@ -66,6 +66,13 @@ private: 	// structs
 	};
 
 private: 	// members
+	//hyperparameters
+	double __learningRate = 1e-4;
+	double __RELU_CAP = 5000.0;
+	double __LEAKY_RELU_CONST = 0.01;
+	double __l2lambda = 0.05;
+	double __MOMENT_CONST = 0.9;
+	double __MAX_NORM_CAP = 6.0;
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer
 	bool __autoActivLayer = true;
@@ -83,6 +90,7 @@ private: 	// members
 		//training
 		//should this be a map?
 		bool __trainingDataPreprocessed = false;
+		bool __testDataPreprocessed = false;
 		double __mean = 0;
 		double __stddev = 0;
 		double __trainingSize = 0;
@@ -91,7 +99,6 @@ private: 	// members
 		std::vector<double> __trueVals; // parallel vector of true values for __trainingData
 		std::vector<std::vector<double> > __testData;
 		std::vector<double> __testTrueVals;
-		double __learningRate = 1e-4;
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
 		int __smallestClassSize;
@@ -164,6 +171,14 @@ public: 	// functions
 
 	int getNumClasses() const;
 
+	//sets for hyperparameters
+	bool set_learningRate(double rate);
+	bool set_RELU_CAP(double cap);
+	bool set_LEAKY_RELU_CONST(double lconst);
+	bool set_l2Lambda(double lambda);
+	bool set_MOMENT_CONST(double mconst);
+	bool set_MAX_NORM_CAP(double cap);
+
 	//running
 	void run(bool useGPU=true);
 	void getCalculatedClasses(std::vector<int>& dest) const;
@@ -199,6 +214,7 @@ private:	// functions
 	int getTrueValIndex(double trueVal);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
 	void preprocessData();
+	void preprocessTestDataIndividual();
     void preprocessTrainingDataIndividual();
 	void preprocessTrainingDataCollective();
 

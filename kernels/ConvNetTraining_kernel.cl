@@ -10,11 +10,13 @@
 //			in backprop search that array for your index and if they match, += the dneurons value into it
 
 
-#define RELU_CAP 5.0 		 //max value that can pass through relu or leakyRelu
+#define RELU_CAP 5000.0 		 //max value that can pass through relu or leakyRelu
 #define LEAKY_RELU_CONST .01 //multiplication constant for negative values in leakyRelu
 #define l2Lambda 0.05		 //multiplication constant for L2 Regularization
 #define MOMENT_CONST .9 	 //multiplication constant for momentum
 #define MAX_NORM_CAP 6.0 	 //max absolute value a weight can have
+
+// END DEFINES
 
 /*************************************************
 *

@@ -17,10 +17,9 @@
 // #else
 //  	#include "CL/cl.h"
 // #endif
+//typedef std::vector<std::vector<std::vector<double> > > imVector; // typedef pulled from the .h file
 
 using namespace std;
-
-//typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 #define GETMAX(x,y) (x > y) ? x: y
 
@@ -324,7 +323,7 @@ void Net::printLayerDims() const
 	printf("Input         %d x %d x %d\n", __neuronDims[0][0], __neuronDims[0][1], __neuronDims[0][2]);
 	for(int i=1; i < __neuronDims.size(); i++)
 		if(__layers[i]->layerType == CONV_LAYER)
-			printf("Conv          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+			printf("Convolution   %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 		else if(__layers[i]->layerType == MAX_POOL_LAYER)
 			printf("Max Pool      %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 		else if(__layers[i]->layerType == ACTIV_LAYER)
@@ -502,6 +501,58 @@ bool Net::finalize()
 	return true;
 }
 
+bool Net::set_learningRate(double rate)
+{
+	if(rate < 0)
+		return false;
+	__learningRate = rate;
+	return true;
+}
+
+bool Net::set_RELU_CAP(double cap)
+{
+	if(cap <= 0)
+		return false;
+	__RELU_CAP = cap;
+	__isFinalized = false;
+	return true;
+}
+
+bool set_LEAKY_RELU_CONST(double lconst)
+{
+	if(lconst < 0 || 1 < lconst)
+		return false;
+	__LEAKY_RELU_CONST = lconst;
+	__isFinalized = false;
+	return true;
+}
+
+bool set_l2Lambda(double lambda)
+{
+	if(lambda < 0)
+		return false;
+	__l2Lambda  = lambda;
+	__isFinalized = false;
+	return true;
+}
+
+bool set_MOMENT_CONST(double mconst)
+{
+	if(mconst < 0 || 1 < mconst)
+		return false;
+	__MOMENT_CONST = mconst;
+	__isFinalized = false;
+	return true;
+}
+
+bool set_MAX_NORM_CAP(double cap)
+{
+	if(cap < 0)
+		return false;
+	__MAX_NORM_CAP = cap;
+	__isFinalized = false;
+	return true;
+}
 
 /*****************************************
  * Running and Training
@@ -746,6 +797,7 @@ void Net::train(int epochs)
 	printf("Training with device %d: ",__device);
 	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_NAME, valueSize, name, nullptr));
 	printf("%s\n",name);
+
    	if(__trainingType == TRAIN_AS_IS)
    		printf("Training using AS IS\n");
    	else if(__trainingType == TRAIN_EQUAL_PROP)
@@ -753,9 +805,12 @@ void Net::train(int epochs)
 
  	__isTraining = true;
 
+ 	//preprocess the data, training and test
  	if(!__trainingDataPreprocessed)
  		//preprocessTrainingDataCollective();
         preprocessTrainingDataIndividual();
+    if(__testData.size() != 0 && !__testDataPreprocessed)
+    	preprocessTestDataIndividual();
 
  	//set up stuff so we can exit based on error on test data
  	vector<vector<double> > confidences;
@@ -1262,7 +1317,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 		//for each class, shuffle it (global __trainingData) and bring in the smallestClassSize to trainingData.
 		for(int t = 0; t < __trainingData.size(); t++) // class
 		{
-			shuffleData(__trainingData[t]);	//shuffling brings randomness without duplicates. It should be shuffleData 
+			shuffleData(__trainingData[t],2);	//shuffling brings randomness without duplicates. It should be shuffleData 
 			                                //not shuffleTrainingData because it doesn't have a vector of trueVals
 			for(int i = 0; i < __smallestClassSize; i++) // image. take the first __smallestClassSize amount of images
 			{
@@ -1272,7 +1327,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 			}
 		}
 		//shuffle trainingData to mix up the classes
-		shuffleTrainingData(trainingData,trueVals);
+		shuffleTrainingData(trainingData,trueVals,2);
 	}
 }
 
@@ -1559,6 +1614,33 @@ void Net::preprocessData() // thread this
 	}
 
 	__dataPreprocessed = true;
+}
+
+void Net::preprocessTestDataIndividual()
+{
+	for(int i = 0; i < __testData.size(); i++)
+	{
+		//get mean
+		double mean = 0;
+		for(int pix = 0; pix < __testData[i].size(); pix++)
+			mean += __testData[i][pix];
+		mean /= __testData[i].size();
+
+		//get stddev
+		double stddev = 0; 
+		double temp;
+		for(int pix = 0; pix < __testData[i].size(); pix++)
+		{
+			temp = __testData[i][pix] - mean;
+			stddev += temp * temp;
+		}
+		stddev = sqrt(stddev / __testData[i].size());
+
+		//adjust the values
+		for(int pix=0; pix < __testData[i].size(); pix++)
+			__testData[i][pix] = (__testData[i][pix] - mean)/stddev;
+	}
+	__testDataPreprocessed = true;
 }
 
 void Net::preprocessTrainingDataIndividual()
@@ -2007,7 +2089,7 @@ bool Net::save(const char* filename)
 			out += "END_CONV_LAYER\n";
 		}
 	}
-	out += "SOFTMAX_LAYER";
+	out += "SOFTMAX_LAYER\n";
 	out += "END_ALL";
 	file << out;
 	file.close();
