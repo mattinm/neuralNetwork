@@ -59,6 +59,12 @@ long imageCount = 0;
 unsigned short __globalTrueVal;
 unordered_map<unsigned short, int> trueMap;
 
+bool __horizontalReflect = false;
+bool __verticalReflect = false;
+bool __rotateClock = false;
+bool __rotateCClock = false;
+bool __rotate180 = false;
+
 template<typename type>
 void writeImage(Mat& image, ofstream& outfile)
 {
@@ -72,6 +78,7 @@ void writeImage(Mat& image, ofstream& outfile)
 	type pixel[3];
 	long size = sizeof(type) * 3;
 
+	//write image normal
 	if(image.type() == CV_8UC3)
 	{
 		for(int i=0; i < xsize; i++)
@@ -88,6 +95,92 @@ void writeImage(Mat& image, ofstream& outfile)
 			}
 		}
 		outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
+
+		//horizontal reflection
+		if(__horizontalReflect)
+		{
+			for(int i = xsize-1; i >= 0; i--)
+			{
+				for(int j = 0; j < ysize; j++)
+				{
+					const Vec3b& curPixel = image.at<Vec3b>(i,j);
+					pixel[0] = (type)curPixel[0];
+					pixel[1] = (type)curPixel[1];
+					pixel[2] = (type)curPixel[2];
+					outfile.write(reinterpret_cast<const char *>(pixel),size);
+				}
+			}
+			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+		}
+
+		//vertical reflection
+		if(__verticalReflect)
+		{
+			for(int i = 0; i < xsize; i++)
+			{
+				for(int j = ysize-1; j >= 0; j--)
+				{
+					const Vec3b& curPixel = image.at<Vec3b>(i,j);
+					pixel[0] = (type)curPixel[0];
+					pixel[1] = (type)curPixel[1];
+					pixel[2] = (type)curPixel[2];
+					outfile.write(reinterpret_cast<const char *>(pixel),size);
+				}
+			}
+			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+		}
+
+		//90 deg clockwise rotation
+		if(__rotateClock)
+		{
+			for(int j=0; j < ysize; j++)
+			{
+				for(int i = xsize-1; i >= 0; i--)
+				{
+					const Vec3b& curPixel = image.at<Vec3b>(i,j);
+					pixel[0] = (type)curPixel[0];
+					pixel[1] = (type)curPixel[1];
+					pixel[2] = (type)curPixel[2];
+					outfile.write(reinterpret_cast<const char *>(pixel),size);
+				}
+			}
+			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+		}
+
+		//90 deg counterclockwise rotation
+		if(__rotateCClock)
+		{
+			for(int j = ysize-1; j >= 0; j--)
+			{
+				for(int i = 0; i < xsize; i++)
+				{
+					const Vec3b curPixel = image.at<Vec3b>(i,j);
+					pixel[0] = (type)curPixel[0];
+					pixel[1] = (type)curPixel[1];
+					pixel[2] = (type)curPixel[2];
+					outfile.write(reinterpret_cast<const char *>(pixel),size);
+				}
+			}
+			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+		}
+
+		if(__rotate180)
+		{
+			for(int i = xsize-1; i >= 0; i--)
+			{
+				for(int j = ysize-1; j >= 0; j--)
+				{
+					const Vec3b curPixel = image.at<Vec3b>(i,j);
+					pixel[0] = (type)curPixel[0];
+					pixel[1] = (type)curPixel[1];
+					pixel[2] = (type)curPixel[2];
+					outfile.write(reinterpret_cast<const char *>(pixel),size);
+				}
+			}
+			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+		}
+
+
 		unordered_map<unsigned short, int>::const_iterator got = trueMap.find(__globalTrueVal);
 		if(got == trueMap.end()) // not found
 			trueMap[__globalTrueVal] = 1;
@@ -221,23 +314,48 @@ void getImages(const char* folder, ofstream& outfile)
 
 int main (int argc, char** argv)
 {
-	if(argc != 3 && argc != 4)
+	if(argc < 3)
 	{
-		cout << "Usage: ./TrainingImageSplitterFileCreator ImageConfigFile outfileName <stride=1>\nstride is optional, defaults to 1." << endl;
+		cout << "Usage: (Required to come first):\n   ./TrainingImageSplitterFileCreator ImageConfigFile outfileName";
+		cout << "\nOptional arguments (must come after required args. Case sensitive):\n";
+		cout << "   stride=<int>    Stride for folders without strides specified in config. Defaults to 1.\n";
+		cout << "   -rot_clock      For all images, adds a copy rotated 90 deg clockwise\n";
+		cout << "   -rot_cclock     For all images, adds a copy rotated 90 deg counterclockwise\n";
+		cout << "   -rot_180        For all images, adds a copy rotated 180 deg\n";
+		cout << "   -horizontal     For all images, adds a copy horizontally reflected\n";
+		cout << "   -vertical       For all images, adds a copy vertically reflected\n";
+		cout << "   -all            Activates -rot_clock, -rot_cclock, -rot_180, -horizontal, -vertical\n";
 		return 0;
 	}
 
-	if(argc == 4)
+	if(argc > 3)
 	{
-		string str(argv[3]);
-		if(str.find("=") != string::npos)
+		for(int i = 3; i < argc; i++)
 		{
-			globalStride = stoi(str.substr(str.find("=")+1));
+			string arg(argv[i]);
+			if(arg.find("stride=") != string::npos)
+				globalStride = stoi(arg.substr(arg.find("=")+1));
+			else if(arg.find("-rot_clock") != string::npos)
+				__rotateClock = true;
+			else if(arg.find("-rot_cclock") != string::npos)
+				__rotateCClock = true;
+			else if(arg.find("-rot_180") != string::npos)
+				__rotate180 = true;
+			else if(arg.find("-horizontal") != string::npos)
+				__horizontalReflect = true;
+			else if(arg.find("-vertical") != string::npos)
+				__verticalReflect = true;
+			else if(arg.find("-all") != string::npos)
+			{
+				__rotateClock = true;	__rotateCClock = true;	__rotate180 = true;
+				__horizontalReflect = true;		__verticalReflect = true;
+			}
+			else 
+			{
+				printf("Unknown arg %s. Aborting.\n", argv[i]);
+			}
 		}
-		else
-		{
-			globalStride = stoi(str);
-		}
+
 	}
 
 	ifstream imageConfig;

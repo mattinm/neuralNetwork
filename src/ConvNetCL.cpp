@@ -392,11 +392,11 @@ bool Net::finalize()
 	{
 		//build the program
 		//running
-		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context);
+		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context, RUNNING_PROGRAM);
 		const cl_device_id* deviceToBuild = &(__deviceIds[q]);
 		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, nullptr, nullptr, nullptr));
 		//training
-		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context);
+		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
 		//Create the kernels; check for errors
 		//running
@@ -518,7 +518,7 @@ bool Net::set_RELU_CAP(double cap)
 	return true;
 }
 
-bool set_LEAKY_RELU_CONST(double lconst)
+bool Net::set_LEAKY_RELU_CONST(double lconst)
 {
 	if(lconst < 0 || 1 < lconst)
 		return false;
@@ -527,7 +527,7 @@ bool set_LEAKY_RELU_CONST(double lconst)
 	return true;
 }
 
-bool set_l2Lambda(double lambda)
+bool Net::set_l2Lambda(double lambda)
 {
 	if(lambda < 0)
 		return false;
@@ -536,7 +536,7 @@ bool set_l2Lambda(double lambda)
 	return true;
 }
 
-bool set_MOMENT_CONST(double mconst)
+bool Net::set_MOMENT_CONST(double mconst)
 {
 	if(mconst < 0 || 1 < mconst)
 		return false;
@@ -545,7 +545,7 @@ bool set_MOMENT_CONST(double mconst)
 	return true;
 }
 
-bool set_MAX_NORM_CAP(double cap)
+bool Net::set_MAX_NORM_CAP(double cap)
 {
 	if(cap < 0)
 		return false;
@@ -1836,6 +1836,16 @@ bool Net::load(const char* filename)
 				inputDepth = stoi(line.substr(loc));
 				netArgsFound++;
 			}
+			else if(line.find("RELU_CAP=") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				__RELU_CAP = stod(line.substr(loc));
+			}
+			else if(line.find("LEAKY_RELU_CONST") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				__LEAKY_RELU_CONST = stod(line.substr(loc));
+			}
 			else
 			{
 				cout << "Improper file structure while getting Net args at line " << lineNum << ". Exiting load.";
@@ -1846,7 +1856,7 @@ bool Net::load(const char* filename)
 		}
 
 		//check and make sure all 4 args were found
-		if(netArgsFound != 4)
+		if(netArgsFound < 4)
 		{
 			cout << "4 Net args needed. " << netArgsFound << " found. Exiting load.";
 			file.close();
@@ -2009,7 +2019,7 @@ bool Net::save(const char* filename)
 	if(!file.is_open())
 		return false;
 
-	char data[50];
+	char data[500];
 	//need to save in such a way that it can load dynamically
 	string out = "NET1.0\n";
 
@@ -2025,6 +2035,12 @@ bool Net::save(const char* filename)
 
 	sprintf(data,"%d",__neuronDims[0][2]); 
 	out += "inputDepth="; out += data; out += '\n';
+
+	sprintf(data,"%lf",__RELU_CAP);
+	out += "RELU_CAP="; out += data; out += '\n';
+
+	sprintf(data,"%lf",__LEAKY_RELU_CONST);
+	out += "LEAKY_RELU_CONST="; out += data; out += '\n';
 
 	out += "END_NET\n";
 
@@ -2147,8 +2163,49 @@ std::string Net::LoadKernel (const char* name)
 	return result;
 }
 
-cl_program Net::CreateProgram (const std::string& source, cl_context& context)
+cl_program Net::CreateProgram (std::string source, cl_context& context, int programNum)
 {
+	char buf[500];
+	int location;
+	if(programNum == TRAINING_PROGRAM)
+	{
+		//change defines so they match what is in the variables here
+		
+		//l2Lambda
+		location = source.find("#define l2Lambda"); //should be #define l2Lambda 0.05
+		source.erase(location + 17,4);
+		sprintf(buf,"%lf",__l2Lambda);
+		source.insert(location + 17,buf);
+
+		//MOMENT_CONST
+		location = source.find("#define MOMENT_CONST"); //should be #define MOMENT_CONST .9
+		source.erase(location + 21,2);
+		sprintf(buf,"%lf",__MOMENT_CONST);
+		source.insert(location + 21,buf);
+
+		//MAX_NORM_CAP
+		location = source.find("#define MAX_NORM_CAP"); //should be #define MAX_NORM_CAP 6.0
+		source.erase(location + 21,3);
+		sprintf(buf,"%lf",__MAX_NORM_CAP);
+		source.insert(location + 21,buf);
+	}
+
+	if(programNum == TRAINING_PROGRAM || programNum == RUNNING_PROGRAM)
+	{
+		//RELU_CAP
+		location = source.find("#define RELU_CAP"); //should be #define RELU_CAP 5000.0
+		source.erase(location + 17,6);
+		sprintf(buf,"%lf",__RELU_CAP);
+		source.insert(location + 17,buf);
+
+		//LEAKY_RELU_CONST
+		location = source.find("#define LEAKY_RELU_CONST"); //should be #define LEAKY_RELU_CONST .01
+		source.erase(location + 25,3);
+		sprintf(buf,"%lf",__LEAKY_RELU_CONST);
+		source.insert(location + 25,buf);
+
+	}
+
 	size_t lengths [1] = { source.size () };
 	const char* sources [1] = { source.data () };
 
@@ -2158,3 +2215,15 @@ cl_program Net::CreateProgram (const std::string& source, cl_context& context)
 
 	return program;
 }
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,6 +1,7 @@
 #define RELU_CAP 5000.0
 #define LEAKY_RELU_CONST .01
 
+// DO NOT CHANGE THESE DEFAULTS VALUES. IF YOU MUST, MAKE THEM THE SAME LENGTH IN CHARACTERS
 
 //numthreads should be size of neurons and prevNeurons (should be same)
 __kernel void relu(__global double* prevNeurons, __global double* neurons)

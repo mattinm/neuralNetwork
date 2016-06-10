@@ -132,7 +132,7 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 		{
 			for(int j=i; j < waitingFrames.size(); j++)
 			{
-				frame[j-i] = frame[j];
+				waitingFrames[j-i] = waitingFrames[j];
 			}
 			waitingFrames.resize(waitingFrames.size() - i);
 		}

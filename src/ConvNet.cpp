@@ -2546,6 +2546,20 @@ bool Net::load(const char* filename)
 				inputDepth = stoi(line.substr(loc));
 				netArgsFound++;
 			}
+			else if(line.find("RELU_CAP=") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				double relu_cap = stod(line.substr(loc));
+				if(relu_cap != 5000.0)
+					printf("RELU CAP seems to differ from default. Advise running with ConvNetCL.\n");
+			}
+			else if(line.find("LEAKY_RELU_CONST") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				double leaky = stod(line.substr(loc));
+				if(leaky != .01)
+					printf("LEAKY RELU constant seems to differ from default. Advise running with ConvNetCL.\n");
+			}
 			else
 			{
 				cout << "Improper file structure while getting Net args at line " << lineNum << ". Exiting load.";

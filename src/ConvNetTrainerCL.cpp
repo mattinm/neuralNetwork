@@ -201,13 +201,19 @@ int main(int argc, char** argv)
 	{
 		cout << "Usage (Required to come first):\n   ./ConvNetTrainerCL binaryTrainingImagesFile";
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
-		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified weights will not be saved.\n";
-		cout << "   testSet=<name.txt>       A binary training file to be used as a test/validation set. Never trained on.\n";
-		cout << "   epochs=<#epochs>         Number of epochs to train for. Defaults to 1 if no testSet, else defaults to \"How long it takes\"\n";
-		cout << "   device=<device#>         Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
-		cout << "   -train_as_is             Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
-		cout << "   -train_equal_prop        Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";
-		cout << "                            the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
+		cout << "   outname=<outname.txt>      Sets the name for the outputted trained CNN. If not specified weights will not be saved.\n";
+		cout << "   testSet=<name.txt>         A binary training file to be used as a test/validation set. Never trained on.\n";
+		cout << "   epochs=<#epochs>           Number of epochs to train for. Defaults to 1 if no testSet, else defaults to \"How long it takes\"\n";
+		cout << "   device=<device#>           Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
+		cout << "   -train_as_is               Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
+		cout << "   -train_equal_prop          Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";
+		cout << "                              the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
+		cout << "   learningRate=<rate>        Sets the learningRate for the CNN.\n";
+		cout << "   RELU_CAP=<cap>             Sets max value that can pass through the RELU\n";
+		cout << "   LEAKY_RELU_CONST=<const>   Sets the constant for LEAKY_RELU\n";
+		cout << "   l2Lambda=<lambda>          Sets the lambda for L2 Regularization\n";
+		cout << "   MOMENT_CONST=<const>       Sets the constant decay for the Nesterov Momentum\n";
+		cout << "   MAX_NORM_CAP=<cap>         Sets the max value a weight can be\n";
 		return 0;
 		return 0;
 	}
@@ -222,7 +228,12 @@ int main(int argc, char** argv)
 	int trainMethod = TRAIN_AS_IS;
 	string testSetName;
 	bool haveTest = false;
-
+	double learningRate = -1; //-1s are sentinel values
+	double reluCap = -1;
+	double leaky = -1;
+	double l2 = -1;
+	double moment = -1;
+	double maxNorm = -1;
 
 	if(argc > 2)
 	{
@@ -250,6 +261,18 @@ int main(int argc, char** argv)
 			}
 			else if(arg.find("-train_as_is") != string::npos)
 				haveTrainMethod++; // this is on by default
+			else if(arg.find("learningRate=") != string::npos)
+				learningRate = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("RELU_CAP=") != string::npos)
+				reluCap = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("LEAKY_RELU_CONST=") != string::npos)
+				leaky = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("l2Lambda=") != string::npos)
+				l2 = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("MOMENT_CONST=") != string::npos)
+				moment = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("MAX_NORM_CAP=") != string::npos)
+				maxNorm = stod(arg.substr(arg.find("=")+1));
 			else
 			{
 				printf("Unknown arg %s. Aborting.\n", argv[i]);
@@ -306,14 +329,14 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(4);  //1x1x4
 
 	//shallow 64x64x3 net
-	net.setActivType(LEAKY_RELU);		//64x64x40
-	net.addConvLayer(40,1,5,0);     	//60x60x40
-	net.addMaxPoolLayer(2,2); 	    	//30x30x40
-	net.addConvLayer(40,1,3,0);	  	  	//28x28x40
-	net.addMaxPoolLayer(2,2); 			//14x14x40
-	net.addConvLayer(40,1,3,0);			//12x12x40
-	net.addMaxPoolLayer(3,3);			//4x4x  40
-	net.addFullyConnectedLayer(4);		//1x1x4	
+	// net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
+	// net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
+	// net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
+	// net.addConvLayer(20,1,3,0);	  	  	//28x28x20	//12x12x20
+	// net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
+	// net.addConvLayer(20,1,3,0);			//12x12x20	//4x4x20
+	// net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
+	// net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
 
 
 	// failed fully connected net
@@ -341,21 +364,35 @@ int main(int argc, char** argv)
 	
 	
 	//small net
-	// net.setActivType(LEAKY_RELU);
-	// net.addConvLayer(6,1,5,0);
-	// net.addMaxPoolLayer(2,2);
+	net.setActivType(LEAKY_RELU);
+	net.addConvLayer(6,1,5,0);
+	net.addMaxPoolLayer(2,2);
 
-	// //net.addConvLayer(7,1,3,1);
+	//net.addConvLayer(7,1,3,1);
 
-	// net.addConvLayer(10,1,3,0);
-	// net.addMaxPoolLayer(3,3);
+	net.addConvLayer(10,1,3,0);
+	net.addMaxPoolLayer(3,3);
 
-	// //net.addConvLayer(5,1,3,1);	//4x4x5
+	//net.addConvLayer(5,1,3,1);	//4x4x5
 
-	// net.addConvLayer(2,1,4,0);
+	net.addConvLayer(2,1,4,0);
     
 
-    net.setDevice(device);
+	//set hyperparameters
+    if(learningRate != -1)
+    	net.set_learningRate(learningRate);
+    if(reluCap != -1)
+    	net.set_RELU_CAP(reluCap);
+    if(leaky != -1)
+    	net.set_LEAKY_RELU_CONST(leaky);
+    if(l2 != -1)
+    	net.set_l2Lambda(l2);
+    if(moment != -1)
+    	net.set_MOMENT_CONST(moment);
+    if(maxNorm != -1)
+    	net.set_MAX_NORM_CAP(maxNorm);
+    if(device != -1)
+    	net.setDevice(device);
     net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{

@@ -1,4 +1,3 @@
-
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -9,12 +8,13 @@
 #include <unistd.h>
 #include <iostream>
 #include <vector>
-#include "ConvNet.h"
+#include "ConvNetCL.h"
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
 #include <thread>
 #include <pthread.h>
+#include <mpi.h>
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
 #else
@@ -25,18 +25,35 @@
 using namespace cv;
 using namespace std;
 
+#define FRAME_BLOCK_SIZE 10
+
+#define GET_FRAMENUM 0
+#define SEND_FRAMENUM 1
+#define SUBMIT_FRAME 2
+
 pthread_mutex_t frameMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t globalFrameMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t submitMutex = PTHREAD_MUTEX_INITIALIZER;
 
-int curFrame = 0;
-int curSubmittedFrame = 0;
+unsigned int curFrame = 0;
+unsigned int myCurFrame = 0;
+unsigned int myReadFrames = 0;
+unsigned int myTakenFrames = 0;
+unsigned int myFrameAmount = 0;
+unsigned int curSubmittedFrame = 0;
+
+thread *getThread, *submitThread;
+bool stopThread = false;
+
+int my_rank; // process rank
+int comm_sz; // num processes
 
 typedef vector<vector<vector<double> > > imVector;
 
 struct Frame
 {
 	int frameNum = -1;
-	Mat* mat;
+	//Mat* mat;
 	int redElement = 0;
 };
 
@@ -45,7 +62,10 @@ vector<Frame*> waitingFrames(0);
 char *inPath, *outPath;
 int stride = 1;
 bool __useGPU = true;
+int skipAmount = 1;
+int blockSize = FRAME_BLOCK_SIZE;
 
+VideoCapture __globalVideo;
 VideoCapture __video;
 VideoWriter __outVideo;
 ofstream __outcsv;
@@ -71,6 +91,34 @@ string secondsToString(time_t seconds)
 	return outString;
 }
 
+void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
+{
+	vect.resize(width);
+	for(int i=0; i < width; i++)
+	{
+		vect[i].resize(height);
+		for(int j=0; j < height; j++)
+		{
+			vect[i][j].resize(depth);
+		}
+	}
+}
+
+void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
+{
+	for(int i=0; i< vect.size(); i++)
+	{
+		for(int j=0; j< vect[i].size(); j++)
+		{
+			for(int k=0; k< vect[i][j].size(); k++)
+			{
+				vect[i][j][k] = val;
+			}
+		}
+	}
+}
+
+
 double vectorSum(const vector<double>& vect)
 {
 	double sum=0;
@@ -87,44 +135,127 @@ void squareElements(vector<vector<vector<double> > >& vect)
 				vect[i][j][k] = vect[i][j][k] * vect[i][j][k];
 }
 
-//puts frame and frameNum in parameters
-void getNextFrame(Mat& frame, unsigned int& frameNum)
+//used only by thread 0
+unsigned int getNextFrameGlobal(unsigned int& frameNum)
 {
-	pthread_mutex_lock(&frameMutex);
-	bool val = __video.read(frame);
-	frameNum = curFrame++;
-	//printf("got frame %d\n",curFrame-1);
-	if(val == false) //this means the last frame was grabbed.
-		done = true;
-	pthread_mutex_unlock(&frameMutex);
+	pthread_mutex_lock(&globalFrameMutex);
+	Mat frame;
+	unsigned int amount = 0; //amount of frames validated
+	double damount = 0;
+	for(int i = 0; i < blockSize; i++)
+	{
+		bool val = __globalVideo.read(frame); // different copy of video so no conflict with process 0
+		frameNum = curFrame++;
+		if(val == false) //this means the last frame was grabbed.
+		{
+			done = true;
+			break;
+		}
+		//amount++;
+		damount += 1/skipAmount;
+	}
+	amount = (unsigned int)damount;
+	pthread_mutex_unlock(&globalFrameMutex);
+	return amount;
 }
 
-void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
+
+//returns next frame num. used by all
+bool getNextFrame(Mat& frame, unsigned int& frameNum)
 {
+	printf("getting next frame %d\n", my_rank);
+	pthread_mutex_lock(&frameMutex);
+	printf("next frame in mutex %d\n", my_rank);
+	while(myReadFrames != myCurFrame) // the my video will need to go past the frames others have done.
+	{
+		bool val = __video.read(frame);
+		if(val == false) // this should never happend
+			break;
+		myReadFrames++;
+	}
+	myCurFrame += skipAmount;
+	myTakenFrames++;
+	if(myTakenFrames == myFrameAmount)
+	{
+		myTakenFrames = 0;
+		//talk to thread running getThreadMPI
+		if(my_rank != 0)
+		{
+			unsigned int buf[2];
+			MPI_Send(&my_rank, 1, MPI_INT, 0, GET_FRAMENUM, MPI_COMM_WORLD);
+			MPI_Recv(buf, 2, MPI_UNSIGNED, 0, SEND_FRAMENUM, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			myCurFrame = buf[0];
+			myFrameAmount = buf[1];
+		}
+		else
+		{
+			myFrameAmount = getNextFrameGlobal(myCurFrame);
+		}
+	}
+	//printf("got frame %d\n",curFrame-1);
+	pthread_mutex_unlock(&frameMutex);
+	printf("past mutex\n");
+	if(myFrameAmount > 0)
+		return true;
+	else
+		return false;
+}
+
+
+void getThreadMPI() // thread opened by 0 to allocate frames to processes
+{
+	int rank;
+	unsigned int frameNum[2];
+	blockSize = FRAME_BLOCK_SIZE * skipAmount;
+	while(true)
+	{
+		//get next mpi msg from any source. They send their rank over in the message
+		MPI_Recv(&rank, 1, MPI_INT, MPI_ANY_SOURCE, GET_FRAMENUM, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+		//push to getNextFrame which has a mutex
+		frameNum[1] = getNextFrameGlobal(frameNum[0]);
+
+		//send mpi msg back saying [start frame, amount of frames]
+		MPI_Send(frameNum, 2, MPI_UNSIGNED, rank, SEND_FRAMENUM, MPI_COMM_WORLD);
+	}
+}
+
+void submitFrame(unsigned int frameNum, unsigned int red)
+{
+	unsigned int buf[2];
+	buf[0] = frameNum;
+	buf[1] = red;
+	MPI_Send(buf, 2, MPI_UNSIGNED, 0, SEND_FRAMENUM, MPI_COMM_WORLD);
+}
+
+//returns whether or not all frames have been submitted
+bool submitFrameGlobal(unsigned int frameNum, unsigned int red)//, int device)
+{
+	bool returnVal = false;
 	pthread_mutex_lock(&submitMutex);
 	//printf("frame %d submitted by thread %d\n", frameNum, device);
 	if(frameNum == curSubmittedFrame)
 	{
 		//printf("sub if\n");
-		__outVideo << *frame;
+		//__outVideo << *frame;
 		__outcsv << red << "," << (frameNum/10.0) << "\n";
-		curSubmittedFrame++;
-		delete frame;
+		curSubmittedFrame += skipAmount;
+		//delete frame;
 		printf("Frame %d completed.\n",frameNum);
 		int i=0; 
 		//printf("starting while\n");
 		while(i < waitingFrames.size() && waitingFrames[i]->frameNum == curSubmittedFrame)
 		{
 			//printf("in while\n");
-			__outVideo << (*(waitingFrames[i]->mat));
+			//__outVideo << (*(waitingFrames[i]->mat));
 			__outcsv << waitingFrames[i]->redElement << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
 			//printf("pushed\n");
 			//printf("++\n");
 			printf("Frame %d completed.\n",waitingFrames[i]->frameNum);
-			delete waitingFrames[i]->mat;
+			//delete waitingFrames[i]->mat;
 			delete waitingFrames[i];
 
-			curSubmittedFrame++;
+			curSubmittedFrame += skipAmount;
 			i++;
 		}
 		//printf("after while\n");
@@ -132,17 +263,19 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 		{
 			for(int j=i; j < waitingFrames.size(); j++)
 			{
-				frame[j-i] = frame[j];
+				waitingFrames[j-i] = waitingFrames[j];
 			}
 			waitingFrames.resize(waitingFrames.size() - i);
 		}
 		//printf("end sub if\n");
+		if(done && curSubmittedFrame == curFrame)
+			returnVal = true;
 	}
 	else
 	{
 		//printf("sub else\n");
 		Frame *newframe = new Frame;
-		newframe->mat = frame; 
+		//newframe->mat = frame; 
 		newframe->frameNum = frameNum;
 		newframe->redElement = red;
 		waitingFrames.resize(waitingFrames.size() + 1);
@@ -164,6 +297,18 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 		//printf("end sub else\n");
 	}
 	pthread_mutex_unlock(&submitMutex);
+	return returnVal;
+}
+
+void submitThreadMPI()
+{
+	unsigned int buffer[2]; //[frameNumber, red]
+	while(!stopThread)
+	{
+		MPI_Recv(buffer, 2, MPI_UNSIGNED, MPI_ANY_SOURCE, SUBMIT_FRAME, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		stopThread = submitFrameGlobal(buffer[0], buffer[1]);
+	}
+	exit(0);
 }
 
 bool allElementsEquals(vector<double>& array)
@@ -233,13 +378,14 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
  */
 void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 {
+	printf("breakUpImage\n");
 	int numrows = image.rows;
 	int numcols = image.cols;
 
 	//printf("%d %d\n",numrows, numcols);
 
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
-	resize3DVector(fullImage,numrows,numcols,net.getNumCategories());
+	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
 	setAll3DVector(fullImage,0);
 	vector<imVector> imageRow(0); // this will hold all subimages from one row
 	vector<int> calcedClasses(0);
@@ -261,9 +407,9 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 			convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
-		preprocess(imageRow);
+		//preprocess(imageRow);
 		net.setData(imageRow);
-		net.newRun(calcedClasses, __useGPU);
+		net.run();
 		net.getConfidences(confidences); //gets the confidence for each category for each image
 
 		int curImage = 0;
@@ -325,25 +471,32 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 
 void __parallelVideoProcessor(int device)
 {
+	if(device != 2) return;
 	Net net(__netName);
-	if(!net.isActive() || !net.setDevice(device))
+	net.setConstantMem(true);
+	if(!net.setDevice(device) || !net.finalize())
 		return;
-	printf("Thread using device %d\n",device);
+	printf("Thread using rank %d, device %d\n", my_rank, device);
 
 	unsigned int frameNum=0;
 	Mat frame;
+	bool valid;
 	int red;
-	getNextFrame(frame, frameNum);
-	while(!done)
+	printf("gonna get next frame\n");
+	valid = getNextFrame(frame, frameNum);
+	printf("past next frame\n");
+	printf("past 2\n");
+	while(valid)
 	{
+		printf("while loop\n");
 		//printf("thread %d got frame %d\n", device, frameNum);
 		Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
 		//printf("thread %d: starting breakUpImage %d\n",device,frameNum);
 		breakUpImage(frame, net, *outFrame, red);
 		//printf("thread %d: submitting frame %d\n",device,frameNum);
-		submitFrame(outFrame, frameNum, red);//, device);
+		submitFrame(frameNum, red);//, device);
 
-		getNextFrame(frame,frameNum);
+		valid = getNextFrame(frame,frameNum);
 	}
 }
 
@@ -362,23 +515,30 @@ void breakUpVideo(const char* videoName)
 		return;
 	}
 
+	if(my_rank == 0)
+	{
+		__globalVideo.open(videoName);
+		//make threads for getting frame num and submitting
+		getThread = new thread(getThreadMPI);
+		submitThread = new thread(submitThreadMPI);
+	}
 
 
-	char outName[255], outNameCSV[255];
+	char outNameCSV[255];
 	string origName(videoName);
 	size_t dot = origName.rfind('.');
 	const char *noExtension = origName.substr(0,dot).c_str();
 
-	sprintf(outName,"%s_prediction%s",noExtension,".avi");
+	//sprintf(outName,"%s_prediction%s",noExtension,".avi");
 	sprintf(outNameCSV,"%s_prediction.csv",noExtension);
 	//cout << "writing " << outName << endl;
 
 	__outcsv.open(outNameCSV);
 
-	__outVideo.open(outName, 
-	 CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
-	 10,//video.get(CV_CAP_PROP_FPS), 
-	 Size(__video.get(CV_CAP_PROP_FRAME_WIDTH), __video.get(CV_CAP_PROP_FRAME_HEIGHT)));
+	// __outVideo.open(outName, 
+	//  CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
+	//  10,//video.get(CV_CAP_PROP_FPS), 
+	//  Size(__video.get(CV_CAP_PROP_FRAME_WIDTH), __video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
 	__rows = __video.get(CV_CAP_PROP_FRAME_HEIGHT);
 	__cols = __video.get(CV_CAP_PROP_FRAME_WIDTH);
@@ -411,10 +571,16 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath (stride=1) (gpu=true)\n");
-		return -1;
+		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> gpu=<true/false> skipAmount=<1>\n");
+		return 0;
 	}
 	time_t starttime, endtime;
+
+	MPI_Init(&argc, &argv);
+	MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
+	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+
 	inPath = argv[2];
 
 	if(argc > 3)
@@ -432,6 +598,10 @@ int main(int argc, char** argv)
 				{
 					__useGPU = false;
 				}
+			}
+			else if(arg.find("skipAmount=") != string::npos)
+			{
+				skipAmount = stoi(arg.substr(arg.find("=")+1));
 			}
 		}
 	}
@@ -524,6 +694,7 @@ int main(int argc, char** argv)
 	}
 
 	//cout << "returning" << endl;
+	MPI_Finalize();
 	return 0;
 	
 }

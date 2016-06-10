@@ -33,6 +33,10 @@
 #define TRAIN_AS_IS 0
 #define TRAIN_EQUAL_PROP 1
 
+//defines for programs
+#define TRAINING_PROGRAM 0
+#define RUNNING_PROGRAM 1
+
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 class Net{
@@ -70,7 +74,7 @@ private: 	// members
 	double __learningRate = 1e-4;
 	double __RELU_CAP = 5000.0;
 	double __LEAKY_RELU_CONST = 0.01;
-	double __l2lambda = 0.05;
+	double __l2Lambda = 0.05;
 	double __MOMENT_CONST = 0.9;
 	double __MAX_NORM_CAP = 6.0;
 	//members dealing with layers
@@ -232,7 +236,7 @@ private:	// functions
 	//OpenCL functions
 	void CheckError(cl_int error);
 	std::string LoadKernel(const char* name);
-	cl_program CreateProgram(const std::string& soource, cl_context& context);
+	cl_program CreateProgram(std::string source, cl_context& context, int programNum = -1);
 };
 
 #endif /* defined(____ConvNetCL__) */

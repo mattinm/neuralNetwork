@@ -9,6 +9,7 @@
 //		maxPool write the index of the maxval for the new neuron into a parallel array for the new neurons.
 //			in backprop search that array for your index and if they match, += the dneurons value into it
 
+// DO NOT CHANGE THESE DEFINES. IF YOU MUST, MAKE THEM THE SAME LENGTH IN CHARACTERS
 
 #define RELU_CAP 5000.0 		 //max value that can pass through relu or leakyRelu
 #define LEAKY_RELU_CONST .01 //multiplication constant for negative values in leakyRelu

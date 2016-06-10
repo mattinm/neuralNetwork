@@ -208,6 +208,12 @@ int main(int argc, char** argv)
 		cout << "   -train_as_is             Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
 		cout << "   -train_equal_prop        Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";
 		cout << "                            the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
+		cout << "   learningRate=<rate>        Sets the learningRate for the CNN.\n";
+		cout << "   RELU_CAP=<cap>             Sets max value that can pass through the RELU\n";
+		cout << "   LEAKY_RELU_CONST=<const>   Sets the constant for LEAKY_RELU\n";
+		cout << "   l2Lambda=<lambda>          Sets the lambda for L2 Regularization\n";
+		cout << "   MOMENT_CONST=<const>       Sets the constant decay for the Nesterov Momentum\n";
+		cout << "   MAX_NORM_CAP=<cap>         Sets the max value a weight can be\n";
 		return 0;
 	}
 
@@ -221,6 +227,12 @@ int main(int argc, char** argv)
 	bool haveTest;
 	int haveTrainMethod = 0;
 	int trainMethod = TRAIN_AS_IS;
+	double learningRate = -1; //-1s are sentinel values
+	double reluCap = -1;
+	double leaky = -1;
+	double l2 = -1;
+	double moment = -1;
+	double maxNorm = -1;
 
 
 	if(argc > 3)
@@ -249,6 +261,18 @@ int main(int argc, char** argv)
 			}
 			else if(arg.find("-train_as_is") != string::npos)
 				haveTrainMethod++; // this is on by default
+			else if(arg.find("learningRate=") != string::npos)
+				learningRate = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("RELU_CAP=") != string::npos)
+				reluCap = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("LEAKY_RELU_CONST=") != string::npos)
+				leaky = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("l2Lambda=") != string::npos)
+				l2 = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("MOMENT_CONST=") != string::npos)
+				moment = stod(arg.substr(arg.find("=")+1));
+			else if(arg.find("MAX_NORM_CAP=") != string::npos)
+				maxNorm = stod(arg.substr(arg.find("=")+1));
 			else
 			{
 				printf("Unknown arg %s. Aborting.\n", argv[i]);
