@@ -54,8 +54,8 @@ short xsize = -1, ysize = -1, zsize = -1;
 int imageNum = 0;
 int stride = 1;
 int globalStride = 1;
-long byteCount = 0;
-long imageCount = 0;
+unsigned long byteCount = 0;
+unsigned long imageCount = 0;
 unsigned short __globalTrueVal;
 unordered_map<unsigned short, int> trueMap;
 
@@ -64,6 +64,7 @@ bool __verticalReflect = false;
 bool __rotateClock = false;
 bool __rotateCClock = false;
 bool __rotate180 = false;
+int numWritesPerImage = 1;
 
 template<typename type>
 void writeImage(Mat& image, ofstream& outfile)
@@ -77,6 +78,7 @@ void writeImage(Mat& image, ofstream& outfile)
 
 	type pixel[3];
 	long size = sizeof(type) * 3;
+    
 
 	//write image normal
 	if(image.type() == CV_8UC3)
@@ -186,8 +188,8 @@ void writeImage(Mat& image, ofstream& outfile)
 			trueMap[__globalTrueVal] = 1;
 		else // found
 			trueMap[__globalTrueVal]++;
-		byteCount += xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short); //extra 2 for the ushort trueVal
-		imageCount++;
+		byteCount  += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short)) * numWritesPerImage; //extra 2 for the ushort trueVal
+		imageCount += numWritesPerImage;
 		if(imageCount % 100000 == 0)
 		{
 			printf("Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
@@ -226,8 +228,8 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 		{
 			Mat out = image(Range(i,i+ysize),Range(j,j+xsize));
 			writeImage<type>(out,outfile);
-			numThisImage++;
-			imageNum++;
+			numThisImage+=numWritesPerImage; // numThisFullImage += numWritesPerSubImage;
+			//imageNum++;
 		}
 	}
 	printf("%d images created.\n", numThisImage);	
@@ -336,19 +338,35 @@ int main (int argc, char** argv)
 			if(arg.find("stride=") != string::npos)
 				globalStride = stoi(arg.substr(arg.find("=")+1));
 			else if(arg.find("-rot_clock") != string::npos)
+            {
 				__rotateClock = true;
+                numWritesPerImage++;
+            }
 			else if(arg.find("-rot_cclock") != string::npos)
+            {
 				__rotateCClock = true;
+                numWritesPerImage++;
+            }
 			else if(arg.find("-rot_180") != string::npos)
+            {
 				__rotate180 = true;
+                numWritesPerImage++;
+            }
 			else if(arg.find("-horizontal") != string::npos)
+            {
 				__horizontalReflect = true;
+                numWritesPerImage++;
+            }
 			else if(arg.find("-vertical") != string::npos)
+            {
 				__verticalReflect = true;
+                numWritesPerImage++;
+            }
 			else if(arg.find("-all") != string::npos)
 			{
 				__rotateClock = true;	__rotateCClock = true;	__rotate180 = true;
 				__horizontalReflect = true;		__verticalReflect = true;
+                numWritesPerImage += 5;
 			}
 			else 
 			{
@@ -456,7 +474,10 @@ int main (int argc, char** argv)
 	imageConfig.close();
 	outfile.close();
 
-	cout << "Total: " << imageNum << " images created" << endl;
+	cout << "Total: " << imageCount << " images created.";
+    if(numWritesPerImage != 1)
+        cout << " (" << imageCount/numWritesPerImage << " without transformations)";
+    cout << endl;
 
 	double sum = 0;
 	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
