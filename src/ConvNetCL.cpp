@@ -589,6 +589,7 @@ void Net::run(bool useGPU)
 
 	cl_mem *temp;
 
+	// printf("Running\n");
  	for(int r = 0; r < __dataPointer->size(); r++)
  	{
  		//put in the next image
@@ -602,7 +603,7 @@ void Net::run(bool useGPU)
 		//go through the layers
 		for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
 		{
-			//printf("Layer %d, type %d\n", i, __layers[i]->layerType);
+			// printf("Layer %d, type %d\n", i, __layers[i]->layerType);
 			if(__layers[i]->layerType == CONV_LAYER)
 			{
 				ConvLayer* conv = (ConvLayer*)__layers[i];
@@ -750,6 +751,7 @@ void Net::run(bool useGPU)
 
 
  	}
+ 	// printf("End run\n");
 }
 
 void Net::getCalculatedClasses(vector<int>& dest) const
@@ -1584,7 +1586,8 @@ bool Net::setTestData(const vector<imVector>& testData, const vector<double>& tr
 
 int Net::getNumClasses() const
 {
-	return __numClasses;
+	//return __numClasses;
+	return __neuronSizes.back();
 }
 
 void Net::preprocessData() // thread this 

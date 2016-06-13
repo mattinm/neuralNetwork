@@ -84,7 +84,6 @@ for i in range(0, len(flats)):
 
 print flatClassification
 print flats
-poly = np.polyfit(time, red, 3)
 plt.plot(time, red)
 plt.xlabel("Time (seconds)")
 plt.plot(time, plateau, linewidth=2.0)
