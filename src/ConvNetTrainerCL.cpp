@@ -347,7 +347,7 @@ int main(int argc, char** argv)
 				maxNorm = stod(arg.substr(arg.find("=")+1));
 			else
 			{
-				printf("Unknown arg %s. Aborting.\n", argv[i]);
+				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
 				return 0;
 			}
 		}

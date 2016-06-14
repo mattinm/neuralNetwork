@@ -18,6 +18,7 @@
 
 //BOINC
 #ifdef _BOINC_APP_
+//	Original
 // #ifdef _WIN32
 // #include "boinc_win.h"
 // #include "str_util.h"
@@ -33,7 +34,16 @@
 // #include "boinc/boinc_api.h"
 // #include "boinc/mfile.h"
 // #endif
-#include "../../test/boincAPI/boinc_api.h"
+
+//	My guess
+// #include "../../test/boinc/api/boinc_api.h"
+// #include "../../test/boinc/lib/diagnostics.h"
+// #include "../../test/boinc/lib/util.h"
+// #include "../../test/boinc/lib/filesys.h"
+// #include "../../test/boinc/lib/mfile.h"
+
+//	Second guess
+#include "boinc_api.h"
 #endif
 
 
@@ -43,12 +53,14 @@ using namespace std;
 
 typedef vector<vector<vector<double> > > imVector;
 
-char *inPath, *outPath;
 int imageNum = 0;
 int stride = 1;
+int jump;
 bool __useGPU = true;
+bool firstGot = false;
 
 unsigned int __frameNum = 0;
+unsigned int curFrame = 0;
 
 int __width;
 int __height;
@@ -60,7 +72,7 @@ std::string getBoincFilename(std::string filename) throw(std::runtime_error) {
     std::string resolved_path = filename;
 	#ifdef _BOINC_APP_
 	    if(boinc_resolve_filename_s(filename.c_str(), resolved_path)) {
-	        LOG(ERROR) << "Could not resolve filename '" << filename.c_str() << "'";
+	        printf("Could not resolve filename %s\n",filename.c_str());
 	        throw std::runtime_error("Boinc could not resolve filename");
 	    }
 	#endif
@@ -74,7 +86,7 @@ void writeCheckpoint() throw(std::runtime_error)
 	if(!outfile.isOpened())
 		throw std::runtime_error("Checkpoint file could not be opened");
 
-	outfile << "FRAME_NUM" << __frameNum;
+	outfile << "FRAME_NUM" << (double)__frameNum;
 	outfile.release();
 }
 
@@ -84,8 +96,10 @@ bool readCheckpoint()
 	cv::FileStorage infile(resolved_checkpoint_name, cv::FileStorage::READ);
 	if(!infile.isOpened())
 		return false;
+	double num;
 
-	infile["FRAME_NUM"] >> __frameNum;
+	infile["FRAME_NUM"] >> num;
+	__frameNum = (unsigned int)num;
 
 	infile.release();
 	return true;
@@ -207,11 +221,42 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
 	//delete t;
 }
 
+bool getNextFrame(VideoCapture& video, Mat& frame)
+{
+	if(firstGot)
+	{
+		bool val1 = true;
+		for(int i=0; i < jump; i++)
+			if(!video.grab())
+				val1 = false;
+		bool val2 = video.retrieve(frame);
+		//percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+		__frameNum = curFrame;
+		curFrame += jump;
+		// printf("got frame %d\n",curFrame);
+		// if(!val1 || !val2) //this means the last frame was grabbed.
+		// 	done = true;
+		return val1 && val2;
+	}
+	else
+	{
+		bool val = video.read(frame);
+		//percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+		__frameNum = curFrame;
+		curFrame+=jump;
+		// if(!val)
+		// 	done = true;
+		firstGot = true;
+
+		return val;
+	}
+}
+
 /*
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
  * (i.e. the stride is less than the subimage size), then the confidences from each subimage is added.
  */
-void breakUpImage(Mat& image, Net& net, VideoWriter& outVideo, ofstream& outcsv)
+void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
 {
 	//cout << "starting breakUpImage" << endl;
 	//Mat image = imread(imageName,1);
@@ -339,10 +384,10 @@ void breakUpImage(Mat& image, Net& net, VideoWriter& outVideo, ofstream& outcsv)
 			}*/
 		}
 	}
-	__momentRed = .8*__momentRed + .8*redElement;
+	// __momentRed = .8*__momentRed + .8*redElement;
 
-	outVideo.write(outputMat);
-	outcsv << __momentRed << "," << __frameNum/10.0 << "\n";
+	// outVideo.write(outputMat);
+	outcsv << redElement << "," << __frameNum/10.0 << "\n";
 	//outVideo << outputMat;
 }
 
@@ -374,10 +419,10 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 	
 	//cout << "writing " << outName << endl;
 
-	VideoWriter outVideo(outName, 
-	 CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
-	 10,//video.get(CV_CAP_PROP_FPS), 
-	 Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
+	// VideoWriter outVideo(outName, 
+	//  CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
+	//  10,//video.get(CV_CAP_PROP_FPS), 
+	//  Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
 	ofstream outcsv;
 	outcsv.open(outNameCSV);
@@ -387,11 +432,11 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 	__width = video.get(CV_CAP_PROP_FRAME_WIDTH);
 	__height = video.get(CV_CAP_PROP_FRAME_HEIGHT);
 
-	if(!outVideo.isOpened())
-	{
-		cout << "Could not open out video" << endl;
-		return;
-	}
+	// if(!outVideo.isOpened())
+	// {
+	// 	cout << "Could not open out video" << endl;
+	// 	return;
+	// }
 
 	Mat frame;
 	for(unsigned int i = 0; i < startFrame; i++)
@@ -401,12 +446,12 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 	}
 	//unsigned long count = 0;
 	//boinc_fraction_done(0);
-	while(video.read(frame))
+	while(getNextFrame(video, frame)) // __frameNum is global
 	{
 		//printf("Frame %ld of %.0lf\n", ++count, video.get(CV_CAP_PROP_FRAME_COUNT));
 		//printf("Frame %ld. \t%3.4lf%%\n", ++count, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
-		breakUpImage(frame, net, outVideo, outcsv);
-		__frameNum++;
+		breakUpImage(frame, net, outcsv);
+		//__frameNum++;
 		boinc_fraction_done(video.get(CV_CAP_PROP_POS_AVI_RATIO));
 		if(boinc_time_to_checkpoint())
 		{
@@ -429,9 +474,15 @@ int checkExtensions(char* filename)
 
 int main(int argc, char** argv)
 {
-	if(argc < 3 || 5 < argc)
+	if(argc < 3)
 	{
-		printf("use format: ./ConvNetVideoDriverCL cnnConfig.txt VideoPath stride=<1> gpu=<true/false> device=<device#>\n");
+		printf("use format: ./ConvNetVideoDriverCL_BOINC cnnConfig.txt VideoPath stride=<1> device=<device#>\n");
+		printf("Usage (Required to come first):\n ./ConvNetVideoDriverCL_BOINC cnnConfig.txt VideoPath\n");
+		printf("Optional args (must come after required args. Case sensitive.):\n");
+		printf("   device=<int>     Which OpenCL device to use. Defaults to GPU supporting doubles, if exists, else CPU\n");
+		printf("   stride=<int>     Stride across image. Defaults to 1.\n");
+		printf("   jump=<int>       How many frames to jump between computations. If jump=10,\n");
+		printf("                    it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
 		return -1;
 	}
 
@@ -445,8 +496,6 @@ int main(int argc, char** argv)
 	boinc_init_options(&options);
 	#endif
 
-	inPath = argv[2];
-
 	time_t starttime, endtime;
 	int device = -1;
 
@@ -459,16 +508,14 @@ int main(int argc, char** argv)
 			{
 				stride = stoi(arg.substr(arg.find("=")+1));
 			}
-			else if(arg.find("gpu=") != string::npos)
-			{
-				if(arg.find("false") != string::npos || arg.find("False") != string::npos)
-				{
-					__useGPU = false;
-				}
-			}
 			else if(arg.find("device=") != string::npos)
 			{
 				device = stoi(arg.substr(arg.find("=")+1));
+			}
+			else
+			{
+				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
+				return 0;
 			}
 		}
 	}
@@ -476,7 +523,7 @@ int main(int argc, char** argv)
 	string resolved_CNN_name = getBoincFilename(string(argv[1]));
 
 	//set up net
-	Net net(resolved_CNN_name);
+	Net net(resolved_CNN_name.c_str());
 	net.setDevice(device); //should it exit if this fails?
 	if(!net.finalize()) // failure due to unable to finalize CNN
 	{
@@ -499,7 +546,7 @@ int main(int argc, char** argv)
 	starttime = time(NULL);
 	breakUpVideo(resolved_Video_name.c_str(),net,startFrame);
 	endtime = time(NULL);
-	cout << "Time for video " << filenames[i] << ": " << secondsToString(endtime - starttime) << endl;
+	cout << "Time for video " << argv[2] << ": " << secondsToString(endtime - starttime) << endl;
 
 	boinc_finish(0);
 	return 0;

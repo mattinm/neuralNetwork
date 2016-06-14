@@ -159,6 +159,23 @@ unsigned int getNextFrameGlobal(unsigned int& frameNum)
 	return amount;
 }
 
+void getFirstFrameInfo()
+{
+	myTakenFrames = 0;
+	//talk to thread running getThreadMPI
+	if(my_rank != 0)
+	{
+		unsigned int buf[2];
+		MPI_Send(&my_rank, 1, MPI_INT, 0, GET_FRAMENUM, MPI_COMM_WORLD);
+		MPI_Recv(buf, 2, MPI_UNSIGNED, 0, SEND_FRAMENUM, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		myCurFrame = buf[0];
+		myFrameAmount = buf[1];
+	}
+	else
+	{
+		myFrameAmount = getNextFrameGlobal(myCurFrame);
+	}
+}
 
 //returns next frame num. used by all
 bool getNextFrame(Mat& frame, unsigned int& frameNum)
@@ -471,7 +488,7 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 
 void __parallelVideoProcessor(int device)
 {
-	if(device != 2) return;
+	//if(device != 2) return;
 	Net net(__netName);
 	net.setConstantMem(true);
 	if(!net.setDevice(device) || !net.finalize())
@@ -483,20 +500,22 @@ void __parallelVideoProcessor(int device)
 	bool valid;
 	int red;
 	printf("gonna get next frame\n");
-	valid = getNextFrame(frame, frameNum);
+	getFirstFrameInfo();
 	printf("past next frame\n");
 	printf("past 2\n");
-	while(valid)
+	while(true)
 	{
+		valid = getNextFrame(frame,frameNum);
+		cout << "Valid: " << valid << endl;
+		if(!valid)
+			break;
 		printf("while loop\n");
 		//printf("thread %d got frame %d\n", device, frameNum);
 		Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
 		//printf("thread %d: starting breakUpImage %d\n",device,frameNum);
 		breakUpImage(frame, net, *outFrame, red);
 		//printf("thread %d: submitting frame %d\n",device,frameNum);
-		submitFrame(frameNum, red);//, device);
-
-		valid = getNextFrame(frame,frameNum);
+		submitFrame(frameNum, red);//, device);	
 	}
 }
 
@@ -519,8 +538,10 @@ void breakUpVideo(const char* videoName)
 	{
 		__globalVideo.open(videoName);
 		//make threads for getting frame num and submitting
-		getThread = new thread(getThreadMPI);
-		submitThread = new thread(submitThreadMPI);
+		// getThread = new thread(getThreadMPI);
+		// submitThread = new thread(submitThreadMPI);
+		getThreadMPI();
+		return;
 	}
 
 
@@ -542,18 +563,20 @@ void breakUpVideo(const char* videoName)
 
 	__rows = __video.get(CV_CAP_PROP_FRAME_HEIGHT);
 	__cols = __video.get(CV_CAP_PROP_FRAME_WIDTH);
-	int numDevices = getNumDevices();
-	thread* t = new thread[numDevices];
-	for(int i=0; i < numDevices; i++)
-	{
-		//start new thread for each device. Any thread for a device that does not support double will return early.
-		t[i] = thread(__parallelVideoProcessor, i);
-	}
+	// int numDevices = getNumDevices();
+	// thread* t = new thread[numDevices];
+	// for(int i=0; i < numDevices; i++)
+	// {
+	// 	//start new thread for each device. Any thread for a device that does not support double will return early.
+	// 	t[i] = thread(__parallelVideoProcessor, i);
+	// }
 
-	for(int i=0; i < numDevices; i++)
-	{
-		t[i].join();
-	}
+	// for(int i=0; i < numDevices; i++)
+	// {
+	// 	t[i].join();
+	// }
+
+	__parallelVideoProcessor(0);
 
 	__outcsv.close();
 }

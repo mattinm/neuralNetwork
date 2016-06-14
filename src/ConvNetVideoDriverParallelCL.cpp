@@ -37,13 +37,15 @@ struct Frame
 	int frameNum = -1;
 	Mat* mat;
 	int redElement = 0;
+	double percentDone;
 };
 
 vector<Frame*> waitingFrames(0);
 
 char *inPath, *outPath;
 int stride = 1;
-bool __useGPU = true;
+int jump = 1;
+bool firstGot = false;
 
 VideoCapture __video;
 VideoWriter __outVideo;
@@ -115,18 +117,63 @@ void squareElements(vector<vector<vector<double> > >& vect)
 }
 
 //puts frame and frameNum in parameters
-void getNextFrame(Mat& frame, unsigned int& frameNum)
+void getNextFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
 {
 	pthread_mutex_lock(&frameMutex);
-	bool val = __video.read(frame);
-	frameNum = curFrame++;
-	//printf("got frame %d\n",curFrame-1);
-	if(val == false) //this means the last frame was grabbed.
-		done = true;
+	//bool val = __video.read(frame);
+	if(firstGot)
+	{
+		bool val1 = true;
+		for(int i=0; i < jump; i++)
+			if(!__video.grab())
+				val1 = false;
+		bool val2 = __video.retrieve(frame);
+		percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+		frameNum = curFrame;
+		curFrame += jump;
+		// printf("got frame %d\n",curFrame);
+		if(!val1 || !val2) //this means the last frame was grabbed.
+		{
+			done = true;
+		}
+	}
+	else
+	{
+		bool val = __video.read(frame);
+		percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+		frameNum = curFrame;
+		curFrame+=jump;
+		if(!val)
+			done = true;
+		firstGot = true;
+		// printf("got first frame %d\n",curFrame-jump);
+	}
 	pthread_mutex_unlock(&frameMutex);
 }
 
-void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
+// void getFirstFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
+// {
+// 	pthread_mutex_lock(&frameMutex);
+// 	if(!firstGot)
+// 	{
+// 		bool val = __video.read(frame);
+// 		percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+// 		frameNum = curFrame;
+// 		curFrame ++;
+// 		if(!val)
+// 			done = true;
+// 		firstGot = true;
+// 		// printf("got first frame %d\n",curFrame-1);
+// 		pthread_mutex_unlock(&frameMutex);
+// 	}
+// 	else
+// 	{
+// 		getNextFrame(frame,frameNum, percentDone);
+// 	}
+	
+// }
+
+void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)//, int device)
 {
 	pthread_mutex_lock(&submitMutex);
 	//printf("frame %d submitted by thread %d\n", frameNum, device);
@@ -135,9 +182,9 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 		//printf("sub if\n");
 		__outVideo << *frame;
 		__outcsv << red << "," << (frameNum/10.0) << "\n";
-		curSubmittedFrame++;
+		curSubmittedFrame+=jump;
 		delete frame;
-		printf("Frame %d completed.\n",frameNum);
+		printf("Frame %d completed. %.2lf%% complete.\n",frameNum,percentDone);
 		int i=0; 
 		//printf("starting while\n");
 		while(i < waitingFrames.size() && waitingFrames[i]->frameNum == curSubmittedFrame)
@@ -147,11 +194,11 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 			__outcsv << waitingFrames[i]->redElement << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
 			//printf("pushed\n");
 			//printf("++\n");
-			printf("Frame %d completed.\n",waitingFrames[i]->frameNum);
+			printf("Frame %d completed. %.2lf%% complete.\n",waitingFrames[i]->frameNum,waitingFrames[i]->percentDone);
 			delete waitingFrames[i]->mat;
 			delete waitingFrames[i];
 
-			curSubmittedFrame++;
+			curSubmittedFrame+=jump;
 			i++;
 		}
 		//printf("after while\n");
@@ -167,11 +214,13 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red)//, int device)
 	}
 	else
 	{
+		// printf("Frame %d is waiting\n", frameNum);
 		//printf("sub else\n");
 		Frame *newframe = new Frame;
 		newframe->mat = frame; 
 		newframe->frameNum = frameNum;
 		newframe->redElement = red;
+		newframe->percentDone = percentDone;
 		waitingFrames.resize(waitingFrames.size() + 1);
 		waitingFrames.back() = nullptr;
 
@@ -361,7 +410,9 @@ void __parallelVideoProcessor(int device)
 	unsigned int frameNum=0;
 	Mat frame;
 	int red;
-	getNextFrame(frame, frameNum);
+	double percentDone;
+	getNextFrame(frame, frameNum, percentDone);
+	//getFirstFrame(frame, frameNum, percentDone);
 	while(!done)
 	{
 		//printf("thread %d got frame %d\n", device, frameNum);
@@ -369,9 +420,9 @@ void __parallelVideoProcessor(int device)
 		//printf("thread %d: starting breakUpImage %d\n",device,frameNum);
 		breakUpImage(frame, net, *outFrame, red);
 		//printf("thread %d: submitting frame %d\n",device,frameNum);
-		submitFrame(outFrame, frameNum, red);//, device);
+		submitFrame(outFrame, frameNum, red, percentDone);//, device);
 
-		getNextFrame(frame,frameNum);
+		getNextFrame(frame, frameNum, percentDone);
 	}
 }
 
@@ -439,7 +490,11 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath (stride=1) (gpu=true)\n");
+		printf("Usage (Required to come first):\n ./ConvNetVideoDriverParallelCL cnnConfig.txt VideoOrFolderPath\n");
+		printf("Optional args (must come after required args. Case sensitive.):\n");
+		printf("   stride=<int>        Stride across image. Defaults to 1.\n");
+		printf("   jump=<int>          How many frames to jump between computations. If jump=10,\n");
+		printf("                       it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
 		return -1;
 	}
 	time_t starttime, endtime;
@@ -451,18 +506,18 @@ int main(int argc, char** argv)
 		{
 			string arg(argv[i]);
 			if(arg.find("stride=") != string::npos)
-			{
 				stride = stoi(arg.substr(arg.find("=")+1));
-			}
-			else if(arg.find("gpu=") != string::npos)
+			else if(arg.find("jump=") != string::npos)
+				jump = stoi(arg.substr(arg.find("=")+1));
+			else
 			{
-				if(arg.find("false") != string::npos || arg.find("False") != string::npos)
-				{
-					__useGPU = false;
-				}
+				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
+				return 0;
 			}
 		}
 	}
+
+	// printf("jump %d stride %d\n", jump, stride);
 
 	__netName = argv[1];
 	//set up net
@@ -478,13 +533,9 @@ int main(int argc, char** argv)
 	if(stat(inPath,&s) == 0)
 	{
 		if(s.st_mode & S_IFDIR) // directory
-		{
 			isDirectory = true;
-		}
 		else if (s.st_mode & S_IFREG) // file
-		{
 			isDirectory = false;
-		}
 		else
 		{
 			printf("We're not sure what the file you inputted was.\nExiting\n");
@@ -507,9 +558,7 @@ int main(int argc, char** argv)
 		{
 			string pathName = inPath;
 			if(pathName.rfind("/") != pathName.length()-1)
-			{
 				pathName.append(1,'/');
-			}
 			char inPathandName[250];
 			while((file = readdir(directory)))// != NULL)
 			{
