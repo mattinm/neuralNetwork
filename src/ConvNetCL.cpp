@@ -1621,6 +1621,7 @@ void Net::preprocessData() // thread this
 
 void Net::preprocessTestDataIndividual()
 {
+    printf("Preprocessing Test Data Individually\n");
 	for(int i = 0; i < __testData.size(); i++)
 	{
 		//get mean
@@ -1648,7 +1649,7 @@ void Net::preprocessTestDataIndividual()
 
 void Net::preprocessTrainingDataIndividual()
 {
-    cout << "Preprocessing Individually" << endl;
+    printf("Preprocessing Training Data Individually\n");
     unsigned long count = 0;
     for(int i = 0; i < __trainingData.size(); i++)
     {

@@ -134,6 +134,37 @@ string secondsToString(float seconds)
  ***********************/
 
 // returns the true value
+
+double getNextImageFlat(ifstream& in, double* dest, unsigned int size, short sizeByte)
+{
+    dest = new double[size];
+    for(int i = 0; i < size; i ++)
+    {
+        if(sizeByte == 1)
+            dest[i] = (double)readUChar(in);
+        else if(sizeByte == -1)
+            dest[i] = (double)readChar(in);
+        else if(sizeByte == 2)
+            dest[i] = (double)readUShort(in);
+        else if(sizeByte == -2)
+            dest[i] = (double)readShort(in);
+        else if(sizeByte == 4)
+            dest[i] = (double)readUInt(in);
+        else if(sizeByte == -4)
+            dest[i] = (double)readInt(in);
+        else if(sizeByte == 5)
+            dest[i] = (double)readFloat(in);
+        else if(sizeByte == 6)
+            dest[i] = readDouble(in);
+        else
+        {
+            cout << "Unknown sizeByte: " << sizeByte << ". Exiting" << endl;
+            exit(0);
+        }
+    }
+    
+    return (double)readUShort(in);
+}
 double getNextImage(ifstream& in, imVector& dest, short x, short y, short z, short sizeByte)
 {
 	resize3DVector(dest,x,y,z);
@@ -170,6 +201,47 @@ double getNextImage(ifstream& in, imVector& dest, short x, short y, short z, sho
 
 	//return the trueVal
 	return (double)readUShort(in);
+}
+
+unsigned long convertBinaryToDoublePtr(ifstream& in, double** dest, double* trueVals, short sizeByte, unsigned int size)
+{
+    //calc how many images
+    size_t filesize = __ifstreamend - 4 * sizeof(short); // - 4 shorts for sizeByte, x, y, z
+    size_t itemSize = 1;
+    if(sizeByte == 1)
+        itemSize = sizeof(unsigned char);
+    else if(sizeByte == -1)
+        itemSize = sizeof(char);
+    else if(sizeByte == 2)
+        itemSize = sizeof(unsigned short);
+    else if(sizeByte == -2)
+        itemSize = sizeof(short);
+    else if(sizeByte == 4)
+        itemSize = sizeof(unsigned int);
+    else if(sizeByte == -4)
+        itemSize = sizeof(int);
+    else if(sizeByte == 5)
+        itemSize = sizeof(float);
+    else if(sizeByte == 6)
+        itemSize = sizeof(double);
+    size_t numImages = filesize / (size * itemSize + sizeof(unsigned short));
+    
+    dest = new double*[numImages];
+    trueVals = new double[numImages];
+    size_t count = 0;
+    while(in.tellg() < __ifstreamend)
+    {
+        trueVals[count] = (getNextImageFlat(in,dest[count],size,sizeByte));
+        count++;
+    }
+    if(in.tellg() != __ifstreamend)
+    {
+        cout << "The counter went past the max. There might be something wrong with the file format. Exiting." << endl;
+        exit(0);
+    }
+    
+    return numImages;
+    
 }
 
 void convertBinaryToVector(ifstream& in, vector<imVector>& dest, vector<double>& trueVals, short sizeByte, short xSize, short ySize, short zSize)
@@ -299,8 +371,15 @@ int main(int argc, char** argv)
 	in.seekg(0, in.end);
 	__ifstreamend = in.tellg();
 	in.seekg(0, in.beg);
-	vector<imVector> images(0);
-	vector<double> trueVals(0);
+    //vector way
+	vector<imVector>* images = new vector<imVector>;
+    images->resize(0);
+	vector<double>* trueVals = new vector<double>;
+    trueVals->resize(0);
+    
+    //pointer way
+//    double **dest;
+//    double *trueVals;
 
 	short sizeByte = readShort(in);
 	short xSize = readShort(in);
@@ -329,14 +408,14 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(4);  //1x1x4
 
 	//shallow 64x64x3 net
-	// net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
-	// net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
-	// net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
-	// net.addConvLayer(20,1,3,0);	  	  	//28x28x20	//12x12x20
-	// net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
-	// net.addConvLayer(20,1,3,0);			//12x12x20	//4x4x20
-	// net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
-	// net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
+	 net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
+	 net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
+	 net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
+	 net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
+	 net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
+	 net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
+	 net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
+	 net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
 
 
 	// failed fully connected net
@@ -364,18 +443,18 @@ int main(int argc, char** argv)
 	
 	
 	//small net
-	net.setActivType(LEAKY_RELU);
-	net.addConvLayer(6,1,5,0);
-	net.addMaxPoolLayer(2,2);
-
-	//net.addConvLayer(7,1,3,1);
-
-	net.addConvLayer(10,1,3,0);
-	net.addMaxPoolLayer(3,3);
-
-	//net.addConvLayer(5,1,3,1);	//4x4x5
-
-	net.addConvLayer(2,1,4,0);
+//	net.setActivType(LEAKY_RELU);
+//	net.addConvLayer(6,1,5,0);
+//	net.addMaxPoolLayer(2,2);
+//
+//	//net.addConvLayer(7,1,3,1);
+//
+//	net.addConvLayer(10,1,3,0);
+//	net.addMaxPoolLayer(3,3);
+//
+//	//net.addConvLayer(5,1,3,1);	//4x4x5
+//
+//	net.addConvLayer(2,1,4,0);
     
 
 	//set hyperparameters
@@ -407,21 +486,33 @@ int main(int argc, char** argv)
 	//get training images
 	printf("Bringing in training data from file: %s\n", argv[1]);
 	starttime = time(NULL);
-	convertBinaryToVector(in,images,trueVals,sizeByte,xSize,ySize,zSize);
+	convertBinaryToVector(in,*images,*trueVals,sizeByte,xSize,ySize,zSize);
+//    convertBinaryToDoublePtr(in,dest,trueVals,sizeByte,xSize*ySize*zSize);
 	endtime = time(NULL);
 	cout << "Time to bring in training data: " << secondsToString(endtime - starttime) << endl;
 	in.close();
 
 	//add images to net
-	net.addTrainingData(images,trueVals);
+	net.addTrainingData(*images,*trueVals);
+//    net.addTrainingDataShallow(dest,trueVals);
     
     cout << "Training Distribution:" << endl;
 	net.printTrainingDistribution();
 	printf("\n");
+    
+    delete images;
+    delete trueVals;
 
 	//get test images if needed
-	vector<imVector> testImages(0);
-	vector<double> testTrueVals(0);
+    //vector way
+	vector<imVector>* testImages = new vector<imVector>;
+	vector<double>* testTrueVals = new vector<double>;
+    testImages->resize(0);
+    testTrueVals->resize(0);
+    
+    //double pointer way
+//    double **testImages;
+//    double *testTrueVals;
 	if(haveTest)
 	{
 		ifstream testIn;
@@ -447,16 +538,21 @@ int main(int argc, char** argv)
 
 		printf("Bringing in testing data from file: %s\n", testSetName.c_str());
 		starttime = time(NULL);
-		convertBinaryToVector(in,testImages,testTrueVals,tsizeByte,txSize,tySize,tzSize);
+		convertBinaryToVector(in,*testImages,*testTrueVals,tsizeByte,txSize,tySize,tzSize);
+//        convertBinaryToDoublePtr(in,testImages,testTrueVals,tsizeByte,txSize*tySize*tzSize);
 		endtime = time(NULL);
 		cout << "Time to bring in test data: " << secondsToString(endtime - starttime) << endl;
 		in.close();
 
-		net.addTestData(testImages, testTrueVals);
+		net.addTestData(*testImages, *testTrueVals);
+//        net.addTestDataShallow(testImages,testTrueVals,
 
 		printf("Test Set Distribution:\n");
 		net.printTestDistribution();
 		printf("\n");
+        
+        delete testImages;
+        delete testTrueVals;
 	}
 
 	

@@ -158,9 +158,11 @@ public: 	// functions
 	//functions dealing with data
 		//training
 		bool addTrainingData(const std::vector<imVector>& trainingData, const std::vector<double>& trueVals);
+        //bool setTrainingDataShallow(double** images, double* trueVals, unsigned long numImages);
 		bool setTrainingData(const std::vector<imVector>& trainingData, const std::vector<double>& trueVals);
 		void clearTrainingData();
 		bool addTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
+        //bool setTestDataShallow(double** images, double* trueVals,
 		bool setTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
 		void clearTestData();
 		bool setTrainingType(int type);
