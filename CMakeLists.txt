@@ -1,12 +1,23 @@
 cmake_minimum_required(VERSION 2.8)
 project( ConvNetTest )
+#set variables
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
-find_package( OpenCV REQUIRED )
-find_package( MPI REQUIRED )
-find_library( OPENCL_LIBRARY OpenCL.framework )
 SET( SRCS src/ConvNetTest.cpp src/ConvNet.cpp )
 SET( CMAKE_CXX_FLAGS "-std=c++11 -Wall")
-include_directories( ${OpenCV_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS} ${MPI_INCLUDE_PATH})
+SET( OpenCV_STATIC ON)
+SET(BOINC_SRCS ../test/boincAPI/boinc_api.cpp)
+
+list(APPEND CMAKE_PREFIX_PATH /usr/local)
+list(APPEND CMAKE_PREFIX_PATH /Users/connorbowley/Development/test/boinc/api/)
+
+#find packages and libraries
+find_package( OpenCV REQUIRED )
+find_package( MPI REQUIRED )
+# find_package( BOINC REQUIRED )
+find_library( OPENCL_LIBRARY OpenCL.framework )
+
+#set include directories
+include_directories( ${OpenCV_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS} ${MPI_INCLUDE_PATH} ${BOINC_INCLUDE_DIRS})
 
 ######
 ###### MAKE EXECUTABLES
@@ -29,9 +40,11 @@ add_executable( ConvNetFullImageDriver src/ConvNetFullImageDriver.cpp src/ConvNe
 add_executable( ConvNetFullImageDriverCL src/ConvNetFullImageDriverCL.cpp src/ConvNetCL.cpp)
 
 #add_executable( ConvNetVideoDriver src/ConvNetVideoDriver.cpp src/ConvNet.cpp)
+add_executable( ConvNetVideoDriverCL src/ConvNetVideoDriverCL.cpp src/ConvNetCL.cpp)
 #add_executable( ConvNetVideoDriverParallel src/ConvNetVideoDriverParallel.cpp src/ConvNet.cpp)
 add_executable( ConvNetVideoDriverParallelCL src/ConvNetVideoDriverParallelCL.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetVideoDriverMPI src/ConvNetVideoDriverMPI.cpp src/ConvNetCL.cpp)
+# add_executable( ConvNetVideoDriverCL_BOINC src/ConvNetVideoDriverCL_BOINC.cpp src/ConvNetCL.cpp)
 
 add_executable( kernelBuilder src/kernelBuilder.cpp )
 
@@ -63,9 +76,11 @@ target_link_libraries( ConvNetFullImageDriver ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 
 #target_link_libraries( ConvNetVideoDriver ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+target_link_libraries( ConvNetVideoDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 #target_link_libraries( ConvNetVideoDriverParallel ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverMPI ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${MPI_LIBRARY} ${MPI_EXTRA_LIBRARY})
+# target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_LIBRARIES})
 
 target_link_libraries( kernelBuilder ${OPENCL_LIBRARY} )
 
