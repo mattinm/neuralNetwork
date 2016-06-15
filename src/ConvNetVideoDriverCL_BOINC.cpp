@@ -44,6 +44,10 @@
 
 //	Second guess
 #include "boinc_api.h"
+#include "diagnostics.h"
+#include "filesys.h"
+#include "boinc_api.h"
+#include "mfile.h"
 #endif
 
 

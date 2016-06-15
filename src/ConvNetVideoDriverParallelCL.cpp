@@ -36,7 +36,7 @@ struct Frame
 {
 	int frameNum = -1;
 	Mat* mat;
-	int redElement = 0;
+	int red = 0;
 	double percentDone;
 };
 
@@ -117,7 +117,8 @@ void squareElements(vector<vector<vector<double> > >& vect)
 }
 
 //puts frame and frameNum in parameters
-void getNextFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
+//void getNextFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
+void getNextFrame(Frame& frame)
 {
 	pthread_mutex_lock(&frameMutex);
 	//bool val = __video.read(frame);
@@ -127,9 +128,9 @@ void getNextFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
 		for(int i=0; i < jump; i++)
 			if(!__video.grab())
 				val1 = false;
-		bool val2 = __video.retrieve(frame);
-		percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
-		frameNum = curFrame;
+		bool val2 = __video.retrieve(*(frame.mat));
+		frame.percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+		frame.frameNum = curFrame;
 		curFrame += jump;
 		// printf("got frame %d\n",curFrame);
 		if(!val1 || !val2) //this means the last frame was grabbed.
@@ -139,9 +140,9 @@ void getNextFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
 	}
 	else
 	{
-		bool val = __video.read(frame);
-		percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
-		frameNum = curFrame;
+		bool val = __video.read(*(frame.mat));
+		frame.percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
+		frame.frameNum = curFrame;
 		curFrame+=jump;
 		if(!val)
 			done = true;
@@ -173,25 +174,26 @@ void getNextFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
 	
 // }
 
-void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)//, int device)
+//void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)//, int device)
+void submitFrame(Frame& frame)
 {
 	pthread_mutex_lock(&submitMutex);
 	//printf("frame %d submitted by thread %d\n", frameNum, device);
-	if(frameNum == curSubmittedFrame)
+	if(frame.frameNum == curSubmittedFrame)
 	{
 		//printf("sub if\n");
-		__outVideo << *frame;
-		__outcsv << red << "," << (frameNum/10.0) << "\n";
+		__outVideo << *(frame.mat);
+		__outcsv << frame.red << "," << (frame.frameNum/10.0) << "\n";
 		curSubmittedFrame+=jump;
-		delete frame;
-		printf("Frame %d completed. %.2lf%% complete.\n",frameNum,percentDone);
+		delete frame.mat;
+		printf("Frame %d completed. %.2lf%% complete.\n",frame.frameNum,frame.percentDone);
 		int i=0; 
 		//printf("starting while\n");
 		while(i < waitingFrames.size() && waitingFrames[i]->frameNum == curSubmittedFrame)
 		{
 			//printf("in while\n");
 			__outVideo << (*(waitingFrames[i]->mat));
-			__outcsv << waitingFrames[i]->redElement << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
+			__outcsv << waitingFrames[i]->red << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
 			//printf("pushed\n");
 			//printf("++\n");
 			printf("Frame %d completed. %.2lf%% complete.\n",waitingFrames[i]->frameNum,waitingFrames[i]->percentDone);
@@ -201,7 +203,7 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)
 			curSubmittedFrame+=jump;
 			i++;
 		}
-		//printf("after while\n");
+		// printf("after while\n");
 		if(i != 0) //if we took any away from the waitingFrames
 		{
 			for(int j=i; j < waitingFrames.size(); j++)
@@ -210,17 +212,17 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)
 			}
 			waitingFrames.resize(waitingFrames.size() - i);
 		}
-		//printf("end sub if\n");
+		// printf("end sub if\n");
 	}
 	else
 	{
 		// printf("Frame %d is waiting\n", frameNum);
 		//printf("sub else\n");
 		Frame *newframe = new Frame;
-		newframe->mat = frame; 
-		newframe->frameNum = frameNum;
-		newframe->redElement = red;
-		newframe->percentDone = percentDone;
+		newframe->mat = frame.mat; 
+		newframe->frameNum = frame.frameNum;
+		newframe->red = frame.red;
+		newframe->percentDone = frame.percentDone;
 		waitingFrames.resize(waitingFrames.size() + 1);
 		waitingFrames.back() = nullptr;
 
@@ -228,7 +230,7 @@ void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)
 		//sorted insertion into list
 		if(waitingFrames[0] != nullptr) //make sure not first element in list
 		{
-			while(i < waitingFrames.size() -1 && waitingFrames[i]->frameNum < frameNum)
+			while(i < waitingFrames.size() -1 && waitingFrames[i]->frameNum < frame.frameNum)
 				i++;
 			for(int j=waitingFrames.size()-1; j >= i+1; j--)
 			{
@@ -307,10 +309,13 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
  * (i.e. the stride is less than the subimage size), then the confidences from each subimage is added.
  */
-void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
+//void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
+void breakUpImage(Frame& frame, Net& net)
 {
-	int numrows = image.rows;
-	int numcols = image.cols;
+	// int numrows = image.rows;
+	// int numcols = image.cols;
+	int numrows = frame.mat->rows;
+	int numcols = frame.mat->cols;
 
 	//printf("%d %d\n",numrows, numcols);
 
@@ -332,7 +337,8 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
-			const Mat out = image(Range(i,i+32),Range(j,j+32));
+			//const Mat out = image(Range(i,i+32),Range(j,j+32));
+			const Mat out = (*(frame.mat))(Range(i,i+32),Range(j,j+32));
 			imageRow.resize(imageRow.size()+1);
 			convertColorMatToVector(out,imageRow.back());
 		}
@@ -362,6 +368,8 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 	//printf("starting red element\n");
 	squareElements(fullImage);
 
+	Mat* outputMat = new Mat(numrows, numcols, CV_8UC3);
+
 	int redElement = 0;
 	for(int i=0; i < numrows; i++)
 	{
@@ -376,7 +384,7 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 			}
 
 			//write the pixel
-			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
+			Vec3b& outPix = outputMat->at<Vec3b>(i,j);
 			//int maxEle = getMaxElementIndex(fullImage[i][j]);
 			//printf("writing\n");
 			if(allElementsEquals(fullImage[i][j]))
@@ -396,7 +404,12 @@ void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 			}
 		}
 	}
-	inred = redElement;
+	//replace original image with prediction
+	delete frame.mat;
+	frame.mat = outputMat;
+
+	//put in red element
+	frame.red = redElement;
 }
 
 void __parallelVideoProcessor(int device)
@@ -407,22 +420,29 @@ void __parallelVideoProcessor(int device)
 		return;
 	printf("Thread using device %d\n",device);
 
-	unsigned int frameNum=0;
-	Mat frame;
-	int red;
-	double percentDone;
-	getNextFrame(frame, frameNum, percentDone);
-	//getFirstFrame(frame, frameNum, percentDone);
+	// unsigned int frameNum=0;
+	// Mat frame;
+	// int red;
+	// double percentDone;
+	// getNextFrame(frame, frameNum, percentDone);
+
+	Frame frame;
+	frame.mat = new Mat(__rows, __cols, CV_8UC3);
+	getNextFrame(frame);
+
 	while(!done)
 	{
 		//printf("thread %d got frame %d\n", device, frameNum);
-		Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
-		//printf("thread %d: starting breakUpImage %d\n",device,frameNum);
-		breakUpImage(frame, net, *outFrame, red);
-		//printf("thread %d: submitting frame %d\n",device,frameNum);
-		submitFrame(outFrame, frameNum, red, percentDone);//, device);
+		// Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
+		// breakUpImage(frame, net, *outFrame, red);
+		// submitFrame(outFrame, frameNum, red, percentDone);//, device);
+		// getNextFrame(frame, frameNum, percentDone);
 
-		getNextFrame(frame, frameNum, percentDone);
+		
+		breakUpImage(frame, net);
+		submitFrame(frame);
+		frame.mat = new Mat(__rows, __cols, CV_8UC3);
+		getNextFrame(frame);
 	}
 }
 

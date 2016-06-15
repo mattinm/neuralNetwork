@@ -65,6 +65,7 @@ bool __rotateClock = false;
 bool __rotateCClock = false;
 bool __rotate180 = false;
 int numWritesPerImage = 1;
+bool __output = true;
 
 template<typename type>
 void writeImage(Mat& image, ofstream& outfile)
@@ -96,7 +97,8 @@ void writeImage(Mat& image, ofstream& outfile)
 				outfile.write(reinterpret_cast<const char *>(pixel),size);
 			}
 		}
-		outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
+		if(__output)
+			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
 
 		//horizontal reflection
 		if(__horizontalReflect)
@@ -112,7 +114,8 @@ void writeImage(Mat& image, ofstream& outfile)
 					outfile.write(reinterpret_cast<const char *>(pixel),size);
 				}
 			}
-			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+			if(__output)
+				outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
 		}
 
 		//vertical reflection
@@ -129,7 +132,8 @@ void writeImage(Mat& image, ofstream& outfile)
 					outfile.write(reinterpret_cast<const char *>(pixel),size);
 				}
 			}
-			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+			if(__output)
+				outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
 		}
 
 		//90 deg clockwise rotation
@@ -146,7 +150,8 @@ void writeImage(Mat& image, ofstream& outfile)
 					outfile.write(reinterpret_cast<const char *>(pixel),size);
 				}
 			}
-			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+			if(__output)
+				outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
 		}
 
 		//90 deg counterclockwise rotation
@@ -163,7 +168,8 @@ void writeImage(Mat& image, ofstream& outfile)
 					outfile.write(reinterpret_cast<const char *>(pixel),size);
 				}
 			}
-			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+			if(__output)
+				outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
 		}
 
 		if(__rotate180)
@@ -179,7 +185,8 @@ void writeImage(Mat& image, ofstream& outfile)
 					outfile.write(reinterpret_cast<const char *>(pixel),size);
 				}
 			}
-			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
+			if(__output)
+				outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
 		}
 
 
@@ -188,9 +195,9 @@ void writeImage(Mat& image, ofstream& outfile)
 			trueMap[__globalTrueVal] = 1;
 		else // found
 			trueMap[__globalTrueVal]++;
-		byteCount  += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short)) * numWritesPerImage; //extra 2 for the ushort trueVal
+		byteCount  += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short)) * numWritesPerImage; //extra for the ushort trueVal
 		imageCount += numWritesPerImage;
-		if(imageCount % 100000 == 0)
+		if(imageCount % 100000 < numWritesPerImage)
 		{
 			printf("Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
 			if(byteCount/1.0e9 > 30)
@@ -327,6 +334,7 @@ int main (int argc, char** argv)
 		cout << "   -horizontal     For all images, adds a copy horizontally reflected\n";
 		cout << "   -vertical       For all images, adds a copy vertically reflected\n";
 		cout << "   -all            Activates -rot_clock, -rot_cclock, -rot_180, -horizontal, -vertical\n";
+		cout << "   -no_output      Doesn't make output. This will tell you how big the file will be.\n";
 		return 0;
 	}
 
@@ -368,6 +376,10 @@ int main (int argc, char** argv)
 				__horizontalReflect = true;		__verticalReflect = true;
                 numWritesPerImage += 5;
 			}
+			else if(arg.find("-no_output") != string::npos)
+			{
+				__output = false;
+			}
 			else 
 			{
 				printf("Unknown arg %s. Aborting.\n", argv[i]);
@@ -379,11 +391,14 @@ int main (int argc, char** argv)
 	ifstream imageConfig;
 	ofstream outfile;
 	imageConfig.open(argv[1]);
-	outfile.open(argv[2], ios::trunc | ios::binary);
-	if(!imageConfig.is_open())
+	if(__output)
 	{
-		cout << "Could not open the ImageConfigFile" << endl;
-		return -1;
+		outfile.open(argv[2], ios::trunc | ios::binary);
+		if(!imageConfig.is_open())
+		{
+			cout << "Could not open the ImageConfigFile" << endl;
+			return -1;
+		}
 	}
 	string line;
 
@@ -474,7 +489,8 @@ int main (int argc, char** argv)
 	imageConfig.close();
 	outfile.close();
 
-	cout << "Total: " << imageCount << " images created.";
+	printf("Total Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
+	//cout << "Total: " << imageCount << " images created.";
     if(numWritesPerImage != 1)
         cout << " (" << imageCount/numWritesPerImage << " without transformations)";
     cout << endl;

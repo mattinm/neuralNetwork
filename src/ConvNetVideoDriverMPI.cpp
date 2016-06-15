@@ -42,6 +42,7 @@ unsigned int myTakenFrames = 0;
 unsigned int myFrameAmount = 0;
 unsigned int curSubmittedFrame = 0;
 
+
 thread *getThread, *submitThread;
 bool stopThread = false;
 
@@ -57,11 +58,13 @@ struct Frame
 	int redElement = 0;
 };
 
+std::vector<Frame> doneFrames(0);
+
+
 vector<Frame*> waitingFrames(0);
 
 char *inPath, *outPath;
 int stride = 1;
-bool __useGPU = true;
 int skipAmount = 1;
 int blockSize = FRAME_BLOCK_SIZE;
 
@@ -180,9 +183,9 @@ void getFirstFrameInfo()
 //returns next frame num. used by all
 bool getNextFrame(Mat& frame, unsigned int& frameNum)
 {
-	printf("getting next frame %d\n", my_rank);
+	// printf("getting next frame %d\n", my_rank);
 	pthread_mutex_lock(&frameMutex);
-	printf("next frame in mutex %d\n", my_rank);
+	// printf("next frame in mutex %d\n", my_rank);
 	while(myReadFrames != myCurFrame) // the my video will need to go past the frames others have done.
 	{
 		bool val = __video.read(frame);
@@ -211,7 +214,7 @@ bool getNextFrame(Mat& frame, unsigned int& frameNum)
 	}
 	//printf("got frame %d\n",curFrame-1);
 	pthread_mutex_unlock(&frameMutex);
-	printf("past mutex\n");
+	// printf("past mutex\n");
 	if(myFrameAmount > 0)
 		return true;
 	else
@@ -235,6 +238,16 @@ void getThreadMPI() // thread opened by 0 to allocate frames to processes
 		//send mpi msg back saying [start frame, amount of frames]
 		MPI_Send(frameNum, 2, MPI_UNSIGNED, rank, SEND_FRAMENUM, MPI_COMM_WORLD);
 	}
+}
+
+void submitFrames()
+{
+	//submit all stored frames to 0
+}
+
+void storeFrame(Frame& frame)
+{
+	//store frame in vector until all frames are done
 }
 
 void submitFrame(unsigned int frameNum, unsigned int red)
@@ -395,7 +408,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
  */
 void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
 {
-	printf("breakUpImage\n");
+	// printf("breakUpImage\n");
 	int numrows = image.rows;
 	int numcols = image.cols;
 
@@ -499,24 +512,26 @@ void __parallelVideoProcessor(int device)
 	Mat frame;
 	bool valid;
 	int red;
-	printf("gonna get next frame\n");
+	// printf("gonna get next frame\n");
 	getFirstFrameInfo();
-	printf("past next frame\n");
-	printf("past 2\n");
+	// printf("past next frame\n");
+	// printf("past 2\n");
 	while(true)
 	{
 		valid = getNextFrame(frame,frameNum);
-		cout << "Valid: " << valid << endl;
+		// cout << "Valid: " << valid << endl;
 		if(!valid)
 			break;
-		printf("while loop\n");
+		// printf("while loop\n");
 		//printf("thread %d got frame %d\n", device, frameNum);
 		Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
 		//printf("thread %d: starting breakUpImage %d\n",device,frameNum);
 		breakUpImage(frame, net, *outFrame, red);
 		//printf("thread %d: submitting frame %d\n",device,frameNum);
-		submitFrame(frameNum, red);//, device);	
+		//submitFrame(frameNum, red);//, device);	
+		//storeFrame(frameNum,red);
 	}
+	submitFrames();
 }
 
 void breakUpVideo(const char* videoName)
@@ -592,16 +607,27 @@ int checkExtensions(char* filename)
 
 int main(int argc, char** argv)
 {
-	if(argc < 3 || 5 < argc)
-	{
-		printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> gpu=<true/false> skipAmount=<1>\n");
-		return 0;
-	}
+	
 	time_t starttime, endtime;
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &comm_sz);
 	MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+
+	if(argc < 3 || 5 < argc)
+	{
+		if(my_rank == 0)
+			printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> skipAmount=<1>\n");
+		MPI_Finalize();
+		return 0;
+	}
+	if(comm_sz < 2)
+	{
+		if(my_rank == 0)
+			printf("Must have at least 2 processes. Exiting\n");
+		MPI_Finalize();
+		return 0;
+	}
 
 
 	inPath = argv[2];
@@ -612,19 +638,13 @@ int main(int argc, char** argv)
 		{
 			string arg(argv[i]);
 			if(arg.find("stride=") != string::npos)
-			{
 				stride = stoi(arg.substr(arg.find("=")+1));
-			}
-			else if(arg.find("gpu=") != string::npos)
-			{
-				if(arg.find("false") != string::npos || arg.find("False") != string::npos)
-				{
-					__useGPU = false;
-				}
-			}
 			else if(arg.find("skipAmount=") != string::npos)
-			{
 				skipAmount = stoi(arg.substr(arg.find("=")+1));
+			else
+			{
+				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
+				return 0;
 			}
 		}
 	}
