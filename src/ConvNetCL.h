@@ -11,6 +11,7 @@
 
 #include <string>
 #include <vector>
+#include <time.h>
 
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
@@ -95,9 +96,10 @@ private: 	// members
 		//should this be a map?
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
+		bool __preprocessIndividual = false;
 		double __mean = 0;
 		double __stddev = 0;
-		double __trainingSize = 0;
+		unsigned long __trainingSize = 0;
 		bool __isTraining = false;
 		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<pointers-to-flattenedImages> >
 		std::vector<double> __trueVals; // parallel vector of true values for __trainingData
@@ -106,7 +108,6 @@ private: 	// members
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
 		int __smallestClassSize;
-		bool __useHorizontalReflections = false;
 		//running
 		bool __dataPreprocessed = false;
 		std::vector<std::vector<double> > __data; // list of<flattened images>
@@ -166,7 +167,6 @@ public: 	// functions
 		bool setTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
 		void clearTestData();
 		bool setTrainingType(int type);
-		void setHorizontalReflections(bool use);
         void printTrainingDistribution() const;
         void printTestDistribution() const;
 
@@ -184,6 +184,8 @@ public: 	// functions
 	bool set_l2Lambda(double lambda);
 	bool set_MOMENT_CONST(double mconst);
 	bool set_MAX_NORM_CAP(double cap);
+	void preprocessIndividually();
+	void preprocessCollectively();
 
 	//running
 	void run(bool useGPU=true);
@@ -222,6 +224,7 @@ private:	// functions
 	void preprocessData();
 	void preprocessTestDataIndividual();
     void preprocessTrainingDataIndividual();
+    void preprocessTestDataCollective();
 	void preprocessTrainingDataCollective();
 
 	//training
@@ -231,6 +234,7 @@ private:	// functions
 	void pullCLWeights();
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
+	std::string secondsToString(time_t seconds);
 
 	//load
 	bool load(const char* filename);

@@ -279,14 +279,15 @@ int main(int argc, char** argv)
 		cout << "   device=<device#>           Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
 		cout << "   -train_as_is               Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
 		cout << "   -train_equal_prop          Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";
-		cout << "                              the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
+		cout << "                                 the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
+		cout << "   -preprocessIndividual      Preprocesses training data and test data individually by image. Not recommended.\n";
+		cout << "   -preprocessCollective      Preprocesses training data collectively and preprocesses test data based on the training data. Default.\n";
 		cout << "   learningRate=<rate>        Sets the learningRate for the CNN.\n";
 		cout << "   RELU_CAP=<cap>             Sets max value that can pass through the RELU\n";
 		cout << "   LEAKY_RELU_CONST=<const>   Sets the constant for LEAKY_RELU\n";
 		cout << "   l2Lambda=<lambda>          Sets the lambda for L2 Regularization\n";
 		cout << "   MOMENT_CONST=<const>       Sets the constant decay for the Nesterov Momentum\n";
 		cout << "   MAX_NORM_CAP=<cap>         Sets the max value a weight can be\n";
-		return 0;
 		return 0;
 	}
 
@@ -306,6 +307,8 @@ int main(int argc, char** argv)
 	double l2 = -1;
 	double moment = -1;
 	double maxNorm = -1;
+	bool preprocessIndividual = false;
+	bool preprocessCollective = false;
 
 	if(argc > 2)
 	{
@@ -333,6 +336,10 @@ int main(int argc, char** argv)
 			}
 			else if(arg.find("-train_as_is") != string::npos)
 				haveTrainMethod++; // this is on by default
+			else if(arg.find("-preprocessCollective") != string::npos)
+				preprocessCollective = true;
+			else if(arg.find("-preprocessIndividual") != string::npos)
+				preprocessIndividual = true;
 			else if(arg.find("learningRate=") != string::npos)
 				learningRate = stod(arg.substr(arg.find("=")+1));
 			else if(arg.find("RELU_CAP=") != string::npos)
@@ -356,6 +363,12 @@ int main(int argc, char** argv)
 	if(haveTrainMethod > 1)
 	{
 		printf("You cannot have multiple training methods simultaneously.\n");
+		return 0;
+	}
+
+	if(preprocessIndividual && preprocessCollective)
+	{
+		printf("You can only have one preprocessing method.\n");
 		return 0;
 	}
 
@@ -408,14 +421,14 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(4);  //1x1x4
 
 	//shallow 64x64x3 net
-	 net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
-	 net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
-	 net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
-	 net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
-	 net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
-	 net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
-	 net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
-	 net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
+	 // net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
+	 // net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
+	 // net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
+	 // net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
+	 // net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
+	 // net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
+	 // net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
+	 // net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
 
 
 	// failed fully connected net
@@ -443,18 +456,18 @@ int main(int argc, char** argv)
 	
 	
 	//small net
-//	net.setActivType(LEAKY_RELU);
-//	net.addConvLayer(6,1,5,0);
-//	net.addMaxPoolLayer(2,2);
-//
-//	//net.addConvLayer(7,1,3,1);
-//
-//	net.addConvLayer(10,1,3,0);
-//	net.addMaxPoolLayer(3,3);
-//
-//	//net.addConvLayer(5,1,3,1);	//4x4x5
-//
-//	net.addConvLayer(2,1,4,0);
+	net.setActivType(LEAKY_RELU);
+	net.addConvLayer(6,1,5,0); //28x28x6
+	net.addMaxPoolLayer(2,2);  //14x14x6
+
+	//net.addConvLayer(7,1,3,1);
+
+	net.addConvLayer(10,1,3,0);	//12x12x10
+	net.addMaxPoolLayer(3,3);   //4x4x10
+
+	//net.addConvLayer(5,1,3,1);	//4x4x5
+
+	net.addConvLayer(4,1,4,0);  //1x1x2
     
 
 	//set hyperparameters
@@ -472,6 +485,10 @@ int main(int argc, char** argv)
     	net.set_MAX_NORM_CAP(maxNorm);
     if(device != -1)
     	net.setDevice(device);
+    if(preprocessCollective)
+    	net.preprocessCollectively();
+    if(preprocessIndividual)
+    	net.preprocessIndividually();
     net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{

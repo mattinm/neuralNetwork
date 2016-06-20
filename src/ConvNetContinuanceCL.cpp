@@ -233,6 +233,8 @@ int main(int argc, char** argv)
 	double l2 = -1;
 	double moment = -1;
 	double maxNorm = -1;
+	bool preprocessIndividual = false;
+	bool preprocessCollective = false;
 
 
 	if(argc > 3)
@@ -261,6 +263,10 @@ int main(int argc, char** argv)
 			}
 			else if(arg.find("-train_as_is") != string::npos)
 				haveTrainMethod++; // this is on by default
+			else if(arg.find("-preprocessCollective") != string::npos)
+				preprocessCollective = true;
+			else if(arg.find("-preprocessIndividual") != string::npos)
+				preprocessIndividual = true;
 			else if(arg.find("learningRate=") != string::npos)
 				learningRate = stod(arg.substr(arg.find("=")+1));
 			else if(arg.find("RELU_CAP=") != string::npos)
@@ -284,6 +290,12 @@ int main(int argc, char** argv)
 	if(haveTrainMethod > 1)
 	{
 		printf("You cannot have multiple training methods simultaneously.\n");
+		return 0;
+	}
+
+	if(preprocessIndividual && preprocessCollective)
+	{
+		printf("You can only have one preprocessing method.\n");
 		return 0;
 	}
 
@@ -313,8 +325,25 @@ int main(int argc, char** argv)
 
 	//set up net
 	Net net(argv[1]);
-	net.setDevice(device);
-	net.setTrainingType(trainMethod);
+	if(learningRate != -1)
+    	net.set_learningRate(learningRate);
+    if(reluCap != -1)
+    	net.set_RELU_CAP(reluCap);
+    if(leaky != -1)
+    	net.set_LEAKY_RELU_CONST(leaky);
+    if(l2 != -1)
+    	net.set_l2Lambda(l2);
+    if(moment != -1)
+    	net.set_MOMENT_CONST(moment);
+    if(maxNorm != -1)
+    	net.set_MAX_NORM_CAP(maxNorm);
+    if(device != -1)
+    	net.setDevice(device);
+    if(preprocessCollective)
+    	net.preprocessCollectively();
+    if(preprocessIndividual)
+    	net.preprocessIndividually();	
+    net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;

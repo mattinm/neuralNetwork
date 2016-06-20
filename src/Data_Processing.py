@@ -14,16 +14,17 @@ FLYING = 2
 
 
 print(sys.argv[1])
-files = open(sys.argv[1], 'r')
+#files = open(sys.argv[1], 'r')
 
 time = []
 red = []
 
 count = 0
-with open(sys.argv[1], 'r') as f:
+with open(sys.argv[1], 'rU') as f:
 	reader = csv.reader(f)
 	for row in reader:
 		if count % 10 == 0:
+			#print row[0]
 			red.append(float(row[0]))
 			time.append(float(row[1]))
 		count += 1

@@ -2560,6 +2560,21 @@ bool Net::load(const char* filename)
 				if(leaky != .01)
 					printf("LEAKY RELU constant seems to differ from default. Advise running with ConvNetCL.\n");
 			}
+			else if(line.find("MEAN") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				double mean = stod(line.substr(loc));
+				if(mean != 0)
+					printf("The training data seems to have been preprocessed collectively. Advise running with ConvNetCL.\n");
+			}
+			else if(line.find("STDDEV") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				double stddev = stod(line.substr(loc));
+				if(stddev != 0)
+					printf("The training data seems to have been preprocessed collectively. Advise running with ConvNetCL.\n");
+			}
+			else if(line.find("TRAINING_SIZE") != string::npos); //So it doesn't hit the else
 			else
 			{
 				cout << "Improper file structure while getting Net args at line " << lineNum << ". Exiting load.";

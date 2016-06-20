@@ -54,18 +54,18 @@ typedef vector<vector<vector<double> > > imVector;
 struct Frame
 {
 	int frameNum = -1;
-	//Mat* mat;
-	int redElement = 0;
+	Mat* mat;
+	int red = 0;
 };
 
-std::vector<Frame> doneFrames(0);
+std::vector<Frame*> doneFrames(0);
 
 
 vector<Frame*> waitingFrames(0);
 
 char *inPath, *outPath;
 int stride = 1;
-int skipAmount = 1;
+int jump = 1;
 int blockSize = FRAME_BLOCK_SIZE;
 
 VideoCapture __globalVideo;
@@ -155,7 +155,7 @@ unsigned int getNextFrameGlobal(unsigned int& frameNum)
 			break;
 		}
 		//amount++;
-		damount += 1/skipAmount;
+		damount += 1/jump;
 	}
 	amount = (unsigned int)damount;
 	pthread_mutex_unlock(&globalFrameMutex);
@@ -193,7 +193,7 @@ bool getNextFrame(Mat& frame, unsigned int& frameNum)
 			break;
 		myReadFrames++;
 	}
-	myCurFrame += skipAmount;
+	myCurFrame += jump;
 	myTakenFrames++;
 	if(myTakenFrames == myFrameAmount)
 	{
@@ -226,8 +226,8 @@ void getThreadMPI() // thread opened by 0 to allocate frames to processes
 {
 	int rank;
 	unsigned int frameNum[2];
-	blockSize = FRAME_BLOCK_SIZE * skipAmount;
-	while(true)
+	blockSize = FRAME_BLOCK_SIZE * jump;
+	while(!done)
 	{
 		//get next mpi msg from any source. They send their rank over in the message
 		MPI_Recv(&rank, 1, MPI_INT, MPI_ANY_SOURCE, GET_FRAMENUM, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -247,7 +247,12 @@ void submitFrames()
 
 void storeFrame(Frame& frame)
 {
-	//store frame in vector until all frames are done
+	Frame* store = new Frame;
+	store->mat = frame.mat;
+	store->red = frame.red;
+	store->frameNum = frame.frameNum;
+
+	doneFrames.push_back(store);
 }
 
 void submitFrame(unsigned int frameNum, unsigned int red)
@@ -269,7 +274,7 @@ bool submitFrameGlobal(unsigned int frameNum, unsigned int red)//, int device)
 		//printf("sub if\n");
 		//__outVideo << *frame;
 		__outcsv << red << "," << (frameNum/10.0) << "\n";
-		curSubmittedFrame += skipAmount;
+		curSubmittedFrame += jump;
 		//delete frame;
 		printf("Frame %d completed.\n",frameNum);
 		int i=0; 
@@ -278,14 +283,14 @@ bool submitFrameGlobal(unsigned int frameNum, unsigned int red)//, int device)
 		{
 			//printf("in while\n");
 			//__outVideo << (*(waitingFrames[i]->mat));
-			__outcsv << waitingFrames[i]->redElement << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
+			__outcsv << waitingFrames[i]->red << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
 			//printf("pushed\n");
 			//printf("++\n");
 			printf("Frame %d completed.\n",waitingFrames[i]->frameNum);
 			//delete waitingFrames[i]->mat;
 			delete waitingFrames[i];
 
-			curSubmittedFrame += skipAmount;
+			curSubmittedFrame += jump;
 			i++;
 		}
 		//printf("after while\n");
@@ -307,7 +312,7 @@ bool submitFrameGlobal(unsigned int frameNum, unsigned int red)//, int device)
 		Frame *newframe = new Frame;
 		//newframe->mat = frame; 
 		newframe->frameNum = frameNum;
-		newframe->redElement = red;
+		newframe->red = red;
 		waitingFrames.resize(waitingFrames.size() + 1);
 		waitingFrames.back() = nullptr;
 
@@ -556,6 +561,7 @@ void breakUpVideo(const char* videoName)
 		// getThread = new thread(getThreadMPI);
 		// submitThread = new thread(submitThreadMPI);
 		getThreadMPI();
+		submitThreadMPI();
 		return;
 	}
 
@@ -617,7 +623,7 @@ int main(int argc, char** argv)
 	if(argc < 3 || 5 < argc)
 	{
 		if(my_rank == 0)
-			printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> skipAmount=<1>\n");
+			printf("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> jump=<1>\n");
 		MPI_Finalize();
 		return 0;
 	}
@@ -639,8 +645,8 @@ int main(int argc, char** argv)
 			string arg(argv[i]);
 			if(arg.find("stride=") != string::npos)
 				stride = stoi(arg.substr(arg.find("=")+1));
-			else if(arg.find("skipAmount=") != string::npos)
-				skipAmount = stoi(arg.substr(arg.find("=")+1));
+			else if(arg.find("jump=") != string::npos)
+				jump = stoi(arg.substr(arg.find("=")+1));
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);

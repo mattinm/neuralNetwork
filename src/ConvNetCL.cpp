@@ -12,6 +12,8 @@
 //
 // #include <vector>	
 // #include <string> 
+// #include <time.h>
+//
 // #ifdef __APPLE__
 //  	#include "OpenCL/opencl.h"
 // #else
@@ -801,18 +803,28 @@ void Net::train(int epochs)
 	printf("%s\n",name);
 
    	if(__trainingType == TRAIN_AS_IS)
-   		printf("Training using AS IS\n");
+   		printf("Training using distribution AS IS\n");
    	else if(__trainingType == TRAIN_EQUAL_PROP)
    		printf("Training using EQUAL PROPORTIONS\n");
 
  	__isTraining = true;
 
  	//preprocess the data, training and test
- 	if(!__trainingDataPreprocessed)
- 		//preprocessTrainingDataCollective();
-        preprocessTrainingDataIndividual();
-    if(__testData.size() != 0 && !__testDataPreprocessed)
-    	preprocessTestDataIndividual();
+ 	if(__preprocessIndividual)
+ 	{
+	 	if(!__trainingDataPreprocessed)
+	 		//preprocessTrainingDataCollective();
+	        preprocessTrainingDataIndividual();
+	    if(__testData.size() != 0 && !__testDataPreprocessed)
+	    	preprocessTestDataIndividual();
+	}
+	else
+	{
+		if(!__trainingDataPreprocessed)
+			preprocessTrainingDataCollective();
+		if(!__testDataPreprocessed)
+			preprocessTestDataCollective();
+	}
 
  	//set up stuff so we can exit based on error on test data
  	vector<vector<double> > confidences;
@@ -854,6 +866,8 @@ void Net::train(int epochs)
 	vector<vector<double>* > trainingData(0);
 	vector<double> trueVals(0);
 
+	time_t starttime, endtime;
+
 	////////////////////////////
 	// start of training
 	// start of epochs
@@ -861,8 +875,9 @@ void Net::train(int epochs)
 	setbuf(stdout,NULL);
 	for(int e = 1; e <= epochs; e++)
 	{   
+		starttime = time(NULL);
 		//adjust learning rate
-		if(e % 5 == 0 && e != 0)
+		if(e % 10 == 0 && e != 0)
 		{
 			__learningRate *= .5;
 			printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e);
@@ -1220,8 +1235,9 @@ void Net::train(int epochs)
 			}// end for loop for backprop
 	 	}// end for loop for training data (meaning the epoch has finished)
 	 	
+	 	endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%" << endl;
+	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%  " << secondsToString(endtime-starttime) << " seconds" << endl;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
@@ -1282,7 +1298,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 	{
 		if(trainingData.size() != 0) // this means we've run this function at least once
 		{
-			shuffleTrainingData(trainingData, trueVals);
+			//shuffleTrainingData(trainingData, trueVals);
 			return;
 		}
 		//if it's our first time through
@@ -1388,11 +1404,6 @@ bool Net::setTrainingType(int type)
 	return true;
 }
 
-void Net::setHorizontalReflections(bool useHReflect)
-{
-	__useHorizontalReflections = useHReflect;
-}
-
 void Net::pullCLWeights()
 {
  	int curConvLayer = 0;
@@ -1469,11 +1480,6 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 	if(trainingData.size() != trueVals.size())
 		return false;
 
-	int width = __neuronDims[0][0];
-	int height = __neuronDims[0][1];
-	int depth = __neuronDims[0][2];
-	double temp; // only used if __useHorizontalReflections == true
-
 	int inputSize = __neuronSizes[0];
 
 	for(int t = 0; t < trainingData.size(); t++)
@@ -1490,30 +1496,6 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 				for(int k=0; k < trainingData[t][i][j].size(); k++)
 				{
 					(__trainingData[trueIndex].back())->at(dat++) = trainingData[t][i][j][k];
-					if(__useHorizontalReflections)
-					{
-						cout << "horizontally reflecting" << endl;
-						__trainingData[trueIndex].push_back(new vector<double>(__neuronSizes[0]));
-						//copy in original from prev vector
-						for(int c = 0; c < __neuronSizes[0]; c++)
-							(*(__trainingData[trueIndex].back()))[c] = (*(__trainingData[trueIndex][__trainingData.size() - 2]))[c];
-						//horizontally reflect new vector
-						for(int ii = 0; ii < height; ii++)
-						{
-							int rowstart = ii * width * depth;
-							for(int jj = 0; jj < width/2; jj++)
-							{
-								int colstart = rowstart + jj * depth;
-								int revcolstart = rowstart + (width - jj) * depth;
-								for(int kk = 0; kk < depth; kk++)
-								{
-									temp = (*(__trainingData[trueIndex].back()))[colstart + k];
-									(*(__trainingData[trueIndex].back()))[colstart + k] = (*(__trainingData[trueIndex].back()))[revcolstart + k];
-									(*(__trainingData[trueIndex].back()))[revcolstart + k] = temp;
-								}
-							}
-						}
-					}
 				}
 	}
 
@@ -1590,6 +1572,16 @@ int Net::getNumClasses() const
 	return __neuronSizes.back();
 }
 
+void Net::preprocessIndividually()
+{
+	__preprocessIndividual = true;
+}
+
+void Net::preprocessCollectively()
+{
+	__preprocessIndividual = false;
+}
+
 void Net::preprocessData() // thread this 
 {
 	//preprocess using (val - mean)/stdDeviation for all elements
@@ -1643,6 +1635,8 @@ void Net::preprocessTestDataIndividual()
 		//adjust the values
 		for(int pix=0; pix < __testData[i].size(); pix++)
 			__testData[i][pix] = (__testData[i][pix] - mean)/stddev;
+
+
 	}
 	__testDataPreprocessed = true;
 }
@@ -1680,18 +1674,35 @@ void Net::preprocessTrainingDataIndividual()
                 //if(im==1)cout << __trainingData[i][im]->at(pix) << ", ";
             }
             count++;
-         //    if(im==1)
-         //    {
-	        //     cout << endl;
-	        //     exit(0);
-	        // }
+	        if(im % 1000 == 0)
+			{
+				printf("Mean: %.3lf  StdDev: %.3lf\n", mean, stddev);
+			}
         }
     }
     __trainingDataPreprocessed = true;
 }
 
+void Net::preprocessTestDataCollective()
+{
+	if(__testData.size() == 0)
+		return;
+
+	printf("Preprocessing test data from collective mean and standard deviation\n");
+	for(int i=0; i < __testData.size(); i++)
+	{
+		for(int pix = 0; pix < __testData[i].size(); pix++)
+		{
+			__testData[i][pix] = (__testData[i][pix] - __mean)/__stddev;
+		}
+	}
+
+	__testDataPreprocessed = true;
+}
+
 void Net::preprocessTrainingDataCollective()
 {
+	printf("Preprocessing training data collectively\n");
 	//getting mean and stddev on num pixels, storing and adjusting
 	//based on num images to keep numbers smaller
 	double mean = 0;
@@ -1699,6 +1710,8 @@ void Net::preprocessTrainingDataCollective()
 	unsigned long numPixels = 0;
 	unsigned long numImages = 0;
 	double temp;
+
+	//calc mean
 	for(int i = 0; i < __trainingData.size(); i++) // class
 	{
 		for(int im = 0; im < __trainingData[i].size(); im++) // image
@@ -1711,6 +1724,7 @@ void Net::preprocessTrainingDataCollective()
 	}
 	mean /= numPixels;
     
+    //calc std deviation
 	for(int i = 0; i < __trainingData.size(); i++) // class
 	{
 		for(int im = 0; im < __trainingData[i].size(); im++) // image
@@ -1740,10 +1754,12 @@ void Net::preprocessTrainingDataCollective()
 	}
 	
 	//adjust the values
-	for(int i=0; i < __trainingData.size(); i++)
-		for(int im = 0; im  < __trainingData[i].size(); im++)
+	for(int i=0; i < __trainingData.size(); i++) // class
+		for(int im = 0; im  < __trainingData[i].size(); im++) // image
 			for(int pix=0; pix < __trainingData[i][im]->size(); pix++)
 				__trainingData[i][im]->at(pix) = (__trainingData[i][im]->at(pix) - __mean)/__stddev;
+
+	printf("Mean: %.3lf  StdDev: %.3lf\n", __mean, __stddev);
 
 	__trainingDataPreprocessed = true;
 }
@@ -1786,6 +1802,22 @@ void Net::printTestDistribution() const
 	{
 		cout << "True val " << it->first << ": " << it->second << "   " << it->second/sum * 100 << "%\n";
 	}
+}
+
+string Net::secondsToString(time_t seconds)
+{
+	time_t secs = seconds%60;
+	time_t mins = (seconds%3600)/60;
+	time_t hours = seconds/3600;
+	char out[100];
+	if(hours > 0)
+		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
+	else if(mins > 0)
+		sprintf(out,"%ld mins, %ld secs",mins,secs);
+	else
+		sprintf(out,"%ld secs",secs);
+	string outString = out;
+	return outString;
 }
 
 /*****************************************
@@ -1849,6 +1881,21 @@ bool Net::load(const char* filename)
 			{
 				loc = line.find("=") + 1;
 				__LEAKY_RELU_CONST = stod(line.substr(loc));
+			}
+			else if(line.find("MEAN") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				__mean = stod(line.substr(loc));
+			}
+			else if(line.find("STDDEV") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				__stddev = stod(line.substr(loc));
+			}
+			else if(line.find("TRAINING_SIZE") != string::npos)
+			{
+				loc = line.find("=") + 1;
+				__trainingSize = stoul(line.substr(loc));
 			}
 			else
 			{
@@ -2045,6 +2092,15 @@ bool Net::save(const char* filename)
 
 	sprintf(data,"%lf",__LEAKY_RELU_CONST);
 	out += "LEAKY_RELU_CONST="; out += data; out += '\n';
+
+	sprintf(data,"%lf",__mean);
+	out += "MEAN="; out += data; out += '\n';
+
+	sprintf(data, "%lf", __stddev);
+	out += "STDDEV="; out += data; out += '\n';
+
+	sprintf(data, "%lu", __trainingSize);
+	out += "TRAINING_SIZE="; out += data; out += '\n';
 
 	out += "END_NET\n";
 

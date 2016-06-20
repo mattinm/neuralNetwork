@@ -490,15 +490,24 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
+	cout << "preboinc" << endl;
+
 	#ifdef _BOINC_APP_
-	boinc_init();
+	//boinc_init();
 	BOINC_OPTIONS options;
+	cout << "1" << endl;
 	boinc_options_defaults(options);
+	cout << "2" << endl;
 	options.multi_thread = true;  // for multiple threads in OpenCL
+	cout << "3" << endl;
 	options.multi_process = true; // for multiple processes in OpenCL?
+	cout << "4" << endl;
 	options.normal_thread_priority = true; // so GPUs will run at full speed
+	cout << "5" << endl;
 	boinc_init_options(&options);
 	#endif
+
+	cout << "postboinc" << endl;
 
 	time_t starttime, endtime;
 	int device = -1;
