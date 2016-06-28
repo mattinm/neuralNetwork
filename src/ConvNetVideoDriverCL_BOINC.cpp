@@ -2,10 +2,9 @@
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
-#include <iostream>
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+// #include <dirent.h>
+// #include <sys/types.h>
+// #include <sys/stat.h>
 #include <unistd.h>
 #include <iostream>
 #include <vector>
@@ -13,8 +12,8 @@
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
-#include <thread>
-#include <cassert>
+// #include <thread>
+// #include <cassert>
 
 //BOINC
 #ifdef _BOINC_APP_
@@ -43,11 +42,11 @@
 // #include "../../test/boinc/lib/mfile.h"
 
 //	Second guess
-#include "boinc_api.h"
 #include "diagnostics.h"
 #include "filesys.h"
 #include "boinc_api.h"
 #include "mfile.h"
+#include "proc_control.h"
 #endif
 
 
@@ -59,13 +58,16 @@ typedef vector<vector<vector<double> > > imVector;
 
 int imageNum = 0;
 int stride = 1;
-int jump;
+int jump = 1;
 bool __useGPU = true;
 bool firstGot = false;
+
+double __percentDone = 0;
 
 unsigned int __frameNum = 0;
 unsigned int curFrame = 0;
 
+int inputWidth, inputHeight;
 int __width;
 int __height;
 
@@ -187,43 +189,43 @@ bool allElementsEquals(vector<double>& array)
 	return true;
 }
 
-void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
-{
-	for(int j=0; j< m.cols; j++)
-	{
-		const Vec3b& curPixel = m.at<Vec3b>(row,j);
-		dest[row][j][0] = curPixel[0];
-		dest[row][j][1] = curPixel[1];
-		dest[row][j][2] = curPixel[2];
-	}
-}
+// void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
+// {
+// 	for(int j=0; j< m.cols; j++)
+// 	{
+// 		const Vec3b& curPixel = m.at<Vec3b>(row,j);
+// 		dest[row][j][0] = curPixel[0];
+// 		dest[row][j][1] = curPixel[1];
+// 		dest[row][j][2] = curPixel[2];
+// 	}
+// }
 
-void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
-{
-	if(m.type() != CV_8UC3)
-	{
-		throw "Incorrect Mat type. Must be CV_8UC3.";
-	}
+// void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
+// {
+// 	if(m.type() != CV_8UC3)
+// 	{
+// 		throw "Incorrect Mat type. Must be CV_8UC3.";
+// 	}
 
-	int width2 = m.rows;
-	int height2 = m.cols;
-	int depth2 = 3;
-	//resize dest vector
-	resize3DVector(dest,width2,height2,depth2);
-	thread *t = new thread[width2];
+// 	int width2 = m.rows;
+// 	int height2 = m.cols;
+// 	int depth2 = 3;
+// 	//resize dest vector
+// 	resize3DVector(dest,width2,height2,depth2);
+// 	thread *t = new thread[width2];
 	
-	for(int i=0; i< width2; i++)
-	{
-		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
-	}
+// 	for(int i=0; i< width2; i++)
+// 	{
+// 		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
+// 	}
 
-	for(int i=0; i< width2; i++)
-	{
-		t[i].join();
-	}
+// 	for(int i=0; i< width2; i++)
+// 	{
+// 		t[i].join();
+// 	}
 
-	//delete t;
-}
+// 	//delete t;
+// }
 
 bool getNextFrame(VideoCapture& video, Mat& frame)
 {
@@ -242,7 +244,7 @@ bool getNextFrame(VideoCapture& video, Mat& frame)
 		// 	done = true;
 		return val1 && val2;
 	}
-	else
+	else // first frame only
 	{
 		bool val = video.read(frame);
 		//percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
@@ -267,41 +269,30 @@ void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
 	int numrows = image.rows;
 	int numcols = image.cols;
 	//printf("%s rows: %d, cols: %d\n",imageName, numrows,numcols);
-	int length = 0;
-	char tempout[255];
 
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
 	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
 	setAll3DVector(fullImage,0);
-	vector<imVector> imageRow(0); // this will hold all subimages from one row
+	// vector<imVector> imageRow(0); // this will hold all subimages from one row
+	vector<Mat> imageRow(0);
 	vector<int> calcedClasses(0);
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
 	//cout << "here" << endl;
-	int numrowsm32 = numrows-32;
-	int numcolsm32 = numcols-32;
+	int numrowsm32 = numrows-inputHeight;
+	int numcolsm32 = numcols-inputWidth;
 
 	for(int i=0; i <= numrowsm32; i+=stride)
 	{
 		imageRow.resize(0);
-		if(i != 0)
-		{
-			//cout << string(length,'\b');
-		}
-		//sprintf(tempout,"row %d of %d (%d)\n",i,numrowsm32,numrows);
-		string tempstring(tempout); length = tempstring.length();
-		//cout << "row " << i << " of " << numrows << endl;
-		//cout << tempout;
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
-			const Mat out = image(Range(i,i+32),Range(j,j+32));
-			//if((i == 0 || i == numrows-32) && j== 0)
-				//cout << out << endl << endl;
-			//printf("i: %d, j: %d\n",i,j);
-			imageRow.resize(imageRow.size()+1);
-			convertColorMatToVector(out,imageRow.back());
+			const Mat out = image(Range(i,i+inputHeight),Range(j,j+inputWidth));
+			imageRow.push_back(out);
+			// imageRow.resize(imageRow.size()+1);
+			// convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
 		//preprocess(imageRow);
@@ -315,9 +306,9 @@ void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
 		int curImage = 0;
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
 		{
-			for(int ii=i; ii < i+32 && ii < numrows; ii++)
+			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
 			{
-				for(int jj=j; jj < j+32 && jj < numcols; jj++)
+				for(int jj=j; jj < j+inputWidth && jj < numcols; jj++)
 				{
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{
@@ -337,8 +328,8 @@ void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
 	//now we have the confidences for every pixel in the image
 	//so get the category for each pixel and make a new image from it
 	Mat outputMat(numrows,numcols,CV_8UC3);
-	assert(__width == outputMat.cols);
-	assert(__height == outputMat.rows);
+	// assert(__width == outputMat.cols);
+	// assert(__height == outputMat.rows);
 	int redElement = 0;
 	for(int i=0; i < numrows; i++)
 	{
@@ -390,6 +381,7 @@ void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
 	}
 	// __momentRed = .8*__momentRed + .8*redElement;
 
+	printf("Submitting Frame %u. %lf%%\n", __frameNum,__percentDone);
 	// outVideo.write(outputMat);
 	outcsv << redElement << "," << __frameNum/10.0 << "\n";
 	//outVideo << outputMat;
@@ -404,9 +396,9 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 		return;
 	}
 
-	if(video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
+	if(video.get(CV_CAP_PROP_FRAME_WIDTH) < inputWidth || video.get(CV_CAP_PROP_FRAME_HEIGHT) < inputHeight)
 	{
-		printf("The video %s is too small in at least one dimension. Minimum size is 32x32.\n",videoName);
+		printf("The video %s is too small in at least one dimension. Minimum size is %d x %d.\n",videoName, inputWidth, inputHeight);
 		return;
 	}
 
@@ -454,9 +446,10 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 	{
 		//printf("Frame %ld of %.0lf\n", ++count, video.get(CV_CAP_PROP_FRAME_COUNT));
 		//printf("Frame %ld. \t%3.4lf%%\n", ++count, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
+		__percentDone = video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
 		breakUpImage(frame, net, outcsv);
 		//__frameNum++;
-		boinc_fraction_done(video.get(CV_CAP_PROP_POS_AVI_RATIO));
+		boinc_fraction_done(__percentDone);
 		if(boinc_time_to_checkpoint())
 		{
 			writeCheckpoint();
@@ -490,24 +483,21 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	cout << "preboinc" << endl;
+	printf("Initializing BOINC\n");
 
 	#ifdef _BOINC_APP_
-	//boinc_init();
+	boinc_init_diagnostics(BOINC_DIAG_MEMORYLEAKCHECKENABLED);
+	
 	BOINC_OPTIONS options;
-	cout << "1" << endl;
 	boinc_options_defaults(options);
-	cout << "2" << endl;
 	options.multi_thread = true;  // for multiple threads in OpenCL
-	cout << "3" << endl;
 	options.multi_process = true; // for multiple processes in OpenCL?
-	cout << "4" << endl;
 	options.normal_thread_priority = true; // so GPUs will run at full speed
-	cout << "5" << endl;
 	boinc_init_options(&options);
+	boinc_init();
 	#endif
 
-	cout << "postboinc" << endl;
+	// cout << "postboinc" << endl;
 
 	time_t starttime, endtime;
 	int device = -1;
@@ -518,13 +508,11 @@ int main(int argc, char** argv)
 		{
 			string arg(argv[i]);
 			if(arg.find("stride=") != string::npos)
-			{
 				stride = stoi(arg.substr(arg.find("=")+1));
-			}
 			else if(arg.find("device=") != string::npos)
-			{
 				device = stoi(arg.substr(arg.find("=")+1));
-			}
+			else if(arg.find("jump=") != string::npos)
+				jump = stoi(arg.substr(arg.find("=")+1));
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
@@ -544,6 +532,9 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
+	inputHeight = net.getInputHeight();
+	inputWidth = net.getInputWidth();
+
 	//go through all images in the folder
 	string resolved_Video_name = getBoincFilename(string(argv[2]));
 	
@@ -559,7 +550,7 @@ int main(int argc, char** argv)
 	starttime = time(NULL);
 	breakUpVideo(resolved_Video_name.c_str(),net,startFrame);
 	endtime = time(NULL);
-	cout << "Time for video " << argv[2] << ": " << secondsToString(endtime - starttime) << endl;
+	cout << "Time for video \"" << argv[2] << "\": " << secondsToString(endtime - starttime) << endl;
 
 	boinc_finish(0);
 	return 0;

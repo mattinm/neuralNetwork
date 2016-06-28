@@ -52,6 +52,7 @@ VideoWriter __outVideo;
 ofstream __outcsv;
 char* __netName;
 
+int inputWidth, inputHeight;
 int __rows, __cols;
 
 bool done = false;
@@ -138,7 +139,7 @@ void getNextFrame(Frame& frame)
 			done = true;
 		}
 	}
-	else
+	else // first frame only
 	{
 		bool val = __video.read(*(frame.mat));
 		frame.percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
@@ -322,14 +323,16 @@ void breakUpImage(Frame& frame, Net& net)
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
 	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
 	setAll3DVector(fullImage,0);
-	vector<imVector> imageRow(0); // this will hold all subimages from one row
+	// vector<imVector> imageRow(0); // this will hold all subimages from one row
+	vector<Mat> imageRow(0);
 	vector<int> calcedClasses(0);
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
-	int numrowsm32 = numrows-32;
-	int numcolsm32 = numcols-32;
+	int numrowsm32 = numrows-inputHeight;
+	int numcolsm32 = numcols-inputWidth;
 
+	//loop where the cnn is run over all subimages
 	for(int i=0; i <= numrowsm32; i+=stride)
 	{
 		imageRow.resize(0);
@@ -337,10 +340,10 @@ void breakUpImage(Frame& frame, Net& net)
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
-			//const Mat out = image(Range(i,i+32),Range(j,j+32));
-			const Mat out = (*(frame.mat))(Range(i,i+32),Range(j,j+32));
-			imageRow.resize(imageRow.size()+1);
-			convertColorMatToVector(out,imageRow.back());
+			const Mat out = (*(frame.mat))(Range(i,i+inputHeight),Range(j,j+inputWidth));
+			imageRow.push_back(out);
+			// imageRow.resize(imageRow.size()+1);
+			// convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
 		//preprocess(imageRow);
@@ -351,9 +354,9 @@ void breakUpImage(Frame& frame, Net& net)
 		int curImage = 0;
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
 		{
-			for(int ii=i; ii < i+32 && ii < numrows; ii++)
+			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
 			{
-				for(int jj=j; jj < j+32 && jj < numcols; jj++)
+				for(int jj=j; jj < j+inputWidth && jj < numcols; jj++)
 				{
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{
@@ -370,6 +373,7 @@ void breakUpImage(Frame& frame, Net& net)
 
 	Mat* outputMat = new Mat(numrows, numcols, CV_8UC3);
 
+	//calculate what output image should look like and csv file should be
 	int redElement = 0;
 	for(int i=0; i < numrows; i++)
 	{
@@ -415,6 +419,11 @@ void breakUpImage(Frame& frame, Net& net)
 void __parallelVideoProcessor(int device)
 {
 	Net net(__netName);
+	// if(device == 0)
+	// {
+	// 	inputWidth = net.getInputWidth();
+	// 	inputHeight = net.getInputHeight();
+	// }
 	net.setConstantMem(true);
 	if(!net.setDevice(device) || !net.finalize())
 		return;
@@ -455,9 +464,14 @@ void breakUpVideo(const char* videoName)
 		return;
 	}
 
-	if(__video.get(CV_CAP_PROP_FRAME_WIDTH) < 32 || __video.get(CV_CAP_PROP_FRAME_HEIGHT) < 32)
+	Net *net = new Net(__netName);
+	inputWidth = net->getInputWidth();
+	inputHeight = net->getInputHeight();
+	delete net;
+
+	if(__video.get(CV_CAP_PROP_FRAME_WIDTH) < inputWidth || __video.get(CV_CAP_PROP_FRAME_HEIGHT) < inputHeight)
 	{
-		printf("The video %s is too small in at least one dimension. Minimum size is 32x32.\n",videoName);
+		printf("The video %s is too small in at least one dimension. Minimum size is %dx%d.\n",videoName,inputWidth,inputHeight);
 		return;
 	}
 

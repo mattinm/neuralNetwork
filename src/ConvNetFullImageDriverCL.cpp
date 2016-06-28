@@ -150,7 +150,8 @@ void breakUpImage(const char* imageName, Net& net)
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
 	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
 	setAll3DVector(fullImage,0);
-	vector<imVector> imageRow(0); // this will hold all subimages from one row
+	// vector<imVector> imageRow(0); // this will hold all subimages from one row
+	vector<Mat> imageRow(0);
 	vector<int> calcedClasses(0);
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
@@ -177,11 +178,9 @@ void breakUpImage(const char* imageName, Net& net)
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
 			const Mat out = image(Range(i,i+32),Range(j,j+32));
-			//if((i == 0 || i == numrows-32) && j== 0)
-				//cout << out << endl << endl;
-			//printf("i: %d, j: %d\n",i,j);
-			imageRow.resize(imageRow.size()+1);
-			convertColorMatToVector(out,imageRow.back());
+			imageRow.push_back(out);
+			// imageRow.resize(imageRow.size()+1);
+			// convertColorMatToVector(out,imageRow.back());
 		}
 		//set them as the data in the net
 		//preprocess(imageRow);

@@ -13,6 +13,9 @@
 // #include <vector>	
 // #include <string> 
 // #include <time.h>
+// 
+// #include "opencv2/imgproc/imgproc.hpp"
+// #include "opencv2/highgui/highgui.hpp"
 //
 // #ifdef __APPLE__
 //  	#include "OpenCL/opencl.h"
@@ -22,6 +25,7 @@
 //typedef std::vector<std::vector<std::vector<double> > > imVector; // typedef pulled from the .h file
 
 using namespace std;
+using namespace cv;
 
 #define GETMAX(x,y) (x > y) ? x: y
 
@@ -336,6 +340,16 @@ void Net::printLayerDims() const
 			else if(act->activationType == RELU)
 			printf("RELU          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 		}
+}
+
+int Net::getInputHeight() const
+{
+	return __neuronDims[0][0];
+}
+
+int Net::getInputWidth() const
+{
+	return __neuronDims[0][1];
 }
 
 void Net::setAutoActivLayer(bool isAuto)
@@ -1463,12 +1477,41 @@ void Net::addData(const vector<imVector>& data)
 	__dataPreprocessed = false;
 }
 
+void Net::addData(const vector<Mat>& data)
+{
+	int oldSize = __data.size();
+	__data.resize(oldSize + data.size());
+	int curIndex;
+	for(int d = 0; d < data.size(); d++)
+	{
+		curIndex = oldSize + d;
+		__data[curIndex].resize(__neuronSizes[0]);
+		int dat = 0; 
+		for(int i = 0; i < data[d].rows; i++)
+			for(int j = 0; j < data[d].cols; j++)
+			{
+				const Vec3b& curPixel = data[d].at<Vec3b>(i,j);
+				__data[curIndex][dat++] = curPixel[0];
+				__data[curIndex][dat++] = curPixel[1];
+				__data[curIndex][dat++] = curPixel[2];
+			}
+	}
+	__confidences.resize(__data.size());
+	__dataPreprocessed = false;
+}
+
 void Net::clearData()
 {
 	__data.resize(0);
 }
 
 void Net::setData(const vector<imVector>& data)
+{
+	clearData();
+	addData(data);
+}
+
+void Net::setData(const vector<Mat>& data)
 {
 	clearData();
 	addData(data);
@@ -1503,6 +1546,30 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 	return true;
 }
 
+bool Net::addTrainingData(const vector<Mat>& trainingData, const vector<double>& trueVals)
+{
+	if(trainingData.size() != trueVals.size())
+		return false;
+
+	int inputSize = __neuronSizes[0];
+	for(int t = 0; t < trainingData.size(); t++)
+	{
+		int trueIndex = getTrueValIndex(trueVals[t]);
+
+		__trainingData[trueIndex].push_back(new vector<double>(inputSize));
+		int dat = 0;
+		for(int i = 0; i < trainingData[t].rows; i++)
+			for(int j=0; j < trainingData[t].cols; j++)
+			{
+				const Vec3b& curPixel = trainingData[t].at<Vec3b>(i,j);
+				(__trainingData[trueIndex].back())->at(dat++) = curPixel[0];
+				(__trainingData[trueIndex].back())->at(dat++) = curPixel[1];
+				(__trainingData[trueIndex].back())->at(dat++) = curPixel[2];
+			}
+	}
+	return true;
+}
+
 void Net::clearTrainingData()
 {
 	__trainingData.resize(0);
@@ -1515,6 +1582,14 @@ bool Net::setTrainingData(const vector<imVector>& trainingData, const vector<dou
 		return false;
 	clearTrainingData();
 	return addTrainingData(trainingData,trueVals);
+}
+
+bool Net::setTrainingData(const vector<Mat>& trainingData, const vector<double>& trueVals)
+{
+	if(trainingData.size() != trueVals.size())
+		return false;
+	clearTrainingData();
+	return addTrainingData(trainingData, trueVals);
 }
 
 int Net::getTrueValIndex(double trueVal)
@@ -1552,6 +1627,32 @@ bool Net::addTestData(const vector<imVector>& testData, const vector<double>& tr
 	return true;
 }
 
+bool Net::addTestData(const vector<Mat>& testData, const vector<double>& trueVals)
+{
+	if(testData.size() != trueVals.size())
+		return false;
+	int oldSize = __testData.size();
+	__testData.resize(oldSize + testData.size());
+	__testTrueVals.resize(oldSize + testData.size());
+	int curIndex;
+	for(int t = 0; t < testData.size(); t++)
+	{
+		curIndex = oldSize + t;
+		__testData[curIndex].resize(__neuronSizes[0]);
+		int dat = 0;
+		__testTrueVals[curIndex] = trueVals[t];
+		for(int i = 0; i < testData[t].rows; i++)
+			for(int j = 0; j < testData[t].cols; j++)
+			{
+				const Vec3b& curPixel = testData[t].at<Vec3b>(i,j);
+				__testData[curIndex][dat++] = curPixel[0];
+				__testData[curIndex][dat++] = curPixel[1];
+				__testData[curIndex][dat++] = curPixel[2];
+			}
+	}
+	return true;
+}
+
 void Net::clearTestData()
 {
 	__testData.resize(0);
@@ -1559,6 +1660,14 @@ void Net::clearTestData()
 }
 
 bool Net::setTestData(const vector<imVector>& testData, const vector<double>& trueVals)
+{
+	if(testData.size() != trueVals.size())
+		return false;
+	clearTestData();
+	return addTestData(testData, trueVals);
+}
+
+bool Net::setTestData(const vector<Mat>& testData, const vector<double>& trueVals)
 {
 	if(testData.size() != trueVals.size())
 		return false;

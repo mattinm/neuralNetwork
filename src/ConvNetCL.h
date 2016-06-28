@@ -13,6 +13,11 @@
 #include <vector>
 #include <time.h>
 
+//OpenCV
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/highgui/highgui.hpp"
+
+//OpenCL
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
 #else
@@ -143,7 +148,7 @@ public: 	// functions
 	Net(int inputWidth, int inputHeight, int inputDepth);
 	~Net();
 	
-	//functions dealing with layers
+	//functions dealing with layers and sizes
 	bool addActivLayer();
 	bool addActivLayer(int activationType);
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad);
@@ -152,6 +157,8 @@ public: 	// functions
 	bool setActivType(int activationType);
 	void setAutoActivLayer(bool isAuto);
 	void printLayerDims() const;
+	int getInputWidth() const;
+	int getInputHeight() const;
 
 	bool finalize();
 	std::string getErrorLog() const;
@@ -159,12 +166,16 @@ public: 	// functions
 	//functions dealing with data
 		//training
 		bool addTrainingData(const std::vector<imVector>& trainingData, const std::vector<double>& trueVals);
+		bool addTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals);
         //bool setTrainingDataShallow(double** images, double* trueVals, unsigned long numImages);
 		bool setTrainingData(const std::vector<imVector>& trainingData, const std::vector<double>& trueVals);
+		bool setTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals);
 		void clearTrainingData();
 		bool addTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
+		bool addTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals);
         //bool setTestDataShallow(double** images, double* trueVals,
 		bool setTestData(const std::vector<imVector>& testData, const std::vector<double>& trueVals);
+		bool setTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals);
 		void clearTestData();
 		bool setTrainingType(int type);
         void printTrainingDistribution() const;
@@ -172,7 +183,9 @@ public: 	// functions
 
 		//running
 		void addData(const std::vector<imVector>& data);
+		void addData(const std::vector<cv::Mat>& data);
 		void setData(const std::vector<imVector>& data);
+		void setData(const std::vector<cv::Mat>& data);
 		void clearData();
 
 	int getNumClasses() const;
