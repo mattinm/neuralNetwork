@@ -47,6 +47,8 @@ int stride = 1;
 int jump = 1;
 bool firstGot = false;
 
+imVector *fullImages;
+
 VideoCapture __video;
 VideoWriter __outVideo;
 ofstream __outcsv;
@@ -311,7 +313,7 @@ void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &des
  * (i.e. the stride is less than the subimage size), then the confidences from each subimage is added.
  */
 //void breakUpImage(Mat& image, Net& net, Mat& outputMat, int& inred)
-void breakUpImage(Frame& frame, Net& net)
+void breakUpImage(Frame& frame, Net& net, int device)
 {
 	// int numrows = image.rows;
 	// int numcols = image.cols;
@@ -320,9 +322,9 @@ void breakUpImage(Frame& frame, Net& net)
 
 	//printf("%d %d\n",numrows, numcols);
 
-	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
-	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
-	setAll3DVector(fullImage,0);
+	// vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
+	// resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
+	setAll3DVector(fullImages[device],0);
 	// vector<imVector> imageRow(0); // this will hold all subimages from one row
 	vector<Mat> imageRow(0);
 	vector<int> calcedClasses(0);
@@ -361,7 +363,7 @@ void breakUpImage(Frame& frame, Net& net)
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{
 						//printf("%d %d %d %d\n",i,j,jj,cat);
-						fullImage[ii][jj][cat] += confidences[curImage][cat];
+						fullImages[device][ii][jj][cat] += confidences[curImage][cat];
 					}
 				}
 			}
@@ -369,7 +371,7 @@ void breakUpImage(Frame& frame, Net& net)
 		}
 	}
 	//printf("starting red element\n");
-	squareElements(fullImage);
+	squareElements(fullImages[device]);
 
 	Mat* outputMat = new Mat(numrows, numcols, CV_8UC3);
 
@@ -380,27 +382,27 @@ void breakUpImage(Frame& frame, Net& net)
 		for(int j=0; j < numcols; j++)
 		{
 			//printf("pixel %d %d - %d %d\n",i,j, outputMat.rows, outputMat.cols );
-			double sumsq = vectorSum(fullImage[i][j]);
-			for(int n=0; n < fullImage[i][j].size(); n++)
+			double sumsq = vectorSum(fullImages[device][i][j]);
+			for(int n=0; n < fullImages[device][i][j].size(); n++)
 			{
 				//fullImage[i][j][n] = fullImage[i][j][n] * fullImage[i][j][n] / sumsq;
-				fullImage[i][j][n] /= sumsq;
+				fullImages[device][i][j][n] /= sumsq;
 			}
 
 			//write the pixel
 			Vec3b& outPix = outputMat->at<Vec3b>(i,j);
 			//int maxEle = getMaxElementIndex(fullImage[i][j]);
 			//printf("writing\n");
-			if(allElementsEquals(fullImage[i][j]))
+			if(allElementsEquals(fullImages[device][i][j]))
 			{
 				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
 			}
 			else
 			{
-				double blue = 255*fullImage[i][j][0];
+				double blue = 255*fullImages[device][i][j][0];
 				outPix[0] = blue; // blue
 				outPix[1] = 0;	  //green
-				double red = 255*fullImage[i][j][1];
+				double red = 255*fullImages[device][i][j][1];
 				outPix[2] = red;  // red
 				if(red > 150) //red > 50 || red > blue
 					redElement += (int)(red);
@@ -419,36 +421,21 @@ void breakUpImage(Frame& frame, Net& net)
 void __parallelVideoProcessor(int device)
 {
 	Net net(__netName);
-	// if(device == 0)
-	// {
-	// 	inputWidth = net.getInputWidth();
-	// 	inputHeight = net.getInputHeight();
-	// }
+
 	net.setConstantMem(true);
 	if(!net.setDevice(device) || !net.finalize())
 		return;
 	printf("Thread using device %d\n",device);
 
-	// unsigned int frameNum=0;
-	// Mat frame;
-	// int red;
-	// double percentDone;
-	// getNextFrame(frame, frameNum, percentDone);
+	resize3DVector(fullImages[device], __rows, __cols, net.getNumClasses());
 
 	Frame frame;
 	frame.mat = new Mat(__rows, __cols, CV_8UC3);
 	getNextFrame(frame);
 
 	while(!done)
-	{
-		//printf("thread %d got frame %d\n", device, frameNum);
-		// Mat* outFrame = new Mat(__rows,__cols,CV_8UC3);
-		// breakUpImage(frame, net, *outFrame, red);
-		// submitFrame(outFrame, frameNum, red, percentDone);//, device);
-		// getNextFrame(frame, frameNum, percentDone);
-
-		
-		breakUpImage(frame, net);
+	{		
+		breakUpImage(frame, net, device);
 		submitFrame(frame);
 		frame.mat = new Mat(__rows, __cols, CV_8UC3);
 		getNextFrame(frame);
@@ -497,6 +484,7 @@ void breakUpVideo(const char* videoName)
 	__cols = __video.get(CV_CAP_PROP_FRAME_WIDTH);
 	int numDevices = getNumDevices();
 	thread* t = new thread[numDevices];
+	fullImages = new imVector[numDevices];
 	for(int i=0; i < numDevices; i++)
 	{
 		//start new thread for each device. Any thread for a device that does not support double will return early.

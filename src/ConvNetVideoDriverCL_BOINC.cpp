@@ -61,6 +61,7 @@ int stride = 1;
 int jump = 1;
 bool __useGPU = true;
 bool firstGot = false;
+bool appendCSV;
 
 double __percentDone = 0;
 
@@ -421,7 +422,10 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 	//  Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
 	ofstream outcsv;
-	outcsv.open(outNameCSV);
+	if(appendCSV)
+		outcsv.open(outNameCSV, ofstream::app);
+	else
+		outcsv.open(outNameCSV, ofstream::trunc);
 
 	//cout << "FPS = " << video.get(CV_CAP_PROP_FPS) << endl;
 
@@ -540,9 +544,15 @@ int main(int argc, char** argv)
 	
 	#ifdef _BOINC_APP_	
 	if(readCheckpoint())
+	{
 		printf("Continuing from Checkpoint\n");
+		appendCSV = true;
+	}
 	else
+	{
 		printf("No Checkpoint found. Starting from beginning\n");
+		appendCSV = false;
+	}
 	#endif
 
 	unsigned int startFrame = __frameNum;

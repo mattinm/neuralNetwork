@@ -26,6 +26,8 @@ int imageNum = 0;
 int stride = 1;
 bool __useGPU = true;
 
+int inputWidth, inputHeight;
+
 string secondsToString(time_t seconds)
 {
 	time_t secs = seconds%60;
@@ -144,8 +146,7 @@ void breakUpImage(const char* imageName, Net& net)
 	int numrows = image.rows;
 	int numcols = image.cols;
 	printf("%s rows: %d, cols: %d\n",imageName, numrows,numcols);
-	int length = 0;
-	char tempout[255];
+
 
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
 	resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
@@ -156,28 +157,22 @@ void breakUpImage(const char* imageName, Net& net)
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
-	int numrowsm32 = numrows-32;
-	int numcolsm32 = numcols-32;
-	if(numrows < 32 || numcols < 32)
+	int numrowsm32 = numrows - inputHeight;
+	int numcolsm32 = numcols - inputWidth;
+	if(numrows < inputHeight || numcols < inputWidth)
 	{
-		printf("The image %s is too small in at least one dimension. Minimum size is 32x32.\n",imageName);
+		printf("The image %s is too small in at least one dimension. Minimum size is %dx%d.\n",imageName,inputHeight,inputWidth);
 		return;
 	}
 	for(int i=0; i <= numrowsm32; i+=stride)
 	{
 		imageRow.resize(0);
-		if(i != 0)
-		{
-			//cout << string(length,'\b');
-		}
-		sprintf(tempout,"row %d of %d (%d)\n",i,numrowsm32,numrows);
-		string tempstring(tempout); length = tempstring.length();
+		printf("row %d of %d (%d)\n",i,numrowsm32,numrows);
 		//cout << "row " << i << " of " << numrows << endl;
-		cout << tempout;
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
-			const Mat out = image(Range(i,i+32),Range(j,j+32));
+			const Mat out = image(Range(i,i+inputHeight),Range(j,j+inputWidth));
 			imageRow.push_back(out);
 			// imageRow.resize(imageRow.size()+1);
 			// convertColorMatToVector(out,imageRow.back());
@@ -194,9 +189,9 @@ void breakUpImage(const char* imageName, Net& net)
 		int curImage = 0;
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
 		{
-			for(int ii=i; ii < i+32 && ii < numrows; ii++)
+			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
 			{
-				for(int jj=j; jj < j+32 && jj < numcols; jj++)
+				for(int jj=j; jj < j+inputHeight && jj < numcols; jj++)
 				{
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{
@@ -283,11 +278,13 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetFullImageDriver cnnConfig.txt imageOrFolderPath (stride=1) (gpu=true)\n");
+		printf("use format: ./ConvNetFullImageDriver cnnConfig.txt imageOrFolderPath (stride=1) (device=0)\n");
 		return -1;
 	}
 
 	inPath = argv[2];
+
+	int device = -1;
 
 	if(argc > 3)
 	{
@@ -298,12 +295,9 @@ int main(int argc, char** argv)
 			{
 				stride = stoi(arg.substr(arg.find("=")+1));
 			}
-			else if(arg.find("gpu=") != string::npos)
+			else if(arg.find("device") != string::npos)
 			{
-				if(arg.find("false") != string::npos || arg.find("False") != string::npos)
-				{
-					__useGPU = false;
-				}
+				device = stoi(arg.substr(arg.find("=")+1));
 			}
 		}
 	}
@@ -311,8 +305,12 @@ int main(int argc, char** argv)
 
 	//set up net
 	Net net(argv[1]);
+	if(device != -1)
+		net.setDevice(device);
 
-	net.setGPU(__useGPU);
+	inputWidth = net.getInputWidth();
+	inputHeight = net.getInputHeight();
+	
 	//cout << "net loaded" << endl;
 	if(!net.finalize())
 		return 0;
