@@ -2,7 +2,6 @@
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
-#include <iostream>
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -97,43 +96,43 @@ bool allElementsEquals(vector<double>& array)
 	return true;
 }
 
-void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
-{
-	for(int j=0; j< m.cols; j++)
-	{
-		const Vec3b& curPixel = m.at<Vec3b>(row,j);
-		dest[row][j][0] = curPixel[0];
-		dest[row][j][1] = curPixel[1];
-		dest[row][j][2] = curPixel[2];
-	}
-}
+// void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
+// {
+// 	for(int j=0; j< m.cols; j++)
+// 	{
+// 		const Vec3b& curPixel = m.at<Vec3b>(row,j);
+// 		dest[row][j][0] = curPixel[0];
+// 		dest[row][j][1] = curPixel[1];
+// 		dest[row][j][2] = curPixel[2];
+// 	}
+// }
 
-void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
-{
-	if(m.type() != CV_8UC3)
-	{
-		throw "Incorrect Mat type. Must be CV_8UC3.";
-	}
+// void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
+// {
+// 	if(m.type() != CV_8UC3)
+// 	{
+// 		throw "Incorrect Mat type. Must be CV_8UC3.";
+// 	}
 
-	int width2 = m.rows;
-	int height2 = m.cols;
-	int depth2 = 3;
-	//resize dest vector
-	resize3DVector(dest,width2,height2,depth2);
-	thread *t = new thread[width2];
+// 	int width2 = m.rows;
+// 	int height2 = m.cols;
+// 	int depth2 = 3;
+// 	//resize dest vector
+// 	resize3DVector(dest,width2,height2,depth2);
+// 	thread *t = new thread[width2];
 	
-	for(int i=0; i< width2; i++)
-	{
-		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
-	}
+// 	for(int i=0; i< width2; i++)
+// 	{
+// 		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
+// 	}
 
-	for(int i=0; i< width2; i++)
-	{
-		t[i].join();
-	}
+// 	for(int i=0; i< width2; i++)
+// 	{
+// 		t[i].join();
+// 	}
 
-	//delete t;
-}
+// 	//delete t;
+// }
 
 /*
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage

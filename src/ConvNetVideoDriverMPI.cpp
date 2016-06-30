@@ -163,7 +163,7 @@ unsigned int getNextFrame0()
 	return outFrameNum;
 }
 
-bool getNextFrame(Frame frame)
+bool getNextFrame(Frame& frame)
 {
 	int rankArray[] = {my_rank};
 	MPI_Send(rankArray, 1, MPI_INT, 0, REQUEST_FRAME, MPI_COMM_WORLD);
@@ -180,6 +180,7 @@ bool getNextFrame(Frame frame)
 	}
 	__video.retrieve(*(frame.mat));
 	frame.frameNum = receiveArray[1];
+	curFrame = receiveArray[1];
 	return true;
 
 }
@@ -273,6 +274,7 @@ void submitFrames()
 
 void breakUpImage(Net& net, Frame& frame)
 {
+	printf("break up image\n");
 	vector< vector< vector<double> > > fullImage;
 	resize3DVector(fullImage, fullHeight, fullWidth, net.getNumClasses());
 	setAll3DVector(fullImage, 0);
@@ -288,12 +290,14 @@ void breakUpImage(Net& net, Frame& frame)
 
 	for(int i = 0; i <= numrowsmin; i += stride)
 	{
+		printf("start cv\n");
+		cout << *(frame.mat) << endl;
 		for(int j = 0; j <= numcolsmin; j += stride)
 		{
 			const Mat out = (*(frame.mat))(Range(i, i+inputHeight),Range(j, j+inputWidth));
 			imageRow[j] = out;
 		}
-
+		printf("end cv\n");
 		net.setData(imageRow);
 		net.run();
 		net.getConfidences(confidences);
@@ -308,7 +312,7 @@ void breakUpImage(Net& net, Frame& frame)
 			curImage++;
 		}
 	}
-
+	printf("gone through frame\n");
 	//at this point all subimages in the frame have been gone through
 	squareElements(fullImage);
 
@@ -424,7 +428,7 @@ int main(int argc, char** argv)
 	if(argc < 3 || 5 < argc)
 	{
 		if(my_rank == 0)
-			print0("use format: ./ConvNetVideoDriver cnnConfig.txt VideoOrFolderPath stride=<1> jump=<1>\n");
+			print0("use format: ./ConvNetVideoDriverMPI cnnConfig.txt VideoOrFolderPath stride=<1> jump=<1>\n");
 		MPI_Finalize();
 		return 0;
 	}

@@ -34,14 +34,7 @@
 // #include "boinc/mfile.h"
 // #endif
 
-//	My guess
-// #include "../../test/boinc/api/boinc_api.h"
-// #include "../../test/boinc/lib/diagnostics.h"
-// #include "../../test/boinc/lib/util.h"
-// #include "../../test/boinc/lib/filesys.h"
-// #include "../../test/boinc/lib/mfile.h"
 
-//	Second guess
 #include "diagnostics.h"
 #include "filesys.h"
 #include "boinc_api.h"
@@ -62,6 +55,9 @@ int jump = 1;
 bool __useGPU = true;
 bool firstGot = false;
 bool appendCSV;
+
+string outString = "";
+ofstream outcsv;
 
 double __percentDone = 0;
 
@@ -93,7 +89,15 @@ void writeCheckpoint() throw(std::runtime_error)
 	if(!outfile.isOpened())
 		throw std::runtime_error("Checkpoint file could not be opened");
 
-	outfile << "FRAME_NUM" << (double)__frameNum;
+	outcsv << outString;
+	outcsv.flush();
+
+	outString.clear();
+
+
+	cout << "Writing Checkpoint: frame " << __frameNum << " completed. Next frame is " << curFrame <<  endl;
+
+	outfile << "FRAME_NUM" << (double)curFrame;
 	outfile.release();
 }
 
@@ -107,6 +111,9 @@ bool readCheckpoint()
 
 	infile["FRAME_NUM"] >> num;
 	__frameNum = (unsigned int)num;
+	curFrame = (unsigned int)num;
+
+	cout << "frameNum: " << __frameNum << endl;
 
 	infile.release();
 	return true;
@@ -190,44 +197,6 @@ bool allElementsEquals(vector<double>& array)
 	return true;
 }
 
-// void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
-// {
-// 	for(int j=0; j< m.cols; j++)
-// 	{
-// 		const Vec3b& curPixel = m.at<Vec3b>(row,j);
-// 		dest[row][j][0] = curPixel[0];
-// 		dest[row][j][1] = curPixel[1];
-// 		dest[row][j][2] = curPixel[2];
-// 	}
-// }
-
-// void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
-// {
-// 	if(m.type() != CV_8UC3)
-// 	{
-// 		throw "Incorrect Mat type. Must be CV_8UC3.";
-// 	}
-
-// 	int width2 = m.rows;
-// 	int height2 = m.cols;
-// 	int depth2 = 3;
-// 	//resize dest vector
-// 	resize3DVector(dest,width2,height2,depth2);
-// 	thread *t = new thread[width2];
-	
-// 	for(int i=0; i< width2; i++)
-// 	{
-// 		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
-// 	}
-
-// 	for(int i=0; i< width2; i++)
-// 	{
-// 		t[i].join();
-// 	}
-
-// 	//delete t;
-// }
-
 bool getNextFrame(VideoCapture& video, Mat& frame)
 {
 	if(firstGot)
@@ -263,7 +232,7 @@ bool getNextFrame(VideoCapture& video, Mat& frame)
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
  * (i.e. the stride is less than the subimage size), then the confidences from each subimage is added.
  */
-void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
+void breakUpImage(Mat& image, Net& net)
 {
 	//cout << "starting breakUpImage" << endl;
 	//Mat image = imread(imageName,1);
@@ -359,32 +328,16 @@ void breakUpImage(Mat& image, Net& net, ofstream& outcsv)
 				outPix[2] = red;  // red
 				if(red > 150) //red > 50 || red > blue
 					redElement += (int)(red);
-
-				//if(red > 200)
-				//	cout << red << endl;
 			}
-			/*//old
-			Vec3b& outPix = outputMat.at<Vec3b>(i,j);
-			int maxEle = getMaxElementIndex(fullImage[i][j]);
-			if(allElementsEquals(fullImage[i][j]))
-			{
-				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
-			}
-			else if(maxEle == 0)
-			{
-				outPix[0] = 255; outPix[1] = 0; outPix[2] = 0; // blue
-			}
-			else if(maxEle == 1)
-			{
-				outPix[0] = 0; outPix[1] = 0; outPix[2] = 255; // red
-			}*/
 		}
 	}
-	// __momentRed = .8*__momentRed + .8*redElement;
 
 	printf("Submitting Frame %u. %lf%%\n", __frameNum,__percentDone);
 	// outVideo.write(outputMat);
-	outcsv << redElement << "," << __frameNum/10.0 << "\n";
+	//outcsv << redElement << "," << __frameNum/10.0 << "\n";
+	char buf[500];
+	sprintf(buf,"%d,%lf\n",redElement,__frameNum/10.0);
+	outString += buf;
 	//outVideo << outputMat;
 }
 
@@ -421,7 +374,7 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 	//  10,//video.get(CV_CAP_PROP_FPS), 
 	//  Size(video.get(CV_CAP_PROP_FRAME_WIDTH), video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
-	ofstream outcsv;
+	//ofstream outcsv;
 	if(appendCSV)
 		outcsv.open(outNameCSV, ofstream::app);
 	else
@@ -451,7 +404,7 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 		//printf("Frame %ld of %.0lf\n", ++count, video.get(CV_CAP_PROP_FRAME_COUNT));
 		//printf("Frame %ld. \t%3.4lf%%\n", ++count, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
 		__percentDone = video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
-		breakUpImage(frame, net, outcsv);
+		breakUpImage(frame, net);
 		//__frameNum++;
 		boinc_fraction_done(__percentDone);
 		if(boinc_time_to_checkpoint())
@@ -460,7 +413,10 @@ void breakUpVideo(const char* videoName, Net& net, unsigned int startFrame = 0)
 			boinc_checkpoint_completed();
 		}
 	}
-	
+
+	//put anything since the last checkpoint in the csv
+	outcsv << outString;
+	outcsv.flush();
 	outcsv.close();
 }
 
@@ -477,7 +433,6 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		printf("use format: ./ConvNetVideoDriverCL_BOINC cnnConfig.txt VideoPath stride=<1> device=<device#>\n");
 		printf("Usage (Required to come first):\n ./ConvNetVideoDriverCL_BOINC cnnConfig.txt VideoPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
 		printf("   device=<int>     Which OpenCL device to use. Defaults to GPU supporting doubles, if exists, else CPU\n");
