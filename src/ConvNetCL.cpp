@@ -398,7 +398,10 @@ bool Net::finalize()
 			if(type == CL_DEVICE_TYPE_GPU)
 				q = i;
 		}
+		__device = q;
 	}
+	else
+		__device = 0;
 
 	printf("Finalizing CNN using device %d\n",q);
 

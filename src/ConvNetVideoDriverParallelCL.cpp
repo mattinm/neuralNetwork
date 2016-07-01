@@ -155,28 +155,6 @@ void getNextFrame(Frame& frame)
 	pthread_mutex_unlock(&frameMutex);
 }
 
-// void getFirstFrame(Mat& frame, unsigned int& frameNum, double& percentDone)
-// {
-// 	pthread_mutex_lock(&frameMutex);
-// 	if(!firstGot)
-// 	{
-// 		bool val = __video.read(frame);
-// 		percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
-// 		frameNum = curFrame;
-// 		curFrame ++;
-// 		if(!val)
-// 			done = true;
-// 		firstGot = true;
-// 		// printf("got first frame %d\n",curFrame-1);
-// 		pthread_mutex_unlock(&frameMutex);
-// 	}
-// 	else
-// 	{
-// 		getNextFrame(frame,frameNum, percentDone);
-// 	}
-	
-// }
-
 //void submitFrame(Mat* frame, unsigned int frameNum, int red, double percentDone)//, int device)
 void submitFrame(Frame& frame)
 {
@@ -270,43 +248,43 @@ int getNumDevices()
 	return (int)deviceIdCount;
 }
 
-void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
-{
-	for(int j=0; j< m.cols; j++)
-	{
-		const Vec3b& curPixel = m.at<Vec3b>(row,j);
-		dest[row][j][0] = curPixel[0];
-		dest[row][j][1] = curPixel[1];
-		dest[row][j][2] = curPixel[2];
-	}
-}
+// void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
+// {
+// 	for(int j=0; j< m.cols; j++)
+// 	{
+// 		const Vec3b& curPixel = m.at<Vec3b>(row,j);
+// 		dest[row][j][0] = curPixel[0];
+// 		dest[row][j][1] = curPixel[1];
+// 		dest[row][j][2] = curPixel[2];
+// 	}
+// }
 
-void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
-{
-	if(m.type() != CV_8UC3)
-	{
-		throw "Incorrect Mat type. Must be CV_8UC3.";
-	}
+// void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
+// {
+// 	if(m.type() != CV_8UC3)
+// 	{
+// 		throw "Incorrect Mat type. Must be CV_8UC3.";
+// 	}
 
-	int width2 = m.rows;
-	int height2 = m.cols;
-	int depth2 = 3;
-	//resize dest vector
-	resize3DVector(dest,width2,height2,depth2);
-	thread *t = new thread[width2];
+// 	int width2 = m.rows;
+// 	int height2 = m.cols;
+// 	int depth2 = 3;
+// 	//resize dest vector
+// 	resize3DVector(dest,width2,height2,depth2);
+// 	thread *t = new thread[width2];
 	
-	for(int i=0; i< width2; i++)
-	{
-		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
-	}
+// 	for(int i=0; i< width2; i++)
+// 	{
+// 		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
+// 	}
 
-	for(int i=0; i< width2; i++)
-	{
-		t[i].join();
-	}
+// 	for(int i=0; i< width2; i++)
+// 	{
+// 		t[i].join();
+// 	}
 
-	//delete t;
-}
+// 	//delete t;
+// }
 
 /*
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
@@ -342,11 +320,15 @@ void breakUpImage(Frame& frame, Net& net, int device)
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
-			const Mat out = (*(frame.mat))(Range(i,i+inputHeight),Range(j,j+inputWidth));
-			imageRow.push_back(out);
+			imageRow.push_back((*(frame.mat))(Range(i,i+inputHeight),Range(j,j+inputWidth)));
+
+			// const Mat out = (*(frame.mat))(Range(i,i+inputHeight),Range(j,j+inputWidth));
+			// imageRow.push_back(out);
+
 			// imageRow.resize(imageRow.size()+1);
 			// convertColorMatToVector(out,imageRow.back());
 		}
+		//cout << imageRow[0] << endl;
 		//set them as the data in the net
 		//preprocess(imageRow);
 		net.setData(imageRow);
@@ -381,7 +363,6 @@ void breakUpImage(Frame& frame, Net& net, int device)
 	{
 		for(int j=0; j < numcols; j++)
 		{
-			//printf("pixel %d %d - %d %d\n",i,j, outputMat.rows, outputMat.cols );
 			double sumsq = vectorSum(fullImages[device][i][j]);
 			for(int n=0; n < fullImages[device][i][j].size(); n++)
 			{
@@ -391,8 +372,6 @@ void breakUpImage(Frame& frame, Net& net, int device)
 
 			//write the pixel
 			Vec3b& outPix = outputMat->at<Vec3b>(i,j);
-			//int maxEle = getMaxElementIndex(fullImage[i][j]);
-			//printf("writing\n");
 			if(allElementsEquals(fullImages[device][i][j]))
 			{
 				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green

@@ -125,7 +125,7 @@ unsigned int getNextFrame0()
 {
 	// pthread_mutex_lock(&frameMutex);
 	//bool val = __video.read(frame);
-	unsigned int outFrameNum;
+	size_t outFrameNum;
 	if(firstGot0)
 	{
 		bool val1 = true;
@@ -158,13 +158,19 @@ unsigned int getNextFrame0()
 	}
 	// pthread_mutex_unlock(&frameMutex);
 	if(!done)
+	{
 		framesSent0++;
+		printf("Giving frame %lu. %lf%%\n", outFrameNum, __video.get(CV_CAP_PROP_POS_AVI_RATIO)*100.0);
+	}
+
+
 
 	return outFrameNum;
 }
 
 bool getNextFrame(Frame& frame)
 {
+	// printf("getting next frame %d\n", my_rank);
 	int rankArray[] = {my_rank};
 	MPI_Send(rankArray, 1, MPI_INT, 0, REQUEST_FRAME, MPI_COMM_WORLD);
 
@@ -181,6 +187,7 @@ bool getNextFrame(Frame& frame)
 	__video.retrieve(*(frame.mat));
 	frame.frameNum = receiveArray[1];
 	curFrame = receiveArray[1];
+	// printf("ending true next frame %d\n", my_rank);
 	return true;
 
 }
@@ -216,16 +223,20 @@ void manageNextFrames()
 
 void manageFrameSubmissions()
 {
+	// printf("start manage submit\n");
 	waitingFrames0.resize(framesSent0);
+	// printf("frames sent = %lu\n", framesSent0);
 	double array[2]; //frameNum, red
 	for(int i = 0; i < framesSent0; i++)
 	{
+		printf("%d\n", i);
 		MPI_Recv(&array, 2, MPI_DOUBLE, MPI_ANY_SOURCE, SUBMIT_FRAME, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		waitingFrames0[i] = new Frame();
 		waitingFrames0[i]->frameNum = array[0];
 		waitingFrames0[i]->red = array[1];
 	}
-
-	//insertion sort because mostly sorted
+	printf("start insert sort\n");
+	// insertion sort because mostly sorted
 	for(int i = 1; i < waitingFrames0.size(); i++)
 	{
 		unsigned int key = waitingFrames0[i]->frameNum;
@@ -238,6 +249,7 @@ void manageFrameSubmissions()
 		}
 		waitingFrames0[j+1] = toInsert;
 	}
+	printf("end insert sort\n");
 
 	//Submit stuff to csv
 	for(int i = 0; i < waitingFrames0.size(); i++)
@@ -245,10 +257,13 @@ void manageFrameSubmissions()
 		__outcsv << waitingFrames0[i]->red << "," << waitingFrames0[i]->frameNum/10.0 << '\n';
 		delete waitingFrames0[i];
 	}
+
+	// printf("end manage submit\n");
 }
 
-void storeFrame(Frame frame)
+void storeFrame(Frame& frame)
 {
+	// printf("storing frame %d\n", my_rank);
 	Frame *store = new Frame();
 	store->frameNum = frame.frameNum;
 	store->red = frame.red;
@@ -257,10 +272,13 @@ void storeFrame(Frame frame)
 	frame.mat = nullptr;
 
 	waitingFrames.push_back(store);
+	// printf("Storing frame %lu\n", frame.frameNum);
+	// printf("ending storing frame %d\n", my_rank);
 }
 
 void submitFrames()
 {
+	printf("start submit\n");
 	double array[2];
 	for(int i = 0; i < waitingFrames.size(); i++)
 	{
@@ -270,11 +288,12 @@ void submitFrames()
 		delete waitingFrames[i]->mat;
 		delete waitingFrames[i];
 	}
+	printf("end submit\n");
 }
 
 void breakUpImage(Net& net, Frame& frame)
 {
-	printf("break up image\n");
+	// printf("break up image\n");
 	vector< vector< vector<double> > > fullImage;
 	resize3DVector(fullImage, fullHeight, fullWidth, net.getNumClasses());
 	setAll3DVector(fullImage, 0);
@@ -285,34 +304,45 @@ void breakUpImage(Net& net, Frame& frame)
 
 	for(int j = 0; j <= numcolsmin; j += stride)
 		imageRowSize++;
-	vector<Mat> imageRow(imageRowSize);
+	// vector<Mat> imageRow(imageRowSize);
+	// printf("image row size %d\n", imageRowSize);
+	getchar();
+	vector<Mat> imageRow(0);
 	vector< vector<double> > confidences(0);
 
 	for(int i = 0; i <= numrowsmin; i += stride)
 	{
-		printf("start cv\n");
-		cout << *(frame.mat) << endl;
+		// printf("start cv %d\n",my_rank);
+		// cout << frame.mat << endl;
 		for(int j = 0; j <= numcolsmin; j += stride)
 		{
 			const Mat out = (*(frame.mat))(Range(i, i+inputHeight),Range(j, j+inputWidth));
-			imageRow[j] = out;
+			// imageRow[j] = out;
+			imageRow.push_back(out);
 		}
-		printf("end cv\n");
+		// printf("end cv %d\n",my_rank);
+
+		// printf("start CL %d\n",my_rank);
 		net.setData(imageRow);
 		net.run();
 		net.getConfidences(confidences);
+		// printf("end CL %d\n",my_rank);
 
 		int curImage = 0;
-		for(int j = 0; j <= numcolsmin; j++) //NOTE: each iteration of this loop is a different image
+		for(int j = 0; j <= numcolsmin; j+=stride) //NOTE: each iteration of this loop is a different image
 		{
 			for(int ii = i; ii < i+inputHeight && ii < fullHeight; ii++)
 				for(int jj = j; jj < j+inputWidth && jj < fullWidth; jj++)
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
+					{
 						fullImage[ii][jj][cat] += confidences[curImage][cat];
+						// printf("ii %d jj %d curImage %d cat %d\n", ii,jj,curImage,cat);
+						// fullImage.at(ii).at(jj).at(cat) += confidences.at(curImage).at(cat);
+					}
 			curImage++;
 		}
 	}
-	printf("gone through frame\n");
+	// printf("gone through frame\n");
 	//at this point all subimages in the frame have been gone through
 	squareElements(fullImage);
 
@@ -350,6 +380,8 @@ void breakUpImage(Net& net, Frame& frame)
 
 	delete frame.mat;
 	frame.mat = outputMat;
+
+	// printf("end break up image %d\n", my_rank);
 	//frame.red is set in above loops
 	//frame.frameNum shouldn't change
 }
@@ -365,6 +397,8 @@ void breakUpVideo(char* videoPath)
 
 	Net net(netName);
 	//net.setConstantMem(true);
+
+	// net.finalize is called below
 
 	inputWidth = net.getInputWidth();
 	inputHeight = net.getInputHeight();
@@ -397,7 +431,7 @@ void breakUpVideo(char* videoPath)
 	}// rank 0 ends here (master)
 	else 
 	{// all other ranks (slaves)
-		// net.setDevice(???)
+		net.setDevice(0);
 		// net.setConstantMem(true);
 		if(!net.finalize())
 			return;
@@ -467,4 +501,6 @@ int main(int argc, char** argv)
 	endtime = time(NULL);
 	if(my_rank == 0)
 		printf("Time for Video \"%s\": %s\n",argv[2], secondsToString(endtime - starttime).c_str());
+
+	MPI_Finalize();
 }
