@@ -1786,10 +1786,10 @@ void Net::preprocessTrainingDataIndividual()
                 //if(im==1)cout << __trainingData[i][im]->at(pix) << ", ";
             }
             count++;
-	        if(im % 1000 == 0)
-			{
-				printf("Mean: %.3lf  StdDev: %.3lf\n", mean, stddev);
-			}
+	  //       if(im % 1000 == 0)
+			// {
+			// 	printf("Mean: %.3lf  StdDev: %.3lf\n", mean, stddev);
+			// }
         }
     }
     __trainingDataPreprocessed = true;
@@ -1871,7 +1871,7 @@ void Net::preprocessTrainingDataCollective()
 			for(int pix=0; pix < __trainingData[i][im]->size(); pix++)
 				__trainingData[i][im]->at(pix) = (__trainingData[i][im]->at(pix) - __mean)/__stddev;
 
-	printf("Mean: %.3lf  StdDev: %.3lf\n", __mean, __stddev);
+	// printf("Mean: %.3lf  StdDev: %.3lf\n", __mean, __stddev);
 
 	__trainingDataPreprocessed = true;
 }
