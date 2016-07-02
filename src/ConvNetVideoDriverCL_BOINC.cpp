@@ -216,6 +216,7 @@ bool getNextFrame(VideoCapture& video, Mat& frame)
 	}
 	else // first frame only
 	{
+		//bool val = video.retrieve(frame);
 		bool val = video.read(frame);
 		//percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
 		__frameNum = curFrame;
@@ -259,8 +260,10 @@ void breakUpImage(Mat& image, Net& net)
 		//get all subimages from a row
 		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
 		{
-			const Mat out = image(Range(i,i+inputHeight),Range(j,j+inputWidth));
-			imageRow.push_back(out);
+			imageRow.push_back(image(Range(i,i+inputHeight),Range(j,j+inputWidth)));
+
+			// const Mat out = image(Range(i,i+inputHeight),Range(j,j+inputWidth));
+			// imageRow.push_back(out);
 			// imageRow.resize(imageRow.size()+1);
 			// convertColorMatToVector(out,imageRow.back());
 		}

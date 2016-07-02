@@ -39,24 +39,24 @@ __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons)
 __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride)
 {
-	int width = prevwidth;
-	int depth = prevdepth;
+	// int width = prevwidth;
+	// int depth = prevdepth;
 	
 	//getting the start index of a flattened 3d array for maxPool
 	int x = get_global_id(0);
 	int i = x;
-	int strxdep = stride * depth;
-	int i_div_dep = i / depth;
-	int numBlocksPerRow = (width - poolsize)/stride + 1; 
+	int strxdep = stride * prevdepth;
+	int i_div_dep = i / prevdepth;
+	int numBlocksPerRow = (prevwidth - poolsize)/stride + 1; 
 	//int ourHeight = i/numBlocksPerRow/depth;
 	//int ourRowStartIndex = ourHeight * width * stride * depth + i%depth;
 	//int ourRowShift = ((i/depth)%numBlocksPerRow) * stride * depth;
 	//int ourStartIndex = ourRowStartIndex + ourRowShift;
 	//i = ourRowStartIndex + ourRowShift;
 
-	i = (i_div_dep/numBlocksPerRow * width * strxdep + i%depth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
+	i = (i_div_dep/numBlocksPerRow * prevwidth * strxdep + i%prevdepth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
 	
-	int amountToNextLayer = (width - poolsize) * depth;
+	int amountToNextLayer = (prevwidth - poolsize) * prevdepth;
 	double maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
@@ -64,7 +64,7 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 		{
 			if(prevNeurons[i] > maxVal)
 				maxVal = prevNeurons[i];
-			i += depth;
+			i += prevdepth;
 		}
 		i += amountToNextLayer;
 	}
@@ -197,6 +197,39 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 
 		neurons[x] = prevNeurons[oldIndex];
 	}
+}
+
+/*************************************************
+*
+*	Helper kernels for softmax_allCL
+*
+*************************************************/
+
+//make this 2 kernels? one to get max, one to subtract? Prob not worth it without a lot of classes
+__kernel void maxSubtraction(__global double* source, int size)
+{
+	if(size <= 0)
+		return;
+	double max = source[0];
+	double cur;
+	for(int i = 1; i < size; i ++)
+	{
+		cur = source[i];
+		if(cur > max)
+			max = cur;
+	}
+	for(int i=0; i < size; i++)
+		source[i] -= max;
+}
+
+__kernel void vectorESum(__global double* source, int size, __global double* denom)
+{
+	if(size <= 0)
+		return;
+	double sum = 0;
+	for(int i=0; i < size; i++)
+		sum += exp(source[i]);
+	*denom = sum;
 }
 
 

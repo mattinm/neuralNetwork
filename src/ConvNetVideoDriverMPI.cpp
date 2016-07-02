@@ -13,6 +13,8 @@
 #define REQUEST_FRAME 0
 #define SEND_FRAME 1
 #define SUBMIT_FRAME 2
+#define BARRIER_TAG 3
+#define DEAD_TAG 4
 
 
 using namespace cv;
@@ -145,8 +147,10 @@ unsigned int getNextFrame0()
 	}
 	else // first frame only
 	{
+		// printf("First frame is %lf\n",__video.get(CV_CAP_PROP_POS_FRAMES));
 		//bool val = __video.read(*(frame.mat));
 		bool val = __video.grab();
+
 		//frame.percentDone = __video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0;
 		// frame.frameNum = curFrame;
 		outFrameNum = curFrame0;
@@ -180,13 +184,17 @@ bool getNextFrame(Frame& frame)
 	MPI_Recv(receiveArray, 2, MPI_UNSIGNED, 0, SEND_FRAME, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 	if(receiveArray[0] == 0)
 		return false;
+	// printf("Rank: %d curFrame %lu, next %u\n", my_rank,curFrame,receiveArray[1]);
 	for(int i = curFrame; i <= receiveArray[1]; i++)
 	{
+		//printf("grabbing %d\n", my_rank);
 		__video.grab();
+		curFrame++;
 	}
+	// printf("retrieving %d\n", my_rank);
 	__video.retrieve(*(frame.mat));
 	frame.frameNum = receiveArray[1];
-	curFrame = receiveArray[1];
+	// curFrame = receiveArray[1];
 	// printf("ending true next frame %d\n", my_rank);
 	return true;
 
@@ -215,7 +223,7 @@ void manageNextFrames()
 	//wait for the calls on each of these and send back stuff validity set to 0.
 	for(int i = 0; i < comm_size - 2; i++)
 	{
-		MPI_Recv(&otherRank, 1, MPI_INT, MPI_ANY_SOURCE, REQUEST_FRAME, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+		MPI_Recv(&otherRank, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE); // ANY_TAG so it picks up the dead tags
 		MPI_Send(&send, 2, MPI_UNSIGNED, otherRank, SEND_FRAME, MPI_COMM_WORLD);
 	}
 	//now everyone knows we're done and can start submitting.
@@ -229,13 +237,13 @@ void manageFrameSubmissions()
 	double array[2]; //frameNum, red
 	for(int i = 0; i < framesSent0; i++)
 	{
-		printf("%d\n", i);
 		MPI_Recv(&array, 2, MPI_DOUBLE, MPI_ANY_SOURCE, SUBMIT_FRAME, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		waitingFrames0[i] = new Frame();
 		waitingFrames0[i]->frameNum = array[0];
 		waitingFrames0[i]->red = array[1];
+		// printf("%lf\n", array[0]);
 	}
-	printf("start insert sort\n");
+	// printf("start insert sort\n");
 	// insertion sort because mostly sorted
 	for(int i = 1; i < waitingFrames0.size(); i++)
 	{
@@ -249,7 +257,7 @@ void manageFrameSubmissions()
 		}
 		waitingFrames0[j+1] = toInsert;
 	}
-	printf("end insert sort\n");
+	// printf("end insert sort\n");
 
 	//Submit stuff to csv
 	for(int i = 0; i < waitingFrames0.size(); i++)
@@ -278,7 +286,7 @@ void storeFrame(Frame& frame)
 
 void submitFrames()
 {
-	printf("start submit\n");
+	// printf("start submit\n");
 	double array[2];
 	for(int i = 0; i < waitingFrames.size(); i++)
 	{
@@ -288,7 +296,7 @@ void submitFrames()
 		delete waitingFrames[i]->mat;
 		delete waitingFrames[i];
 	}
-	printf("end submit\n");
+	// printf("end submit\n");
 }
 
 void breakUpImage(Net& net, Frame& frame)
@@ -312,6 +320,7 @@ void breakUpImage(Net& net, Frame& frame)
 
 	for(int i = 0; i <= numrowsmin; i += stride)
 	{
+		imageRow.resize(0);
 		// printf("start cv %d\n",my_rank);
 		// cout << frame.mat << endl;
 		for(int j = 0; j <= numcolsmin; j += stride)
@@ -348,7 +357,8 @@ void breakUpImage(Net& net, Frame& frame)
 
 	Mat *outputMat = new Mat(fullHeight, fullWidth, CV_8UC3);
 
-	frame.red = 0;
+	//frame.red = 0;
+	int redElement = 0;
 	double blue, red;
 	for(int i = 0; i < fullHeight; i++)
 	{
@@ -373,10 +383,14 @@ void breakUpImage(Net& net, Frame& frame)
 				outPix[2] = red;  //red pixel
 
 				if(red > 150)
-					frame.red += (int)red;
+					//frame.red += (int)red;
+					redElement += (int)red;
 			}
 		}
 	}
+	frame.red = redElement;
+	// printf("num %lu, red %lu\n", frame.frameNum, frame.red);
+
 
 	delete frame.mat;
 	frame.mat = outputMat;
@@ -415,6 +429,7 @@ void breakUpVideo(char* videoPath)
 
 	if(my_rank == 0)
 	{
+		char temp[] = {'1'};
 		char outNameCSV[255];
 		string origName(videoPath);
 		size_t dot = origName.rfind('.');
@@ -424,6 +439,12 @@ void breakUpVideo(char* videoPath)
 
 		//still need to do
 		manageNextFrames();
+		//open barrier for submissions
+		for(int i=1; i < comm_size; i++)
+		{
+			MPI_Send(temp, 1, MPI_CHAR, i, BARRIER_TAG, MPI_COMM_WORLD);
+		}
+
 		manageFrameSubmissions();
 
 		__outcsv.close();
@@ -431,12 +452,25 @@ void breakUpVideo(char* videoPath)
 	}// rank 0 ends here (master)
 	else 
 	{// all other ranks (slaves)
-		net.setDevice(0);
+		//net.setDevice(0);
+
 		// net.setConstantMem(true);
-		if(!net.finalize())
+		if(!net.setDevice((my_rank-1)%4) || !net.finalize())
+		{//can't return right away because it causes deadlock
+			unsigned int tempint[2];
+			int rankArray[] = {my_rank};
+			//send out a dead tag and receive a "frame" to prevent deadlock
+			MPI_Send(rankArray, 1, MPI_INT, 0, DEAD_TAG, MPI_COMM_WORLD);
+			MPI_Recv(tempint, 2, MPI_UNSIGNED, 0, SEND_FRAME, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+			//receive signal it is ok to pass through barrier and submitf frames.
+			//b/c this a dead process, return afterwords
+			MPI_Recv(tempint, 1, MPI_CHAR, 0, BARRIER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			return;
+		}
 
 		Frame frame;
+		char temp[1];
 		//frame.mat = new Mat(fullHeight, fullWidth, CV_8UC3);
 
 		bool valid;
@@ -448,6 +482,7 @@ void breakUpVideo(char* videoPath)
 			breakUpImage(net, frame); // puts pointer to output frame in frame.mat
 			storeFrame(frame);
 		}
+		MPI_Recv(temp, 1, MPI_CHAR, 0, BARRIER_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		submitFrames();
 	}
 }
@@ -496,7 +531,6 @@ int main(int argc, char** argv)
 
 
 	starttime = time(NULL);
-	curFrame = 0;
 	breakUpVideo(argv[2]);
 	endtime = time(NULL);
 	if(my_rank == 0)

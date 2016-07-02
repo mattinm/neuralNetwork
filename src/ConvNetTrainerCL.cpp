@@ -269,7 +269,7 @@ void convertBinaryToVector(ifstream& in, vector<imVector>& dest, vector<double>&
 
 int main(int argc, char** argv)
 {
-	if(argc < 3)
+	if(argc < 2)
 	{
 		cout << "Usage (Required to come first):\n   ./ConvNetTrainerCL binaryTrainingImagesFile";
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
@@ -420,15 +420,15 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(10); //1x1x10
 	// net.addFullyConnectedLayer(4);  //1x1x4
 
-	//shallow 64x64x3 net
-	 // net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
-	 // net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
-	 // net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
-	 // net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
-	 // net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
-	 // net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
-	 // net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
-	 // net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
+	shallow 64x64x3 net
+	 net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
+	 net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
+	 net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
+	 net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
+	 net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
+	 net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
+	 net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
+	 net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
 
 
 	// failed fully connected net
@@ -456,18 +456,18 @@ int main(int argc, char** argv)
 	
 	
 	//small net
-	net.setActivType(LEAKY_RELU);
-	net.addConvLayer(6,1,5,0); //28x28x6
-	net.addMaxPoolLayer(2,2);  //14x14x6
+	// net.setActivType(LEAKY_RELU);
+	// net.addConvLayer(6,1,5,0); //28x28x6
+	// net.addMaxPoolLayer(2,2);  //14x14x6
 
-	//net.addConvLayer(7,1,3,1);
+	// //net.addConvLayer(7,1,3,1);
 
-	net.addConvLayer(10,1,3,0);	//12x12x10
-	net.addMaxPoolLayer(3,3);   //4x4x10
+	// net.addConvLayer(10,1,3,0);	//12x12x10
+	// net.addMaxPoolLayer(3,3);   //4x4x10
 
-	//net.addConvLayer(5,1,3,1);	//4x4x5
+	// //net.addConvLayer(5,1,3,1);	//4x4x5
 
-	net.addConvLayer(4,1,4,0);  //1x1x2
+	// net.addConvLayer(4,1,4,0);  //1x1x2
     
 
 	//set hyperparameters
@@ -576,7 +576,11 @@ int main(int argc, char** argv)
 	starttime = time(NULL);
 	net.train(epochs);
 	endtime = time(NULL);
-	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". - " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
+	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ".";
+	if(epochs != -1)
+		cout << " - " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
+	else
+		cout << endl;
 
 	if(saveWeights)
 	{
