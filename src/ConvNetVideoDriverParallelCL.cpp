@@ -34,9 +34,10 @@ typedef vector<vector<vector<double> > > imVector;
 
 struct Frame
 {
-	int frameNum = -1;
+	long frameNum = -1;
 	Mat* mat;
-	int red = 0;
+	size_t red = 0;
+	size_t flyingElement;
 	double percentDone;
 };
 
@@ -164,20 +165,20 @@ void submitFrame(Frame& frame)
 	{
 		//printf("sub if\n");
 		__outVideo << *(frame.mat);
-		__outcsv << frame.red << "," << (frame.frameNum/10.0) << "\n";
+		// __outcsv << frame.red << "," << (frame.frameNum/10.0) << "\n";
+		__outcsv << frame.frameNum/10.0 << ',' << frame.red << ',' << frame.flyingElement << '\n';
 		curSubmittedFrame+=jump;
 		delete frame.mat;
-		printf("Frame %d completed. %.2lf%% complete.\n",frame.frameNum,frame.percentDone);
+		printf("Frame %ld completed. %.2lf%% complete.\n",frame.frameNum,frame.percentDone);
 		int i=0; 
 		//printf("starting while\n");
 		while(i < waitingFrames.size() && waitingFrames[i]->frameNum == curSubmittedFrame)
 		{
 			//printf("in while\n");
 			__outVideo << (*(waitingFrames[i]->mat));
-			__outcsv << waitingFrames[i]->red << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
-			//printf("pushed\n");
-			//printf("++\n");
-			printf("Frame %d completed. %.2lf%% complete.\n",waitingFrames[i]->frameNum,waitingFrames[i]->percentDone);
+			// __outcsv << waitingFrames[i]->red << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
+			__outcsv << (waitingFrames[i]->frameNum/10.0) << ',' << waitingFrames[i]->red << ',' << waitingFrames[i]->flyingElement << '\n';
+			printf("Frame %ld completed. %.2lf%% complete.\n",waitingFrames[i]->frameNum,waitingFrames[i]->percentDone);
 			delete waitingFrames[i]->mat;
 			delete waitingFrames[i];
 
@@ -248,43 +249,6 @@ int getNumDevices()
 	return (int)deviceIdCount;
 }
 
-// void _t_convertColorMatToVector(const Mat& m , vector<vector<vector<double> > > &dest, int row)
-// {
-// 	for(int j=0; j< m.cols; j++)
-// 	{
-// 		const Vec3b& curPixel = m.at<Vec3b>(row,j);
-// 		dest[row][j][0] = curPixel[0];
-// 		dest[row][j][1] = curPixel[1];
-// 		dest[row][j][2] = curPixel[2];
-// 	}
-// }
-
-// void convertColorMatToVector(const Mat& m, vector<vector<vector<double> > > &dest)
-// {
-// 	if(m.type() != CV_8UC3)
-// 	{
-// 		throw "Incorrect Mat type. Must be CV_8UC3.";
-// 	}
-
-// 	int width2 = m.rows;
-// 	int height2 = m.cols;
-// 	int depth2 = 3;
-// 	//resize dest vector
-// 	resize3DVector(dest,width2,height2,depth2);
-// 	thread *t = new thread[width2];
-	
-// 	for(int i=0; i< width2; i++)
-// 	{
-// 		t[i] = thread(_t_convertColorMatToVector,ref(m),ref(dest),i);
-// 	}
-
-// 	for(int i=0; i< width2; i++)
-// 	{
-// 		t[i].join();
-// 	}
-
-// 	//delete t;
-// }
 
 /*
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
@@ -358,7 +322,8 @@ void breakUpImage(Frame& frame, Net& net, int device)
 	Mat* outputMat = new Mat(numrows, numcols, CV_8UC3);
 
 	//calculate what output image should look like and csv file should be
-	int redElement = 0;
+	size_t redElement = 0;
+	size_t flyingElement = 0;
 	for(int i=0; i < numrows; i++)
 	{
 		for(int j=0; j < numcols; j++)
@@ -374,17 +339,21 @@ void breakUpImage(Frame& frame, Net& net, int device)
 			Vec3b& outPix = outputMat->at<Vec3b>(i,j);
 			if(allElementsEquals(fullImages[device][i][j]))
 			{
-				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
+				outPix[0] = 0; outPix[1] = 0; outPix[2] = 0; // black
 			}
 			else
 			{
-				double blue = 255*fullImages[device][i][j][0];
-				outPix[0] = blue; // blue
-				outPix[1] = 0;	  //green
-				double red = 255*fullImages[device][i][j][1];
-				outPix[2] = red;  // red
-				if(red > 150) //red > 50 || red > blue
-					redElement += (int)(red);
+				double noBird = 255*fullImages[device][i][j][0];
+				double onGround = 255*fullImages[device][i][j][1];
+				double flying = 255 * fullImages[device][i][j][2];
+
+				outPix[0] = noBird; // blue
+				outPix[1] = flying;	  //green
+				outPix[2] = onGround;  // red
+				if(onGround > 150) //red > 50 || red > blue
+					redElement += (size_t)onGround;
+				if(flying > 150)
+					flyingElement += (size_t)flying;
 
 			}
 		}
@@ -393,8 +362,9 @@ void breakUpImage(Frame& frame, Net& net, int device)
 	delete frame.mat;
 	frame.mat = outputMat;
 
-	//put in red element
+	//put in sums
 	frame.red = redElement;
+	frame.flyingElement = flyingElement;
 }
 
 void __parallelVideoProcessor(int device)
@@ -454,9 +424,15 @@ void breakUpVideo(const char* videoName)
 
 	__outcsv.open(outNameCSV);
 
+	int fps = 10;
+	if(jump <= 10)
+		fps /= jump;
+	else
+		fps = 1;
+
 	__outVideo.open(outName, 
 	 CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
-	 10,//video.get(CV_CAP_PROP_FPS), 
+	 fps,//video.get(CV_CAP_PROP_FPS), 
 	 Size(__video.get(CV_CAP_PROP_FRAME_WIDTH), __video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
 	__rows = __video.get(CV_CAP_PROP_FRAME_HEIGHT);
