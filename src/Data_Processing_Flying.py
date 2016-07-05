@@ -24,28 +24,28 @@ count = 0
 with open(sys.argv[1], 'rU') as f:
 	reader = csv.reader(f)
 	for row in reader:
-		if count % 10 == 0:
+		# if count % 10 == 0:
 			#print row[0]
 			time.append(float(row[0]))
 			red.append(float(row[1]))
 			flying.append(float(row[2]))
-		count += 1
+		# count += 1
 
 
 mean = np.mean(red)
 
-changeNeeded = .5
+changeNeeded = .3
 
 len_minus_10 = len(red)-10;
 changes = [] # holds the indexes for all the changes
 for i in range(0, len(red)):
 	#if(red[i] > mean):
 		if(i > 10): #avg the 10 prev
-			submean = np.mean(red[i-10:i])
+			submean = np.mean(red[i-10:i-1])
 			if(abs(red[i]-submean) > submean * changeNeeded): # if the point is more than a 40% change in the submean
 				changes.append(i)
 		if(i < len_minus_10):
-			submean = np.mean(red[i:i+10])
+			submean = np.mean(red[i+1:i+10])
 			if(abs(red[i]-submean) > submean * changeNeeded): # if the point is more than a 40% change in the submean
 				changes.append(i)
 
@@ -55,8 +55,9 @@ plateau = []
 for q in range(0, len(red)):
 	plateau.append(0)
 
-changes.append(len(red)); #this is so the for loop gets the end part
+changes.append(len(red)) #this is so the for loop gets the end part
 changes = np.unique(changes) #remove duplicates and order
+print "Changes: ",
 print changes
 flats = []
 flatClassification = []
@@ -85,9 +86,12 @@ for i in range(0, len(flats)):
 	else:
 		flatClassification[i] = ON_GROUND
 
+print "flatClassifications",
 print flatClassification
+print "flats",
 print flats
 plt.plot(time, red)
+plt.plot(time,flying)
 plt.xlabel("Time (seconds)")
 plt.plot(time, plateau, linewidth=2.0)
 for i in range(0,len(flats)):

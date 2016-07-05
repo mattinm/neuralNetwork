@@ -204,6 +204,7 @@ void submitFrame(Frame& frame)
 		newframe->mat = frame.mat; 
 		newframe->frameNum = frame.frameNum;
 		newframe->red = frame.red;
+		newframe->flyingElement = frame.flyingElement;
 		newframe->percentDone = frame.percentDone;
 		waitingFrames.resize(waitingFrames.size() + 1);
 		waitingFrames.back() = nullptr;
@@ -277,12 +278,12 @@ void breakUpImage(Frame& frame, Net& net, int device)
 	int numcolsm32 = numcols-inputWidth;
 
 	//loop where the cnn is run over all subimages
-	for(int i=0; i <= numrowsm32; i+=stride)
+	for(int i=0; i <= numrowsm32; i+=stride) 
 	{
 		imageRow.resize(0);
 
 		//get all subimages from a row
-		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage
+		for(int j=6; j<= numcolsm32; j+=stride) //NOTE: each j is a different subimage //j starts at 6 b/c black line on left
 		{
 			imageRow.push_back((*(frame.mat))(Range(i,i+inputHeight),Range(j,j+inputWidth)));
 
@@ -300,12 +301,14 @@ void breakUpImage(Frame& frame, Net& net, int device)
 		net.getConfidences(confidences); //gets the confidence for each category for each image
 
 		int curImage = 0;
-		for(int j=0; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
+		for(int j=6; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
 		{
 			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
 			{
 				for(int jj=j; jj < j+inputWidth && jj < numcols; jj++)
 				{
+					if(ii > 417 && jj > 525)
+						break;
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{
 						//printf("%d %d %d %d\n",i,j,jj,cat);
@@ -339,12 +342,12 @@ void breakUpImage(Frame& frame, Net& net, int device)
 			Vec3b& outPix = outputMat->at<Vec3b>(i,j);
 			if(allElementsEquals(fullImages[device][i][j]))
 			{
-				outPix[0] = 0; outPix[1] = 0; outPix[2] = 0; // black
+				outPix[0] = 255; outPix[1] = 255; outPix[2] = 255; // white
 			}
 			else
 			{
-				double noBird = 255*fullImages[device][i][j][0];
-				double onGround = 255*fullImages[device][i][j][1];
+				double noBird = 255 * fullImages[device][i][j][0];
+				double onGround = 255 * fullImages[device][i][j][1];
 				double flying = 255 * fullImages[device][i][j][2];
 
 				outPix[0] = noBird; // blue
@@ -365,6 +368,7 @@ void breakUpImage(Frame& frame, Net& net, int device)
 	//put in sums
 	frame.red = redElement;
 	frame.flyingElement = flyingElement;
+	// printf("flyingElement: %lu\n", flyingElement);
 }
 
 void __parallelVideoProcessor(int device)

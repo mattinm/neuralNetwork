@@ -282,6 +282,7 @@ int main(int argc, char** argv)
 		cout << "                                 the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
 		cout << "   -preprocessIndividual      Preprocesses training data and test data individually by image. Not recommended.\n";
 		cout << "   -preprocessCollective      Preprocesses training data collectively and preprocesses test data based on the training data. Default.\n";
+		cout << "   miniBatch=<int>            Sets the miniBatch size for training. Defaults to 1 (Stochastic gradient descent).";
 		cout << "   learningRate=<rate>        Sets the learningRate for the CNN.\n";
 		cout << "   RELU_CAP=<cap>             Sets max value that can pass through the RELU\n";
 		cout << "   LEAKY_RELU_CONST=<const>   Sets the constant for LEAKY_RELU\n";
@@ -309,6 +310,8 @@ int main(int argc, char** argv)
 	double maxNorm = -1;
 	bool preprocessIndividual = false;
 	bool preprocessCollective = false;
+
+	int miniBatchSize = 1;
 
 	if(argc > 2)
 	{
@@ -340,6 +343,8 @@ int main(int argc, char** argv)
 				preprocessCollective = true;
 			else if(arg.find("-preprocessIndividual") != string::npos)
 				preprocessIndividual = true;
+			else if(arg.find("miniBatch=") != string::npos)
+				miniBatchSize = stoi(arg.substr(arg.find("=")+1));
 			else if(arg.find("learningRate=") != string::npos)
 				learningRate = stod(arg.substr(arg.find("=")+1));
 			else if(arg.find("RELU_CAP=") != string::npos)
@@ -369,6 +374,12 @@ int main(int argc, char** argv)
 	if(preprocessIndividual && preprocessCollective)
 	{
 		printf("You can only have one preprocessing method.\n");
+		return 0;
+	}
+
+	if(miniBatchSize <= 0)
+	{
+		printf("MiniBatch size must be positive.\n");
 		return 0;
 	}
 
@@ -421,14 +432,14 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(4);  //1x1x4
 
 	/* shallow 64x64x3 net */
-	net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
-	net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
-	net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
-	net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
-	net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
-	net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
-	net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
-	net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
+	// net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
+	// net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
+	// net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
+	// net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
+	// net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
+	// net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
+	// net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
+	// net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
 
 
 	// failed fully connected net
@@ -439,19 +450,17 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(2);	//1x1x2
 	
 	///large net
-	// net.setActivType(LEAKY_RELU);
-	// net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
-	// net.addConvLayer(10,1,3,1);		//32x32x10
-	// net.addMaxPoolLayer(2,2);		//16x16x10
-	// net.addConvLayer(20,1,3,1);		//16x16x20
-	// net.addMaxPoolLayer(2,2);		//8x8x20
-	// net.addConvLayer(40,1,3,1);		//8x8x40
-	// net.addMaxPoolLayer(2,2);		//4x4x40
-	// net.addConvLayer(30,1,3,1);		//4x4x30
-	// net.addMaxPoolLayer(2,2);		//2x2x30
-	// net.addConvLayer(20,1,3,1);		//2x2x20
-	// net.addMaxPoolLayer(2,2);		//1x1x20
-	// net.addConvLayer(2,1,3,1);		//1x1x4
+	net.setActivType(LEAKY_RELU);
+	net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
+	net.addConvLayer(20,1,3,1);		//32x32x10
+	net.addMaxPoolLayer(2,2);		//16x16x20
+	net.addConvLayer(30,1,3,1);		//16x16x30
+	net.addConvLayer(40,1,3,1);		//16x16x40
+	net.addMaxPoolLayer(2,2);		//8x8x40
+	net.addConvLayer(50,1,3,1);		//8x8x50
+	net.addMaxPoolLayer(2,2);		//4x4x50
+	net.addFullyConnectedLayer(128);//1x1x128
+	net.addFullyConnectedLayer(4);  //1x1x4
 	//*/
 	
 	
@@ -574,7 +583,10 @@ int main(int argc, char** argv)
 
 	
 	starttime = time(NULL);
-	net.train(epochs);
+	if(miniBatchSize == 1)
+		net.train(epochs);
+	else
+		net.miniBatchTrain(miniBatchSize, epochs);
 	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ".";
 	if(epochs != -1)

@@ -255,6 +255,7 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 	
 }
 
+
 __kernel void convolve_back_weights(__global double* weights, __global double* prevNeurons, __global double* dneurons,
 	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize)
 {
@@ -496,6 +497,18 @@ __kernel void vectorESum(__global double* source, int size, __global double* den
 	for(int i=0; i < size; i++)
 		sum += exp(source[i]);
 	*denom = sum;
+}
+
+__kernel void plusEquals(__global double* dest, __global double* src)
+{
+	int x = get_global_id(0);
+	dest[x] += src[x];
+}
+
+__kernel void divideEquals(__global double* dest, int num)
+{
+	int x = get_global_id(0);
+	dest[x] /= num;
 }
 
 /*************************************************

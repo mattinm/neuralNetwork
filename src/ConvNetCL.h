@@ -136,7 +136,7 @@ private: 	// members
 	cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel, reluBackKernel,
 		zeroPadBackKernel, softmaxBackKernel, maxPoolBackKernel, leakyReluBackKernel, convBackNeuronsKernel, 
 		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel,
-		maxSubtractionKernel, vectorESumKernel;
+		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel;
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
 	std::vector<cl_mem> clBiases;
@@ -207,6 +207,7 @@ public: 	// functions
 
 	//training
 	void train(int epochs=-1);
+	void miniBatchTrain(int batchSize, int epochs=-1);
 	void setMomentum(bool useMomentum);
 
 	//OpenCL functions
@@ -248,6 +249,11 @@ private:	// functions
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
 	std::string secondsToString(time_t seconds);
+	void trainSetup(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
+	void feedForward(std::vector<cl_mem>& layerNeeds);
+	void softmaxForward();
+	void softmaxBackprop(int curTrueVal);
+	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 
 	//load
 	bool load(const char* filename);
