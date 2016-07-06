@@ -1201,11 +1201,12 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 		return;
 	}
 
+	printf("MINIBATCH GRADIENT DESCENT\n");
 	vector<cl_mem> layerNeeds(0);
 	vector<cl_mem> velocities(0);
 	trainSetup(layerNeeds, velocities);
 
-	vector<vector<double> > confidences;
+	// vector<vector<double> > confidences;
 	double prevError = DBL_MAX;
 	double curError;
 
@@ -1230,10 +1231,9 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	time_t starttime, endtime;
 
 	cl_int error;
-	cl_mem batchHolder;
 	vector<double> batchZeros(__neuronSizes.back(), 0);
 	size_t plusGlobalWorkSize[] = {(size_t)__neuronSizes.back(), 0, 0};
-	clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __neuronSizes.back(), nullptr, &error);
+	cl_mem batchHolder = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __neuronSizes.back(), nullptr, &error);
 	CheckError(error);
 	CheckError(clSetKernelArg(plusEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
 	CheckError(clSetKernelArg(plusEqualsKernel, 1, sizeof(cl_mem), neurons));
@@ -1244,6 +1244,7 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	// start of training
 	// start of epochs
 	////////////////////////////
+	setbuf(stdout, NULL);
 	for(int e = 0; e < epochs; e++)
 	{
 		starttime = time(NULL);
@@ -1268,7 +1269,7 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 		
 		int numCorrect = 0;
 
-		for(int r = 0; r < trainingData.size(); r += batchSize) // the ones that don't nicely fit in a batch will be discarded
+		for(int r = 0; r < trainingData.size() - batchSize; r += batchSize) // the ones that don't nicely fit in a batch will be discarded
 		{
 			//reset the accumulated derivatives to 0
 			CheckError(clEnqueueWriteBuffer(queue, batchHolder, CL_TRUE, 0, 
@@ -1300,6 +1301,7 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 				CheckError(clEnqueueNDRangeKernel(queue, plusEqualsKernel, 1,
 					nullptr, plusGlobalWorkSize, nullptr, 0, nullptr, nullptr));
 			} // end of batch
+			// cout << "end of batch" << endl;
 
 			clFinish(queue);
 			//get the average derivative and put it into neurons
@@ -1391,6 +1393,8 @@ void Net::train(int epochs)
 	// 		preprocessTestDataCollective();
 	// }
 
+	printf("STOCHASTIC GRADIENT DESCENT\n");
+
 	//set up all the layerNeeds for training.
  	vector<cl_mem> layerNeeds(0);
  	// setupLayerNeeds(layerNeeds);
@@ -1403,7 +1407,7 @@ void Net::train(int epochs)
 	trainSetup(layerNeeds, velocities);
 
  	//set up stuff so we can exit based on error on test data
- 	vector<vector<double> > confidences;
+ 	// vector<vector<double> > confidences;
  	double prevError = DBL_MAX;
  	double curError;
  	// if(__testData.size() != 0)

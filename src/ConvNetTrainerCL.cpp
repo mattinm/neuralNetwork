@@ -450,17 +450,17 @@ int main(int argc, char** argv)
 	// net.addFullyConnectedLayer(2);	//1x1x2
 	
 	///large net
-	net.setActivType(LEAKY_RELU);
-	net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
-	net.addConvLayer(20,1,3,1);		//32x32x10
-	net.addMaxPoolLayer(2,2);		//16x16x20
-	net.addConvLayer(30,1,3,1);		//16x16x30
-	net.addConvLayer(40,1,3,1);		//16x16x40
-	net.addMaxPoolLayer(2,2);		//8x8x40
-	net.addConvLayer(50,1,3,1);		//8x8x50
-	net.addMaxPoolLayer(2,2);		//4x4x50
-	net.addFullyConnectedLayer(128);//1x1x128
-	net.addFullyConnectedLayer(4);  //1x1x4
+	// net.setActivType(LEAKY_RELU);
+	// net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
+	// net.addConvLayer(20,1,3,1);		//32x32x10
+	// net.addMaxPoolLayer(2,2);		//16x16x20
+	// net.addConvLayer(30,1,3,1);		//16x16x30
+	// net.addConvLayer(40,1,3,1);		//16x16x40
+	// net.addMaxPoolLayer(2,2);		//8x8x40
+	// net.addConvLayer(50,1,3,1);		//8x8x50
+	// net.addMaxPoolLayer(2,2);		//4x4x50
+	// net.addFullyConnectedLayer(128);//1x1x128
+	// net.addFullyConnectedLayer(4);  //1x1x4
 	//*/
 	
 	
@@ -468,15 +468,20 @@ int main(int argc, char** argv)
 	// net.setActivType(LEAKY_RELU);
 	// net.addConvLayer(6,1,5,0); //28x28x6
 	// net.addMaxPoolLayer(2,2);  //14x14x6
-
 	// //net.addConvLayer(7,1,3,1);
-
 	// net.addConvLayer(10,1,3,0);	//12x12x10
 	// net.addMaxPoolLayer(3,3);   //4x4x10
-
 	// //net.addConvLayer(5,1,3,1);	//4x4x5
-
 	// net.addConvLayer(4,1,4,0);  //1x1x2
+
+	//big small net
+	net.setActivType(LEAKY_RELU);
+	net.addConvLayer(20,1,5,0); //28x28x6
+	net.addMaxPoolLayer(2,2);  //14x14x6
+	net.addConvLayer(20,1,3,0);	//12x12x10
+	net.addMaxPoolLayer(3,3);   //4x4x10
+	net.addFullyConnectedLayer(1024);
+	net.addFullyConnectedLayer(3);
     
 
 	//set hyperparameters
