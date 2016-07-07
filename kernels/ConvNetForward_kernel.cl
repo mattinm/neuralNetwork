@@ -7,6 +7,7 @@
 __kernel void relu(__global double* prevNeurons, __global double* neurons)
 {
 	const int i = get_global_id(0);
+	// neurons[i] = clamp(prevNeurons[i], -RELU_CAP, RELU_CAP);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
 		neurons[i] = prevNeurons[i];
 	else if(prevNeurons < 0)
@@ -25,6 +26,8 @@ __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons)
 		newVal = prevNeurons[i];
 	else 
 		newVal = prevNeurons[i] * LEAKY_RELU_CONST;
+
+	// neurons[i] = clamp(newVal, -RELU_CAP, RELU_CAP);
 
 	if(-RELU_CAP <= newVal && newVal <= RELU_CAP)
 		neurons[i] = newVal;
@@ -107,6 +110,7 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 		{
 			//result += weights[j++] * prevNeurons[h++];
 			result += *(curWeight++) * prevNeurons[h++];
+			// result = mad(*(curWeight++),prevNeurons[h++],result);
 		}
 		h += amountToNextLayer;
 	}
@@ -117,6 +121,9 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 
 __kernel void convolveConstant(__global double* prevNeurons, __global double* neurons,
 	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
+// __kernel void convolveConstant(__global double* prevNeurons, __global double* neurons,
+// 	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int strxdep, 
+// 	int prevwidth, int amountToNextLayer, int filterLayerSize, int numBlocksPerRow)
 {
 	//int myHeight = myBlock/numBlocksPerRow;
 	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
@@ -128,7 +135,6 @@ __kernel void convolveConstant(__global double* prevNeurons, __global double* ne
 	int i = get_global_id(0);
 	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	
-	//int myFilter = i/(numBlocksPerRow * numBlocksPerRow);
 	int myFilter = i%numFilters;
 	int filterLayerSize = filterSize * prevdepth;
 	int j = myFilter * filterSize * filterLayerSize; // myFilterStartIndex
@@ -151,6 +157,7 @@ __kernel void convolveConstant(__global double* prevNeurons, __global double* ne
 		{
 			//result += weights[j++] * prevNeurons[h++];
 			result += *(curWeight++) * prevNeurons[h++];
+			// result = mad(*(curWeight++),prevNeurons[h++],result);
 		}
 		h += amountToNextLayer;
 	}

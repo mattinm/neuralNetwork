@@ -9,15 +9,12 @@
 //		maxPool write the index of the maxval for the new neuron into a parallel array for the new neurons.
 //			in backprop search that array for your index and if they match, += the dneurons value into it
 
-// DO NOT CHANGE THESE DEFINES. IF YOU MUST, MAKE THEM THE SAME LENGTH IN CHARACTERS
 
-#define RELU_CAP 5000.0 	 //max value that can pass through relu or leakyRelu
+#define RELU_CAP 5.0 		 //max value that can pass through relu or leakyRelu
 #define LEAKY_RELU_CONST .01 //multiplication constant for negative values in leakyRelu
-#define l2Lambda 0.05		 //multiplication constant for L2 Regularization
-#define MOMENT_CONST .9 	 //multiplication constant for momentum
-#define MAX_NORM_CAP 6.0 	 //max absolute value a weight can have
-
-// END DEFINES
+#define l2Lambda 0.1 //.05		 //multiplication constant for L2 Regularization
+#define MOMENT_CONST .99 	 //multiplication constant for momentum
+#define MAX_NORM_CAP 3.5 	 //max absolute value a weight can have
 
 /*************************************************
 *
@@ -55,6 +52,7 @@ __kernel void relu_back(__global double* prevdNeurons, __global double* dneurons
 __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons, __global double* dneuronInfo)
 {
 	const int i = get_global_id(0);
+	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
 	double newVal;
 	double dneur = LEAKY_RELU_CONST;
 	if(prevNeurons[i] >= 0) 
@@ -94,16 +92,24 @@ __kernel void leakyRelu_back(__global double* prevdNeurons, __global double* dne
 __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride, __global int* maxIndexes)
 {
+	int width = prevwidth;
+	int depth = prevdepth;
+	
 	//getting the start index of a flattened 3d array for maxPool
 	int x = get_global_id(0);
 	int i = x;
-	int strxdep = stride * prevdepth;
-	int i_div_dep = i / prevdepth;
-	int numBlocksPerRow = (prevwidth - poolsize)/stride + 1; 
+	int strxdep = stride * depth;
+	int i_div_dep = i / depth;
+	int numBlocksPerRow = (width - poolsize)/stride + 1; 
+	//int ourHeight = i/numBlocksPerRow/depth;
+	//int ourRowStartIndex = ourHeight * width * stride * depth + i%depth;
+	//int ourRowShift = ((i/depth)%numBlocksPerRow) * stride * depth;
+	//int ourStartIndex = ourRowStartIndex + ourRowShift;
+	//i = ourRowStartIndex + ourRowShift;
 
-	i = (i_div_dep/numBlocksPerRow * prevwidth * strxdep + i%prevdepth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
+	i = (i_div_dep/numBlocksPerRow * width * strxdep + i%depth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
 	
-	int amountToNextLayer = (prevwidth - poolsize) * prevdepth;
+	int amountToNextLayer = (width - poolsize) * depth;
 	int maxIndex = i;
 	double maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
@@ -115,10 +121,11 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 				maxVal = prevNeurons[i];
 				maxIndex = i;
 			}
-			i += prevdepth;
+			i += depth;
 		}
 		i += amountToNextLayer;
 	}
+	//printf("forward maxIndex %d",);
 	neurons[x] = maxVal;
 	maxIndexes[x] = maxIndex;
 }
@@ -131,9 +138,12 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 	for(int j=0; j< numIndexes; j++)
 	{
 		if(maxIndexes[j] == i)
+		//if(*(maxIndexes) == i)
 		{
+			//printf("maxIndex %d, j %d, dneurons[j] %f\n",*maxIndexes, j, dneurons[j]);
 			result += dneurons[j];
 		}
+		//maxIndexes++;
 	}
 
 	prevdNeurons[i] = result;
@@ -148,23 +158,35 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 //can keep the padded vals by using the calling code
 __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride,
-	 int prevwidth, int prevdepth)
+	 int prevwidth, int prevdepth, __global char* dropout, double p)
 {
-	//calculated const variables. same for all threads
-	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
-	const int filterLayerSize = filterSize * prevdepth;
-	const int strxdep = stride * prevdepth;
-	const int amountToNextLayer = (prevwidth - filterSize) * prevdepth;
-
+	//int myHeight = myBlock/numBlocksPerRow;
+	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
+	//int myRowShift = (myBlock%numBlocksPerRow) * strxdep;
 
 	int i = get_global_id(0);
+	/*
+	if(dropout[i] == 0)
+	{
+		neurons[i] = 0;
+		return;
+	}*/
+
+	int width = prevwidth;
+	int depth = prevdepth;
+
+	int numBlocksPerRow = (width - filterSize)/stride + 1;
 	
 	int myFilter = i%numFilters;
+	int filterLayerSize = filterSize * depth;
 	int j = myFilter * filterSize * filterLayerSize; // myFilterStartIndex
 	int myBlock = (i/numFilters) % (numBlocksPerRow*numBlocksPerRow);//numBlocksCanFitInSource;
 	
-	int h = ((myBlock/numBlocksPerRow) * prevwidth * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);//myStartIndex
-	// int h = myStartIndex;
+	int strxdep = stride * depth;
+	int myStartIndex = ((myBlock/numBlocksPerRow) * width * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
+	int h = myStartIndex;
+
+	int amountToNextLayer = (width - filterSize) * depth;
 
 	double result = 0;
 	__global double* curWeight = &(weights[j]);
@@ -177,20 +199,26 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 		}
 		h += amountToNextLayer;
 	}
-	neurons[i] = result + biases[myFilter];
+	//printf("numFil: %d id: %d myBlock: %d\n",numFilters,get_global_id(0), myBlock);
+	//printf("In convolve. Global id = %d\n\tmyFilter = %d\n\tresult = %f\n",i,myFilter,result);
+	neurons[i] = (result + biases[myFilter]) / p;
 }
 
 __kernel void convolve_back_neurons(__global double* prevdNeurons, __global double* dneurons,
-	__global double* weights, int numFilters, int filterSize, int stride, int prevwidth, int depth)
+	__global double* weights, int numFilters, int filterSize, int stride, int prevwidth, int depth, 
+	__global char* dropout, double p)
 {
-	
-	//calculated const variables and calculations used a lot
+	//calculated const variables
 	const int x = get_global_id(0);
+	/*
+	if(dropout[x] == 0) // check to see if this neuron drops out
+	{
+		prevdNeurons[x] = 0;
+		return;
+	}*/
 	const int numWeightsPerFilter = filterSize * filterSize * depth;
 	const int filterLayerSize = filterSize * depth;
 	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
-	const int widthxdepth = prevwidth * depth;
-	const int toNextRow = filterLayerSize + widthxdepth * (stride-1);
 
 	//variable declarations
 	int start = 0; 
@@ -199,6 +227,11 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 	double result = 0;
 	int endlayer;
 	int placeInFilter;
+
+	//calculations used a lot
+	int filxdep = filterSize * depth;
+	int widthxdepth = prevwidth * depth;
+	int toNextRow = filxdep + widthxdepth * (stride-1);
 
 	for(int a=0; a < numBlocksPerRow; a++) //change to numBlocksPerCol to all for non-square images
 	{
@@ -212,18 +245,21 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 			}
 			for(int miniHeight = 0; miniHeight < filterSize; miniHeight++)
 			{
-				endlayer = start + filterLayerSize;
+				endlayer = start + filxdep;
 				if(start <= x && x < endlayer)
 				{
-					placeInFilter = (x - start) + miniHeight*filterLayerSize;
+					placeInFilter = (x - start) + miniHeight*filxdep;
 					for(int f=0; f < numFilters; f++)
 					{
-						result += weights[placeInFilter] * dneurons[d+f];//[d++];
+						result += weights[placeInFilter] * dneurons[d+f] * dropout[d+f] / p; //[d++];
+						//printf("x %d weights %f dneurons %f result %f\n",x,weights[placeInFilter],dneurons[d+f],result);
 						placeInFilter += numWeightsPerFilter; // gets us to same element in next filter
 					}
 					//if we found it in this minilayer, it wont be in any of the others
 					break;
 				}
+				//else
+				//d += numFilters; // only need to do if we don't go through them all in adding to result
 				start += widthxdepth;
 			}
 			d += numFilters;
@@ -231,29 +267,34 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 		}
 		start = origStart + toNextRow;
 	}
+	//printf("x %d final result %f\n",x,result);
 	prevdNeurons[x] = result;
+	//printf("x %d result %f\n",x,result);
+	
 }
 
-
 __kernel void convolve_back_weights(__global double* weights, __global double* prevNeurons, __global double* dneurons,
-	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize)
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global char* dropout)
 {
 	
-	const int x = get_global_id(0);
-	const int numWeightsPerFilter = filterSize * filterSize * depth;
-	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
-	const int depxstr = depth * stride;
-	const int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
-
+	int x = get_global_id(0);
+	int numWeightsPerFilter = filterSize * filterSize * depth;
 	int d = x/numWeightsPerFilter; //myFilter
+
+
 	int p = x % numWeightsPerFilter; // my place in the filter
+
+	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	double myDerivative = 0;
+
+	int depxstr = depth * stride;
+	int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
 
 	for(int a=0; a < numBlocksPerRow; a++)
 	{
 		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
 		{
-			myDerivative += prevNeurons[p] * dneurons[d];
+			myDerivative += prevNeurons[p] * dneurons[d] * dropout[d] *.5;
 			p += depxstr;
 			d += numFilters;
 		}
@@ -278,24 +319,27 @@ __kernel void convolve_back_weights(__global double* weights, __global double* p
 	
 }
 __kernel void convolve_back_weights_moment(__global double* weights, __global double* prevNeurons, __global double* dneurons,
-	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* velocity)
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* velocity,
+	__global char* dropout)
 {
 	
-	const int x = get_global_id(0);
-	const int numWeightsPerFilter = filterSize * filterSize * depth;
-	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
-	const int depxstr = depth * stride;
-	const int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
-
+	int x = get_global_id(0);
+	int numWeightsPerFilter = filterSize * filterSize * depth;
 	int d = x/numWeightsPerFilter; //myFilter
+
 	int p = x % numWeightsPerFilter; // my place in the filter
+
+	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	double myDerivative = 0;
+
+	int depxstr = depth * stride;
+	int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
 
 	for(int a=0; a < numBlocksPerRow; a++)
 	{
 		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
 		{
-			myDerivative += prevNeurons[p] * dneurons[d];
+			myDerivative += prevNeurons[p] * dneurons[d] * dropout[d] *.5;
 			p += depxstr;
 			d += numFilters;
 		}
@@ -305,40 +349,37 @@ __kernel void convolve_back_weights_moment(__global double* weights, __global do
 	//L2 Reg?
 	myDerivative += l2Lambda * weights[x];// * weights[x];
 
-	//normal momentum
-	//double myVel = velocity[x];
-	//myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
-
-	//Nesterov Accelerated Momentum
 	double myVel = velocity[x];
-	double prevVel = myVel;
 	myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
 
 	//max-norm
 	double myWeight = weights[x];
-	//myWeight += myVel; //normal momentum
-	myWeight += -MOMENT_CONST * prevVel + (1+MOMENT_CONST) * myVel; // Nesterov Momentum
+	myWeight += myVel;
 	if(myWeight > MAX_NORM_CAP)
 		weights[x] = MAX_NORM_CAP;
 	else if(myWeight < -MAX_NORM_CAP)
 		weights[x] = -MAX_NORM_CAP;
 	else
 		weights[x] = myWeight;
+
+	//w/out max-norm
+	//weights[x] += myVel;
+	//velocity[x] = myVel;
+	
 }
 
 //should have numBiases work units
 __kernel void convolve_back_biases(__global double* biases, __global double* dneurons, int dneuronSize, 
-	int dneuronDepth, double stepSize)
+	int dneuronDepth, double stepSize, __global char* dropout)
 {
 	
-	const int i = get_global_id(0);
-	const int dneurFaceSize = dneuronSize/dneuronDepth;
-
+	int i = get_global_id(0);
 	int j = i;//%dneuronDepth //which filter we're in. dont need % because there is only one bias per filter
 	double myDerivative = 0;
+	int dneurFaceSize = dneuronSize/dneuronDepth;
 	for(int a = 0; a< dneurFaceSize; a++) // calc myDerivative
 	{
-		myDerivative += dneurons[j];
+		myDerivative += dneurons[j] * dropout[j] *.5;
 		j+=dneuronDepth;
 	}
 	//printf("stepSize %lf myDerivative %lf, result %.9lf\n", stepSize, myDerivative, stepSize * myDerivative);
@@ -349,7 +390,9 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
-	const int x = get_global_id(0);
+	int x = get_global_id(0);
+
+	//turn x into i, j, k
 	const int nw = prevwidth + 2*pad;
 	const int nh = prevheight + 2*pad;
 
@@ -374,9 +417,11 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 __kernel void zeroPad_back(__global double* prevdNeurons, __global double* dneurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
-	const int x = get_global_id(0);
-	const int nw = prevwidth + 2*pad;
-	const int nh = prevheight + 2*pad;
+	int x = get_global_id(0);
+
+	//turn x into i, j, k
+	int nw = prevwidth + 2*pad;
+	int nh = prevheight + 2*pad;
 
 	int ourDepth = x%depth;
 	int ourCol = ((x-ourDepth)/depth) % nw;
@@ -413,10 +458,13 @@ __kernel void softmax_back(__global double* dNeurons, __global double* neurons, 
 	if(i == trueVal)
 	{
 		dNeurons[i] = neurons[i] - 1;
+		//printf("neurons[i] on trueVal: %f\n", neurons[i]);
+		//dNeurons[i] = neurons[i];
 	}
 	else
 	{
 		dNeurons[i] = neurons[i];
+		//dNeurons[i] = neurons[i] - 1;
 	}
 }
 
@@ -431,115 +479,5 @@ __kernel void copyArray(__global double* source, __global double* dest)
 {
 	int x = get_global_id(0);
 	dest[x] = source[x];
-}
-
-//make this 2 kernels? one to get max, one to subtract? Prob not worth it without a lot of classes
-__kernel void maxSubtraction(__global double* source, int size)
-{
-	if(size <= 0)
-		return;
-	double max = source[0];
-	double cur;
-	for(int i = 1; i < size; i ++)
-	{
-		cur = source[i];
-		if(cur > max)
-			max = cur;
-	}
-	for(int i=0; i < size; i++)
-		source[i] -= max;
-}
-
-__kernel void vectorESum(__global double* source, int size, __global double* denom)
-{
-	if(size <= 0)
-		return;
-	double sum = 0;
-	for(int i=0; i < size; i++)
-		sum += exp(source[i]);
-	*denom = sum;
-}
-
-__kernel void plusEquals(__global double* dest, __global double* src)
-{
-	int x = get_global_id(0);
-	dest[x] += src[x];
-}
-
-__kernel void divideEquals(__global double* dest, int num)
-{
-	int x = get_global_id(0);
-	dest[x] /= num;
-}
-
-/*************************************************
-*
-*	Forward-only kernels
-*
-*************************************************/
-
-__kernel void reluF(__global double* prevNeurons, __global double* neurons)
-{
-	const int i = get_global_id(0);
-	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
-		neurons[i] = prevNeurons[i];
-	else if(prevNeurons < 0)
-		neurons[i] = 0;
-	else
-		neurons[i] = RELU_CAP;
-}
-
-//numthreads should be size of neurons and prevNeurons (should be same)
-__kernel void leakyReluF(__global double* prevNeurons, __global double* neurons)
-{
-	const int i = get_global_id(0);
-	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
-	double newVal;
-	if(prevNeurons[i] >= 0) 
-		newVal = prevNeurons[i];
-	else 
-		newVal = prevNeurons[i] * LEAKY_RELU_CONST;
-
-	if(-RELU_CAP <= newVal && newVal <= RELU_CAP)
-		neurons[i] = newVal;
-	else if(newVal < -RELU_CAP)
-		neurons[i] = -RELU_CAP;
-	else
-		neurons[i] = RELU_CAP;
-}
-
-__kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
-	int prevwidth, int prevdepth, int poolsize, int stride)
-{
-	int width = prevwidth;
-	int depth = prevdepth;
-	
-	//getting the start index of a flattened 3d array for maxPool
-	int x = get_global_id(0);
-	int i = x;
-	int strxdep = stride * depth;
-	int i_div_dep = i / depth;
-	int numBlocksPerRow = (width - poolsize)/stride + 1; 
-	//int ourHeight = i/numBlocksPerRow/depth;
-	//int ourRowStartIndex = ourHeight * width * stride * depth + i%depth;
-	//int ourRowShift = ((i/depth)%numBlocksPerRow) * stride * depth;
-	//int ourStartIndex = ourRowStartIndex + ourRowShift;
-	//i = ourRowStartIndex + ourRowShift;
-
-	i = (i_div_dep/numBlocksPerRow * width * strxdep + i%depth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
-	
-	int amountToNextLayer = (width - poolsize) * depth;
-	double maxVal = prevNeurons[i];
-	for(int row = 0; row < poolsize; row++)
-	{
-		for(int col = 0; col < poolsize; col++)
-		{
-			if(prevNeurons[i] > maxVal)
-				maxVal = prevNeurons[i];
-			i += depth;
-		}
-		i += amountToNextLayer;
-	}
-	neurons[x] = maxVal;
 }
 
