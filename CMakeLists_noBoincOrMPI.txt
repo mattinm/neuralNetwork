@@ -3,11 +3,10 @@ project( ConvNetTest )
 #set variables
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 SET( SRCS src/ConvNetTest.cpp src/ConvNet.cpp )
-SET( CMAKE_CXX_FLAGS "-std=c++11 -Wall")
+SET( CMAKE_CXX_FLAGS "-std=c++11 -Wall -O3")
 SET( OpenCV_STATIC ON)
 
 list(APPEND CMAKE_PREFIX_PATH /usr/local)
-#list(APPEND CMAKE_PREFIX_PATH /Users/connorbowley/Development/test/boinc/api/)
 
 #find packages and libraries
 find_package( OpenCV REQUIRED )
@@ -27,6 +26,7 @@ add_executable( ConvNetContinuanceCL src/ConvNetContinuanceCL.cpp src/ConvNetCL.
 add_executable( ConvNetTester src/ConvNetTester.cpp src/ConvNet.cpp )
 
 add_executable( ConvNetFullImageDriverCL src/ConvNetFullImageDriverCL.cpp src/ConvNetCL.cpp)
+add_executable( ConvNetFullImageDriverParallelCL src/ConvNetFullImageDriverParallelCL.cpp src/ConvNetCL.cpp)
 
 add_executable( ConvNetVideoDriverCL src/ConvNetVideoDriverCL.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetVideoDriverParallelCL src/ConvNetVideoDriverParallelCL.cpp src/ConvNetCL.cpp)
@@ -52,6 +52,7 @@ target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
 target_link_libraries( ConvNetTester ${OPENCL_LIBRARY} )
 
 target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 
 target_link_libraries( ConvNetVideoDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
