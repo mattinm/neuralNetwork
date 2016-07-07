@@ -1,26 +1,11 @@
-This repository is for tools useful for Convolutional Neural Networks for Image Processing.
+The programs in this repo are for training and running Convolutional Neural Networks over images. It uses OpenCV to get and write images and videos. It does its calculations in OpenCL. The general workflow if you want to use it is this:
 
-This is how to use the files.
+1. Use TrainingImageSplitterFileConverter to make a binary file out of all your images. It will take full sized images and make subimages from them and put them all into a binary file.
+1a. (optional) Use TrainingImageSplitterFileConverter to make a binary file for your test set that can be used to evaluate training.
 
----------------------------------------------------------------------------------------------------------------
+2. Change the network dimensions and layout in ConvNetTrainerCL and recompile. Then use ConvTrainerCL to train the network. If you made a test set, you can add it in here also, but don't worry, it won't train on the test set. 
+2a. (optional) Use ConvNetTester to see on what classes of images it normally misclassifies.
+2b. (optional) Use ConvNetContinuanceCL to do more training on already trained networks. Can be useful for training extra on types of images it tends to misclassify.
 
-ImageSplitter splits an image into 32x32 subimages. It starts in the top left of the image and goes across and down by an optional stride value that defaults to 1. The new images are named based on the baseOutputName argument. They will be named baseOutputName0.ext, baseOutputName1.ext, etc, with the .ext being the inputted extenstion. Right now all images in the folder or path must be of type .jpg, .jpeg, or .png.
-
-	use format:
-	./ImageSplitter imageOrFolderPath outputFolderPath baseOutputName outputExtension (stride=1)
-
----------------------------------------------------------------------------------------------------------------
-
-ConvNetTest requires the name of a trainingImagesConfig file as input. For this, all files of a different class must be in a different folder. The format for the file goes as follows:
-
-folderPathContainingImagesOfClass0,trueValOfClass0
-folderPathContainingImagesOfClass1,trueValOfClass1
-folderPathContainingImagesOfClass2,trueValOfClass2
-
-The trueVals are ints ranging from 0 to numClasses with each class having a unique number. Multiple folders can contain classes of the same type, but a single folder can only contain classes of one type.
-
-Exp:
-
-dogs,0
-cats,1
-moreDogs,0
+3. Run your newly trained CNN over full images or videos using ConvNetFullImageDriverCL or ConvNetVideoDriverCL. For extra speed use the parallel versions which use all OpenCL capable devices on your machine that support doubles.
+3a. (optional) Use the BOINC or MPI versions of the video driver for large videos or a large amount of videos.
