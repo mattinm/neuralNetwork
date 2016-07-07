@@ -3,7 +3,7 @@ project( ConvNetTest )
 #set variables
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 SET( SRCS src/ConvNetTest.cpp src/ConvNet.cpp )
-SET( CMAKE_CXX_FLAGS "-std=c++11 -Wall")
+SET( CMAKE_CXX_FLAGS "-std=c++11 -Wall -O3")
 SET( OpenCV_STATIC ON)
 
 list(APPEND CMAKE_PREFIX_PATH /usr/local)
