@@ -216,7 +216,7 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, stri
 	conv->weights = new double[conv->numWeights];
 	conv->biases = new double[conv->numBiases];
 	if(weightsAndBiases.find("random") != string::npos)
-		initRandomWeights(conv);
+		initRandomWeights(conv, prevDepth);
 	else
 		initWeights(conv, weightsAndBiases);
 
@@ -275,13 +275,13 @@ void Net::pushBackLayerSize(int width, int height, int depth)
 	__neuronDims.back()[2] = depth;
 }
 
-void Net::initRandomWeights(ConvLayer* conv)
+void Net::initRandomWeights(ConvLayer* conv, int prevDepth)
 {
     //cout << "making random weights" << endl;
 	default_random_engine gen(time(0));
 
 	//use the number of inputs to get the random start weights
-	double numInputs = conv->filterSize * conv->filterSize + 1;
+	double numInputs = conv->filterSize * conv->filterSize * prevDepth + 1;
 	double sqrtIn = pow(2/numInputs,.5);
 	normal_distribution<double> distr(0,sqrtIn);
 
@@ -411,9 +411,10 @@ bool Net::finalize()
 	{
 		//build the program
 		//running
+		const char* foptions = "-cl-mad-enable";
 		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context, RUNNING_PROGRAM);
 		const cl_device_id* deviceToBuild = &(__deviceIds[q]);
-		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, nullptr, nullptr, nullptr));
+		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, foptions, nullptr, nullptr));
 		//training
 		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
@@ -579,7 +580,7 @@ bool Net::set_MAX_NORM_CAP(double cap)
  * Running and Training
  *****************************************/
 
-void Net::run(bool useGPU)
+void Net::run()
 {
  	// if(useGPU != __useGPU)
  	// {
@@ -591,7 +592,12 @@ void Net::run(bool useGPU)
  		finalize();
 
  	if(!__dataPreprocessed)
- 		preprocessData();
+ 	{
+ 		if(__preprocessIndividual)
+ 			preprocessDataIndividual();
+ 		else
+ 			preprocessDataCollective();
+ 	}
 
  	if(!__isTraining)
  		__dataPointer = &__data;
@@ -651,6 +657,11 @@ void Net::run(bool useGPU)
 
 				if(__constantMem)
 				{
+					// int prevDepth = __neuronDims[i-1][2];
+					// int strxdep = conv->stride * prevDepth;
+					// int amountToNextLayer = (conv->paddedNeuronWidth - conv->filterSize) * prevDepth;
+					// int filterLayerSize = conv->filterSize * prevDepth;
+					// int numBlocksPerRow = (conv->paddedNeuronWidth - conv->filterSize)/conv->stride + 1;
 					//cout << "using constant" << endl;
 					clSetKernelArg(convKernelFC, 0, sizeof(cl_mem), prevNeurons);
 					clSetKernelArg(convKernelFC, 1, sizeof(cl_mem), neurons);
@@ -659,8 +670,12 @@ void Net::run(bool useGPU)
 					clSetKernelArg(convKernelFC, 4, sizeof(int), &(conv->numBiases)); //numFilters
 					clSetKernelArg(convKernelFC, 5, sizeof(int), &(conv->filterSize));
 					clSetKernelArg(convKernelFC, 6, sizeof(int), &(conv->stride));
+					// clSetKernelArg(convKernelFC, 6, sizeof(int), &strxdep);
 					clSetKernelArg(convKernelFC, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
 					clSetKernelArg(convKernelFC, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
+					// clSetKernelArg(convKernelFC, 8, sizeof(int), &amountToNextLayer);
+					// clSetKernelArg(convKernelFC, 9, sizeof(int), &filterLayerSize);
+					// clSetKernelArg(convKernelFC, 10, sizeof(int), &numBlocksPerRow);
 
 					globalWorkSize[0] = (size_t)__neuronSizes[i];
 					CheckError(clEnqueueNDRangeKernel(queue, convKernelFC, 1,
@@ -1371,9 +1386,9 @@ void Net::train(int epochs)
 
  	if(epochs == -1)
  	{
- 		if(__testData.size() == 0)
- 			epochs = 1;
- 		else
+ 		// if(__testData.size() == 0)
+ 		// 	epochs = 1;
+ 		// else
  			epochs = 9999; // if you need more than this set it yourself
  	}
     
@@ -1412,6 +1427,7 @@ void Net::train(int epochs)
 
 	 	for(int r = 0; r < trainingData.size(); r++)
 	 	{
+	 		// printf("Starting image %d\n",r);
 	 		//put in the next image
 	 		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
 					sizeof(double) * __neuronSizes[0],
@@ -1430,6 +1446,11 @@ void Net::train(int epochs)
             clFinish(queue);
 			if(getMaxElementIndex(soft) == trueVals[r])
 				numCorrect++;
+
+			// printf("Image %d:  %lf", r, soft[0]);
+			// for(int v = 1; v < soft.size(); v++)
+			// 	printf(", %lf", soft[v]);
+			// printf("\n");
 
 			////////////////////////////
 			// start backprop
@@ -1925,7 +1946,7 @@ void Net::preprocessCollectively()
 	__preprocessIndividual = false;
 }
 
-void Net::preprocessData() // thread this 
+void Net::preprocessDataIndividual() // thread this 
 {
 	//preprocess using (val - mean)/stdDeviation for all elements
 	for(int i = 0; i < __data.size(); i++)
@@ -1952,6 +1973,15 @@ void Net::preprocessData() // thread this
 	}
 
 	__dataPreprocessed = true;
+}
+
+void Net::preprocessDataCollective()
+{
+	for(int i = 0; i < __data.size(); i++)
+	{
+		for(int pix = 0; pix < __data[i].size(); pix++)
+			__data[i][pix] = (__data[i][pix] - __mean)/__stddev;
+	}
 }
 
 void Net::preprocessTestDataIndividual()

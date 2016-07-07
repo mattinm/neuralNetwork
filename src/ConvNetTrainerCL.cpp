@@ -282,7 +282,7 @@ int main(int argc, char** argv)
 		cout << "                                 the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
 		cout << "   -preprocessIndividual      Preprocesses training data and test data individually by image. Not recommended.\n";
 		cout << "   -preprocessCollective      Preprocesses training data collectively and preprocesses test data based on the training data. Default.\n";
-		cout << "   miniBatch=<int>            Sets the miniBatch size for training. Defaults to 1 (Stochastic gradient descent).";
+		cout << "   miniBatch=<int>            Sets the miniBatch size for training. Defaults to 1 (Stochastic gradient descent).\n";
 		cout << "   learningRate=<rate>        Sets the learningRate for the CNN.\n";
 		cout << "   RELU_CAP=<cap>             Sets max value that can pass through the RELU\n";
 		cout << "   LEAKY_RELU_CONST=<const>   Sets the constant for LEAKY_RELU\n";
@@ -419,6 +419,26 @@ int main(int argc, char** argv)
 	//set up net
 	Net net(xSize,ySize,zSize);
 
+	//small 128x128x3
+	// net.setActivType(LEAKY_RELU);
+	// net.addConvLayer(6,1,5,0); //28x28x6
+	// net.addMaxPoolLayer(2,2);  //14x14x6
+	// net.addConvLayer(10,1,3,0);	//12x12x10
+	// net.addMaxPoolLayer(3,3);   //4x4x10
+	// net.addFullyConnectedLayer(2);
+
+	//large 128x128x3
+	net.setActivType(LEAKY_RELU);	//128x128x3 
+	net.addConvLayer(32,1,3,1);		//128x128x32
+	net.addMaxPoolLayer(2,2);		//64x64x32 
+	net.addConvLayer(32,1,5,0);     //60x60x32
+	net.addMaxPoolLayer(2,2); 	    //30x30x32
+	net.addConvLayer(32,1,3,0);	  	//28x28x32
+	net.addMaxPoolLayer(2,2); 		//14x14x32
+	net.addConvLayer(64,1,3,0);		//12x12x64
+	net.addMaxPoolLayer(3,3);		//4x4x64
+	net.addFullyConnectedLayer(4);	//1x1x4	 	
+
 	//64x64x3 net
 	// net.setActivType(RELU);
 	// net.addConvLayer(10,1,3,1);     //64x64x10
@@ -440,16 +460,8 @@ int main(int argc, char** argv)
 	// net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
 	// net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
 	// net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
-
-
-	// failed fully connected net
-	// net.setActivType(RELU);
-	// net.addConvLayer(10,1,3,0); 	//30x30x10
-	// net.addMaxPoolLayer(2,2);		//15x15x10
-	// net.addFullyConnectedLayer(100);//1x1x100
-	// net.addFullyConnectedLayer(2);	//1x1x2
 	
-	///large net
+	///large net 32
 	// net.setActivType(LEAKY_RELU);
 	// net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
 	// net.addConvLayer(20,1,3,1);		//32x32x10
@@ -464,7 +476,7 @@ int main(int argc, char** argv)
 	//*/
 	
 	
-	//small net
+	//small net 32 also 128
 	// net.setActivType(LEAKY_RELU);
 	// net.addConvLayer(6,1,5,0); //28x28x6
 	// net.addMaxPoolLayer(2,2);  //14x14x6
@@ -472,16 +484,17 @@ int main(int argc, char** argv)
 	// net.addConvLayer(10,1,3,0);	//12x12x10
 	// net.addMaxPoolLayer(3,3);   //4x4x10
 	// //net.addConvLayer(5,1,3,1);	//4x4x5
-	// net.addConvLayer(4,1,4,0);  //1x1x2
+	// //net.addConvLayer(4,1,4,0);  //1x1x2
+	// net.addFullyConnectedLayer(4);
 
-	//big small net
-	net.setActivType(LEAKY_RELU);
-	net.addConvLayer(20,1,5,0); //28x28x6
-	net.addMaxPoolLayer(2,2);  //14x14x6
-	net.addConvLayer(20,1,3,0);	//12x12x10
-	net.addMaxPoolLayer(3,3);   //4x4x10
-	net.addFullyConnectedLayer(1024);
-	net.addFullyConnectedLayer(3);
+	//big small net 32
+	// net.setActivType(LEAKY_RELU);
+	// net.addConvLayer(20,1,5,0); //28x28x6
+	// net.addMaxPoolLayer(2,2);  //14x14x6
+	// net.addConvLayer(20,1,3,0);	//12x12x10
+	// net.addMaxPoolLayer(3,3);   //4x4x10
+	// net.addFullyConnectedLayer(1024);
+	// net.addFullyConnectedLayer(3);
     
 
 	//set hyperparameters

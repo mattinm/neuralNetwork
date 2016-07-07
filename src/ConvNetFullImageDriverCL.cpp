@@ -23,7 +23,6 @@ typedef vector<vector<vector<double> > > imVector;
 char *inPath, *outPath;
 int imageNum = 0;
 int stride = 1;
-bool __useGPU = true;
 
 int inputWidth, inputHeight;
 
@@ -179,7 +178,7 @@ void breakUpImage(const char* imageName, Net& net)
 		//set them as the data in the net
 		//preprocess(imageRow);
 		net.setData(imageRow);
-		net.run(__useGPU);
+		net.run();
 		net.getConfidences(confidences); //gets the confidence for each category for each image
 		//if((i == 0 || i == numrows-32))
 		//cout << "row: " << i << " ";

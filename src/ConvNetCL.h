@@ -211,7 +211,7 @@ public: 	// functions
 	void preprocessCollectively();
 
 	//running
-	void run(bool useGPU=true);
+	void run();
 	void getCalculatedClasses(std::vector<int>& dest) const;
 	void getConfidences(std::vector<std::vector<double> >& confidences) const;
 
@@ -239,13 +239,14 @@ private:	// functions
 	void pushBackLayerSize(int width, int height, int depth);
 
 	//weights and biases
-	void initRandomWeights(ConvLayer* conv);
+	void initRandomWeights(ConvLayer* conv, int prevDepth);
 	void initWeights(ConvLayer* conv, const std::string& weights);
 
 	//functions dealing with data
 	int getTrueValIndex(double trueVal);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
-	void preprocessData();
+	void preprocessDataIndividual();
+	void preprocessDataCollective();
 	void preprocessTestDataIndividual();
     void preprocessTrainingDataIndividual();
     void preprocessTestDataCollective();
