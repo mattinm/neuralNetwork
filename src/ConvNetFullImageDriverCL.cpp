@@ -231,12 +231,12 @@ void breakUpImage(const char* imageName, Net& net)
 			//int maxEle = getMaxElementIndex(fullImage[i][j]);
 			if(allElementsEquals(fullImage[i][j]))
 			{
-				outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
+				outPix[0] = 0; outPix[1] = 0; outPix[2] = 0; // black
 			}
 			else
 			{
 				outPix[0] = 255*fullImage[i][j][0]; // blue
-				outPix[1] = 0;
+				outPix[1] = 255*fullImage[i][j][2]; // green
 				outPix[2] = 255*fullImage[i][j][1]; // red
 			}
 			/*//write only blue and red, no in between
@@ -270,6 +270,9 @@ int checkExtensions(char* filename)
 	if(name.rfind(".jpg")  == name.length() - 4) return 1;
 	if(name.rfind(".jpeg") == name.length() - 5) return 1;
 	if(name.rfind(".png")  == name.length() - 4) return 1;
+	if(name.rfind(".JPG")  == name.length() - 4) return 1;
+	if(name.rfind(".JPEG") == name.length() - 5) return 1;
+	if(name.rfind(".PNG")  == name.length() - 4) return 1;
 	return 0;
 }
 

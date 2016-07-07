@@ -1814,7 +1814,8 @@ void Net::train(int epochs)
 	 	
 	 	endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%  " << secondsToString(endtime-starttime) << " seconds" << endl;
+	 	// cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%  " << secondsToString(endtime-starttime) << " seconds" << endl;
+	 	printf("Accuracy on training data: %d out of %lu. %lf%% %s\n", numCorrect, trueVals.size(), 100.0*numCorrect/trueVals.size(),secondsToString(endtime-starttime).c_str());
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
