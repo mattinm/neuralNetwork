@@ -75,6 +75,16 @@ private: 	// structs
 		int activationType;
 	};
 
+	struct WeightHolder{
+		double trainAccuracy = 0;
+		double testAccuracy = 0;
+		std::vector<double*> weights; //weights[convLayer][weight]
+		std::vector<double*> biases;
+
+		~WeightHolder();
+		void clearWeights();
+	};
+
 private: 	// members
 	//hyperparameters
 	double __learningRate = 1e-4;
@@ -254,6 +264,8 @@ private:	// functions
 	void softmaxForward();
 	void softmaxBackprop(int curTrueVal);
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
+	void storeWeightsInHolder(WeightHolder& holder);
+	void loadWeightsFromHolder(WeightHolder& holder);
 
 	//load
 	bool load(const char* filename);
