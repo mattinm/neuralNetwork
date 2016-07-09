@@ -224,7 +224,7 @@ int main(int argc, char** argv)
 	int epochs = -1;
 	int device = -1;
 	string testSetName;
-	bool haveTest;
+	bool haveTest = false;
 	int haveTrainMethod = 0;
 	int trainMethod = TRAIN_AS_IS;
 	double learningRate = -1; //-1s are sentinel values

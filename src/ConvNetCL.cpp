@@ -29,16 +29,6 @@ using namespace cv;
 
 #define GETMAX(x,y) (x > y) ? x: y
 
-// void printArray(double* array, int size)
-// {
-// 	for(int i=0; i< size; i++)
-// 	{
-// 		cout << array[i] << ", ";
-// 	}
-// 	cout << endl << endl;
-// }
-
-
 /*****************************************
  * Constructors and Destructors and inits
  *****************************************/
@@ -1515,12 +1505,17 @@ void Net::train(int epochs)
 	 		else
 	 		{
 	 			timesStale++;
-	 			if(timesStale == 4)
+	 			if(timesStale == 3)
 	 			{
 	 				__learningRate *= .5;
 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
 	 			}
-	 			else if(timesStale == 8)
+	 			else if(timesStale == 5)
+ 				{
+	 				__learningRate *= .5;
+					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+	 			}
+	 			else if(timesStale == 7)
 	 			{
 	 				printf("We don't seem to be learning anymore. Exiting.\n");
 	 				break;

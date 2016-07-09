@@ -433,9 +433,9 @@ int main(int argc, char** argv)
 	net.addMaxPoolLayer(2,2);		//64x64x32 
 	net.addConvLayer(32,1,5,0);     //60x60x32
 	net.addMaxPoolLayer(2,2); 	    //30x30x32
-	net.addConvLayer(32,1,3,0);	  	//28x28x32
+	net.addConvLayer(64,1,3,0);	  	//28x28x32
 	net.addMaxPoolLayer(2,2); 		//14x14x32
-	net.addConvLayer(64,1,3,0);		//12x12x64
+	net.addConvLayer(128,1,3,0);	//12x12x64
 	net.addMaxPoolLayer(3,3);		//4x4x64
 	net.addFullyConnectedLayer(4);	//1x1x4	 	
 

@@ -21,7 +21,7 @@ include_directories( ${OpenCV_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS} ${MPI_INCLUDE
 ###### MAKE EXECUTABLES
 ######
 
-#non CL
+#non CL (still used OpenCL, but is the old version of this code)
 # add_executable( ConvNetDriver src/ConvNetDriver.cpp src/ConvNet.cpp )
 # add_executable( ConvNetTrainer src/ConvNetTrainer.cpp src/ConvNet.cpp )
 # add_executable( ConvNetContinuance src/ConvNetContinuance.cpp src/ConvNet.cpp )
