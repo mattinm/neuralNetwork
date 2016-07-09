@@ -350,6 +350,9 @@ int main(int argc, char** argv)
 		cout << "Net did not load correctly. Exiting." << endl;
 		return 0;
 	}
+
+	printf("CNN Layer Dimensions\n");
+	net.printLayerDims();
 	
 
 	//get images and add them
