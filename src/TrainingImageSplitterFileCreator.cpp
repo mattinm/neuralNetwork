@@ -45,9 +45,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unordered_map>
+#include <random>
 
 using namespace std;
 using namespace cv;
+
+#define MAX_ADJUST 0.3
 
 short xsize = -1, ysize = -1, zsize = -1;
 
@@ -56,6 +59,7 @@ int stride = 1;
 int globalStride = 1;
 unsigned long byteCount = 0;
 unsigned long imageCount = 0;
+unsigned long unalteredImageCount = 0;
 unsigned short __globalTrueVal;
 unordered_map<unsigned short, int> trueMap;
 
@@ -64,18 +68,59 @@ bool __verticalReflect = false;
 bool __rotateClock = false;
 bool __rotateCClock = false;
 bool __rotate180 = false;
+bool __brightnessAlterations = false;
+double __brightnessAlterationChance = 0.0;
 int numWritesPerImage = 1;
 bool __output = true;
 
+default_random_engine gen(time(0));
+uniform_real_distribution<double> distr(-MAX_ADJUST,MAX_ADJUST);
+uniform_real_distribution<double> distr1(0,1);
+
+unsigned char clamp (int val, int min, int max)
+{
+	if(val < min)
+		return min;
+	else if( val > max)
+		return max;
+	return val;
+}
+
+Mat* adjustBrightness(const Mat& image)
+{
+	Mat* mat = new Mat();
+	image.copyTo(*mat);
+	cvtColor(*mat, *mat, CV_BGR2HSV);
+
+	default_random_engine gen(time(0));
+	uniform_real_distribution<double> distr(-MAX_ADJUST,MAX_ADJUST);
+
+	double adjustment = distr(gen);
+	for(int i = 0; i < mat->rows; i++)
+	{
+		for(int j = 0; j < mat->cols; j++)
+		{
+			Vec3b& pix = mat->at<Vec3b>(i,j);
+
+			int newVal = pix[2] + adjustment * 255;
+			pix[2] = clamp(newVal, 0, 255);
+		}
+	}
+	cvtColor(*mat, *mat, CV_HSV2BGR);
+	return mat;
+}
+
 template<typename type>
-void writeImage(Mat& image, ofstream& outfile)
+unsigned long writeImage(Mat& image, ofstream& outfile)
 {
 	//Mat image = imread(inPathandName,1); //color image
 	//cout << image << endl;
 	//printf("x %d, y %d, z %d, ir %d, ic %d id %d",xsize,ysize,zsize,image.rows,image.cols,image.depth());
 	if(image.rows != ysize || image.cols != xsize)// || image.depth() != zsize)
-		return;
+		return 0;
 	//cout << "after return" << endl;
+
+	unsigned long origImageCount = imageCount;
 
 	type pixel[3];
 	long size = sizeof(type) * 3;
@@ -99,6 +144,7 @@ void writeImage(Mat& image, ofstream& outfile)
 		}
 		if(__output)
 			outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
+		unalteredImageCount++;
 
 		//horizontal reflection
 		if(__horizontalReflect)
@@ -161,7 +207,7 @@ void writeImage(Mat& image, ofstream& outfile)
 			{
 				for(int i = 0; i < xsize; i++)
 				{
-					const Vec3b curPixel = image.at<Vec3b>(i,j);
+					const Vec3b& curPixel = image.at<Vec3b>(i,j);
 					pixel[0] = (type)curPixel[0];
 					pixel[1] = (type)curPixel[1];
 					pixel[2] = (type)curPixel[2];
@@ -178,7 +224,7 @@ void writeImage(Mat& image, ofstream& outfile)
 			{
 				for(int j = ysize-1; j >= 0; j--)
 				{
-					const Vec3b curPixel = image.at<Vec3b>(i,j);
+					const Vec3b& curPixel = image.at<Vec3b>(i,j);
 					pixel[0] = (type)curPixel[0];
 					pixel[1] = (type)curPixel[1];
 					pixel[2] = (type)curPixel[2];
@@ -189,12 +235,53 @@ void writeImage(Mat& image, ofstream& outfile)
 				outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(short));
 		}
 
+		if(__brightnessAlterations)
+		{
+			double num = distr1(gen);
+			if(num <= __brightnessAlterationChance)
+			{
+				Mat* mat = adjustBrightness(image);
+				//uncomment if you want to see the difference it makes in the images
+				// namedWindow("Display window", WINDOW_AUTOSIZE);
+				// namedWindow("Display window2", WINDOW_AUTOSIZE);
+				// imshow("Display window",image);
+				// imshow("Display window2",*mat);
+				// waitKey(1);
+				// getchar();
+				for(int i=0; i < xsize; i++)
+				{
+					for(int j=0; j < ysize; j++)
+					{
+						const Vec3b& curPixel = mat->at<Vec3b>(i,j);
+						pixel[0] = (type)curPixel[0];
+						pixel[1] = (type)curPixel[1];
+						pixel[2] = (type)curPixel[2];
+
+						//cout << "writing" << endl;
+						outfile.write(reinterpret_cast<const char *>(pixel),size);
+					}
+				}
+				if(__output)
+					outfile.write(reinterpret_cast<const char *>(&__globalTrueVal),sizeof(unsigned short));
+
+				delete(mat);
+
+				imageCount++;
+				byteCount += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short));
+				unordered_map<unsigned short, int>::const_iterator got = trueMap.find(__globalTrueVal);
+				if(got == trueMap.end()) // not found
+					trueMap[__globalTrueVal] = 1;
+				else // found
+					trueMap[__globalTrueVal]++;
+			}
+		}
+
 
 		unordered_map<unsigned short, int>::const_iterator got = trueMap.find(__globalTrueVal);
 		if(got == trueMap.end()) // not found
-			trueMap[__globalTrueVal] = 1;
+			trueMap[__globalTrueVal] = numWritesPerImage;
 		else // found
-			trueMap[__globalTrueVal]++;
+			trueMap[__globalTrueVal]+=numWritesPerImage;
 		byteCount  += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short)) * numWritesPerImage; //extra for the ushort trueVal
 		imageCount += numWritesPerImage;
 		if(imageCount % 100000 < numWritesPerImage)
@@ -211,7 +298,7 @@ void writeImage(Mat& image, ofstream& outfile)
 	{
 		cout << "Unsupported image type" << endl;
 	}
-	
+	return imageCount - origImageCount;
 }
 
 template<typename type>
@@ -234,8 +321,8 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 		for(int j=0; j<= numcols-xsize; j+=stride)
 		{
 			Mat out = image(Range(i,i+ysize),Range(j,j+xsize));
-			writeImage<type>(out,outfile);
-			numThisImage+=numWritesPerImage; // numThisFullImage += numWritesPerSubImage;
+			numThisImage += writeImage<type>(out,outfile);
+			//numThisImage+=numWritesPerImage; // numThisFullImage += numWritesPerSubImage;
 			//imageNum++;
 		}
 	}
@@ -327,14 +414,16 @@ int main (int argc, char** argv)
 	{
 		cout << "Usage: (Required to come first):\n   ./TrainingImageSplitterFileCreator ImageConfigFile outfileName";
 		cout << "\nOptional arguments (must come after required args. Case sensitive):\n";
-		cout << "   stride=<int>    Stride for folders without strides specified in config. Defaults to 1.\n";
-		cout << "   -rot_clock      For all images, adds a copy rotated 90 deg clockwise\n";
-		cout << "   -rot_cclock     For all images, adds a copy rotated 90 deg counterclockwise\n";
-		cout << "   -rot_180        For all images, adds a copy rotated 180 deg\n";
-		cout << "   -horizontal     For all images, adds a copy horizontally reflected\n";
-		cout << "   -vertical       For all images, adds a copy vertically reflected\n";
-		cout << "   -all            Activates -rot_clock, -rot_cclock, -rot_180, -horizontal, -vertical\n";
-		cout << "   -no_output      Doesn't make output. This will tell you how big the file will be.\n";
+		cout << "   stride=<int>             Stride for folders without strides specified in config. Defaults to 1.\n";
+		cout << "   -rot_clock               For all images, adds a copy rotated 90 deg clockwise\n";
+		cout << "   -rot_cclock              For all images, adds a copy rotated 90 deg counterclockwise\n";
+		cout << "   -rot_180                 For all images, adds a copy rotated 180 deg\n";
+		cout << "   -horizontal              For all images, adds a copy horizontally reflected\n";
+		cout << "   -vertical                For all images, adds a copy vertically reflected\n";
+		cout << "   -all                     Activates -rot_clock, -rot_cclock, -rot_180, -horizontal, -vertical -brightChance=0.5\n";
+		cout << "   -no_output               Doesn't make output. This will tell you how big the file will be.\n";
+		cout << "   -brightChance=<double>   Chance that an image will have a brightness altered version added to the binary.\n";
+		cout << "                            Between 0 and 1. Defaults to 0.\n";
 		return 0;
 	}
 
@@ -374,11 +463,18 @@ int main (int argc, char** argv)
 			{
 				__rotateClock = true;	__rotateCClock = true;	__rotate180 = true;
 				__horizontalReflect = true;		__verticalReflect = true;
+				__brightnessAlterationChance = .5;
+				__brightnessAlterations = true;
                 numWritesPerImage += 5;
 			}
 			else if(arg.find("-no_output") != string::npos)
 			{
 				__output = false;
+			}
+			else if(arg.find("-brightChance=") != string::npos)
+			{
+				__brightnessAlterationChance = stod(arg.substr(arg.find('=')+1));
+				__brightnessAlterations = true;
 			}
 			else 
 			{
@@ -492,7 +588,7 @@ int main (int argc, char** argv)
 	printf("Total Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
 	//cout << "Total: " << imageCount << " images created.";
     if(numWritesPerImage != 1)
-        cout << " (" << imageCount/numWritesPerImage << " without transformations)";
+        cout << " (" << unalteredImageCount << " without transformations)";
     cout << endl;
 
 	double sum = 0;

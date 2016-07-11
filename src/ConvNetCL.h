@@ -108,7 +108,6 @@ private: 	// members
 	//data and related members
 	int __numClasses = 0;
 		//training
-		//should this be a map?
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
 		bool __preprocessIndividual = false;
