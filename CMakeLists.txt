@@ -12,7 +12,8 @@ list(APPEND CMAKE_PREFIX_PATH /usr/local)
 find_package( OpenCV REQUIRED )
 find_package( MPI REQUIRED )
 find_package( BOINC REQUIRED )
-find_library( OPENCL_LIBRARY OpenCL.framework )
+find_package( OpenCL REQUIRED )
+#find_library( OPENCL_LIBRARY OpenCL.framework )
 
 #set include directories
 include_directories( ${OpenCV_INCLUDE_DIRS} ${OpenCL_INCLUDE_DIRS} ${MPI_INCLUDE_PATH} ${BOINC_INCLUDE_DIRS})
