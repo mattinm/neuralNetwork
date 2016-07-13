@@ -324,6 +324,8 @@ void breakUpImage(Frame& frame, Net& net, int device)
 
 	Mat* outputMat = new Mat(numrows, numcols, CV_8UC3);
 
+	int numClasses = fullImages[device][0][0].size();
+
 	//calculate what output image should look like and csv file should be
 	size_t redElement = 0;
 	size_t flyingElement = 0;
@@ -348,9 +350,14 @@ void breakUpImage(Frame& frame, Net& net, int device)
 			{
 				double noBird = 255 * fullImages[device][i][j][0];
 				double onGround = 255 * fullImages[device][i][j][1];
-				double flying = 255 * fullImages[device][i][j][2];
+				double flying;
+				if(numClasses > 2)
+					flying = 255 * fullImages[device][i][j][2];
+				else
+					flying = 0;
 
 				outPix[0] = noBird; // blue
+				// outputMat->at<unsigned char>(i,j,0) = (unsigned char)noBird;
 				outPix[1] = flying;	  //green
 				outPix[2] = onGround;  // red
 				if(onGround > 150) //red > 50 || red > blue

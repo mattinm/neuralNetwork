@@ -122,6 +122,8 @@ private: 	// members
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
 		int __smallestClassSize;
+		std::string __saveName;
+		bool __saveNet = false;
 		//running
 		bool __dataPreprocessed = false;
 		std::vector<std::vector<double> > __data; // list of<flattened images>
@@ -165,6 +167,8 @@ public: 	// functions
 	bool addFullyConnectedLayer(int outputSize);
 	bool setActivType(int activationType);
 	void setAutoActivLayer(bool isAuto);
+	void setSaveName(const char *saveName);
+	void setSaveName(std::string saveName);
 	void printLayerDims() const;
 	int getInputWidth() const;
 	int getInputHeight() const;
@@ -234,7 +238,7 @@ private:	// functions
 	void initOpenCL();
 
 	//functions dealing with layers
-	bool addConvLayer(int numFilters, int stride, int filterSize, int pad, std::string weightsAndBias);
+	bool addConvLayer(int numFilters, int stride, int filterSize, int pad, const std::string& weightsAndBias);
 	void pushBackLayerSize(int width, int height, int depth);
 
 	//weights and biases

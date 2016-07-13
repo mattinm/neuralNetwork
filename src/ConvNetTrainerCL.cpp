@@ -7,9 +7,7 @@
 *	This program is for running trained CNNs that were trained using ConvNet.
 *
 *	Usage:
-*		./ConvNetTrainer binaryTrainingImagesFile outname=<outputName.txt> epochs=<#epochs> gpu=<true/false>
-*
-* 		The outputName and epochs are optional keyword arguments. If no outname is specified the weights are not saved. Epochs defaults to 1. Defaults to using GPU
+*		See usage statement in main.
 *
 *************************************/
 
@@ -275,14 +273,14 @@ int main(int argc, char** argv)
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
 		cout << "   outname=<outname.txt>      Sets the name for the outputted trained CNN. If not specified weights will not be saved.\n";
 		cout << "   testSet=<name.txt>         A binary training file to be used as a test/validation set. Never trained on.\n";
-		cout << "   epochs=<#epochs>           Number of epochs to train for. Defaults to 1 if no testSet, else defaults to \"How long it takes\"\n";
+		cout << "   epochs=<#epochs>           Number of epochs to train for. Defaults to \"How long it takes\"\n";
 		cout << "   device=<device#>           Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
 		cout << "   -train_as_is               Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
 		cout << "   -train_equal_prop          Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";
 		cout << "                                 the ones used will be randomly chosen each epoch. Can only use one train method at a time\n";
 		cout << "   -preprocessIndividual      Preprocesses training data and test data individually by image. Not recommended.\n";
 		cout << "   -preprocessCollective      Preprocesses training data collectively and preprocesses test data based on the training data. Default.\n";
-		cout << "   miniBatch=<int>            Sets the miniBatch size for training. Defaults to 1 (Stochastic gradient descent).\n";
+		// cout << "   miniBatch=<int>            Sets the miniBatch size for training. Defaults to 1 (Stochastic gradient descent).\n";
 		cout << "   learningRate=<rate>        Sets the learningRate for the CNN.\n";
 		cout << "   RELU_CAP=<cap>             Sets max value that can pass through the RELU\n";
 		cout << "   LEAKY_RELU_CONST=<const>   Sets the constant for LEAKY_RELU\n";
@@ -343,8 +341,8 @@ int main(int argc, char** argv)
 				preprocessCollective = true;
 			else if(arg.find("-preprocessIndividual") != string::npos)
 				preprocessIndividual = true;
-			else if(arg.find("miniBatch=") != string::npos)
-				miniBatchSize = stoi(arg.substr(arg.find("=")+1));
+			// else if(arg.find("miniBatch=") != string::npos)
+			// 	miniBatchSize = stoi(arg.substr(arg.find("=")+1));
 			else if(arg.find("learningRate=") != string::npos)
 				learningRate = stod(arg.substr(arg.find("=")+1));
 			else if(arg.find("RELU_CAP=") != string::npos)
@@ -516,6 +514,8 @@ int main(int argc, char** argv)
     	net.preprocessCollectively();
     if(preprocessIndividual)
     	net.preprocessIndividually();
+    if(saveWeights)
+    	net.setSaveName(outputName);
     net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{
@@ -612,8 +612,10 @@ int main(int argc, char** argv)
 	else
 		cout << endl;
 
-	if(saveWeights)
-	{
-		net.save(outputName.c_str());
-	}
+
+	//now train will save the weights
+	// if(saveWeights)
+	// {
+	// 	net.save(outputName.c_str());
+	// }
 }

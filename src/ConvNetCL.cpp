@@ -171,7 +171,7 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad)
 	return addConvLayer(numFilters, stride, filterSize, pad, string("random"));
 }
 
-bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, string weightsAndBiases)
+bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, const string& weightsAndBiases)
 {
 	int prevWidth  = __neuronDims.back()[0];
 	int prevHeight = __neuronDims.back()[1];
@@ -345,6 +345,17 @@ int Net::getInputWidth() const
 void Net::setAutoActivLayer(bool isAuto)
 {
 	__autoActivLayer = isAuto;
+}
+
+void Net::setSaveName(const char* saveName)
+{
+	__saveName = string(saveName);
+	__saveNet = true;
+}
+
+void Net::setSaveName(string saveName)
+{
+	__saveName = saveName;
 }
 
 string Net::getErrorLog() const
@@ -1498,6 +1509,8 @@ void Net::train(int epochs)
 	 		if(accuracy > holder.trainAccuracy)
 	 		{
 	 			pullCLWeights();
+	 			if(__saveNet)
+	 				save(__saveName.c_str());
 	 			storeWeightsInHolder(holder);
 	 			holder.trainAccuracy = accuracy;
 	 			timesStale = 0;
@@ -1523,7 +1536,7 @@ void Net::train(int epochs)
 	 		}
 	 	}
 	}// end of all epochs
-	//get best weights and 
+	//get best weights and they should already be saved to the disk if we are saving them
 	loadWeightsFromHolder(holder);
 	//clean up anything we may have messed with in order to use run.
 	__confidences.resize(__data.size());
@@ -2473,7 +2486,7 @@ bool Net::save(const char* filename)
 {
 	//get file stuff
 	ofstream file;
-	file.open(filename);
+	file.open(filename, ofstream::trunc);
 
 	if(!file.is_open())
 		return false;
@@ -2700,15 +2713,3 @@ void Net::WeightHolder::clearWeights()
 	weights.resize(0);
 	biases.resize(0);
 }
-
-
-
-
-
-
-
-
-
-
-
-

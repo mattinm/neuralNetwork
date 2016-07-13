@@ -19,18 +19,7 @@
 *
 *
 *	Usage: 
-*		Usage: ./TrainingImageSplitterFileCreator ImageConfigFile outfileName <stride=1>
-*			stride is optional, defaults to 1.
-*
-*	ImageConfigFile format:
-*		inWidth inHeight inDepth
-*		sizeByte
-*		folderOfImages1,trueVal1,<stride=1>
-*		folderOfImages2,trueVal2,<stride=1>
-*		...
-*
-*		stride parameter is optional for each folder. it will override the command line parameter stride for that folder
-*
+*		See usage statement in main
 *
 ****************************************/
 
