@@ -1,0 +1,48 @@
+NET_CONFIG
+#This is an example for a cnn config
+#lines that start with pound are comments. No in line comments.
+#keywords are not case sensitive or order sensitive
+#first line MUST be NET_CONFIG. No comments on first line
+
+  #spaces, \n, \r, and \t can come before a # for a comment. Empty lines are acceptable
+
+#input must be first real line after NET_CONFIG
+input 64x64x3
+
+#global_activ will set the default activation function
+global_activ leaky_relu
+
+#auto_activ defaults to true and will automatically put 
+#an activation layer after a convolutional layer. Set it to false to disable
+auto_activ false
+
+#all layers have some arguments. the 64x64x16 is what I expect the output
+#size of the layer to be after the convolution. If the net calculates this 
+#to be different than you expect, it will let you know.
+#you are not required to put the dimensions in
+conv numFil=16 filSize=3 pad=1 stride=1 64x64x16
+#conv numFil=16 filSize=3 pad=1 stride=1 would also be valid
+
+#do not put an expected dimension on an activ line. please.
+
+#layer types and args needed
+conv numFil=16 filSize=3 pad=1 stride=1
+maxpool stride=2 pool=2
+activ relu
+fc 4
+
+#fc is fully connected layer. When you run ConvNetTrainer it will show up as a 
+#Convolutional layer because that's how it's implemented.
+#fc layers flatten the dims to 1x1xn
+
+#real example of net for 32x32x3 images
+
+NET_CONFIG
+input 32x32x3
+global_activ leaky_relu
+conv numFil=15 filSize=3 pad=1 stride=1 
+maxpool stride=2 pool=2 16x16x15
+conv numfil=16 filSize=3 stride=1 pad=0 14x14x16
+maxpool stride=2 pool=2 7x7x16
+conv numfil=17 filSize=3 stride=1 pad=0 5x5x17
+fc 3 1x1x3

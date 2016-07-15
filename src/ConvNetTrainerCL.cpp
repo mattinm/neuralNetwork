@@ -271,6 +271,7 @@ int main(int argc, char** argv)
 	{
 		cout << "Usage (Required to come first):\n   ./ConvNetTrainerCL binaryTrainingImagesFile";
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
+		cout << "   cnn=<cnn_config.txt>       Sets the layout of the CNN to what is in the config. If not specified will use whatever CNN is compiled.\n";
 		cout << "   outname=<outname.txt>      Sets the name for the outputted trained CNN. If not specified weights will not be saved.\n";
 		cout << "   testSet=<name.txt>         A binary training file to be used as a test/validation set. Never trained on.\n";
 		cout << "   epochs=<#epochs>           Number of epochs to train for. Defaults to \"How long it takes\"\n";
@@ -294,6 +295,7 @@ int main(int argc, char** argv)
 
 	string outputName;
 	bool saveWeights = false;
+	string cnn_name = "";
 	int epochs = -1;
 	int device = -1;
 	int haveTrainMethod = 0;
@@ -321,6 +323,8 @@ int main(int argc, char** argv)
 				outputName = arg.substr(arg.find("=") + 1);
 				saveWeights = true;
 			}
+			else if(arg.find("cnn=") != string::npos)
+				cnn_name = arg.substr(arg.find('=') + 1);
 			else if(arg.find("epochs=") != string::npos || arg.find("epoch=") != string::npos)
 				epochs = stoi(arg.substr(arg.find("=")+1));
 			else if(arg.find("device=") != string::npos)
@@ -415,84 +419,95 @@ int main(int argc, char** argv)
 	}
 
 	//set up net
-	Net net(xSize,ySize,zSize);
+	Net net;
+	if(cnn_name != "")
+	{
+		printf("%s\n", cnn_name.c_str());
+		bool success = net.load(cnn_name.c_str());
+		if(!success)
+			return 0;
+	}
+	else
+	{
+		net.init(xSize,ySize,zSize);
 
-	//small 128x128x3
-	// net.setActivType(LEAKY_RELU);
-	// net.addConvLayer(6,1,5,0); //28x28x6
-	// net.addMaxPoolLayer(2,2);  //14x14x6
-	// net.addConvLayer(10,1,3,0);	//12x12x10
-	// net.addMaxPoolLayer(3,3);   //4x4x10
-	// net.addFullyConnectedLayer(2);
+		//small 128x128x3
+		// net.setActivType(LEAKY_RELU);
+		// net.addConvLayer(6,1,5,0); //28x28x6
+		// net.addMaxPoolLayer(2,2);  //14x14x6
+		// net.addConvLayer(10,1,3,0);	//12x12x10
+		// net.addMaxPoolLayer(3,3);   //4x4x10
+		// net.addFullyConnectedLayer(2);
 
-	//large 128x128x3
-	net.setActivType(LEAKY_RELU);	//128x128x3 
-	net.addConvLayer(32,1,3,1);		//128x128x32
-	net.addMaxPoolLayer(2,2);		//64x64x32 
-	net.addConvLayer(32,1,5,0);     //60x60x32
-	net.addMaxPoolLayer(2,2); 	    //30x30x32
-	net.addConvLayer(64,1,3,0);	  	//28x28x32
-	net.addMaxPoolLayer(2,2); 		//14x14x32
-	net.addConvLayer(128,1,3,0);	//12x12x64
-	net.addMaxPoolLayer(3,3);		//4x4x64
-	net.addFullyConnectedLayer(4);	//1x1x4	 	
+		//large 128x128x3
+		// net.setActivType(LEAKY_RELU);	//128x128x3 
+		// net.addConvLayer(32,1,3,1);		//128x128x32
+		// net.addMaxPoolLayer(2,2);		//64x64x32 
+		// net.addConvLayer(32,1,5,0);     //60x60x32
+		// net.addMaxPoolLayer(2,2); 	    //30x30x32
+		// net.addConvLayer(64,1,3,0);	  	//28x28x32
+		// net.addMaxPoolLayer(2,2); 		//14x14x32
+		// net.addConvLayer(128,1,3,0);	//12x12x64
+		// net.addMaxPoolLayer(3,3);		//4x4x64
+		// net.addFullyConnectedLayer(4);	//1x1x4	 	
 
-	//64x64x3 net
-	// net.setActivType(RELU);
-	// net.addConvLayer(10,1,3,1);     //64x64x10
-	// net.addMaxPoolLayer(2,2); 	    //32x32x10
-	// net.addConvLayer(10,1,3,1);	    //32x32x10
-	// net.addMaxPoolLayer(2,2);	    //16x16x10
-	// net.addConvLayer(10,1,3,1);	    //16x16x10
-	// net.addMaxPoolLayer(2,2);	    //8x8x10
-	// net.addConvLayer(10,1,3,1);	    //8x8x10
-	// net.addFullyConnectedLayer(10); //1x1x10
-	// net.addFullyConnectedLayer(4);  //1x1x4
+		//64x64x3 net
+		// net.setActivType(RELU);
+		// net.addConvLayer(10,1,3,1);     //64x64x10
+		// net.addMaxPoolLayer(2,2); 	    //32x32x10
+		// net.addConvLayer(10,1,3,1);	    //32x32x10
+		// net.addMaxPoolLayer(2,2);	    //16x16x10
+		// net.addConvLayer(10,1,3,1);	    //16x16x10
+		// net.addMaxPoolLayer(2,2);	    //8x8x10
+		// net.addConvLayer(10,1,3,1);	    //8x8x10
+		// net.addFullyConnectedLayer(10); //1x1x10
+		// net.addFullyConnectedLayer(4);  //1x1x4
 
-	/* shallow 64x64x3 net */
-	// net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
-	// net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
-	// net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
-	// net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
-	// net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
-	// net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
-	// net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
-	// net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
-	
-	///large net 32
-	// net.setActivType(LEAKY_RELU);
-	// net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
-	// net.addConvLayer(20,1,3,1);		//32x32x10
-	// net.addMaxPoolLayer(2,2);		//16x16x20
-	// net.addConvLayer(30,1,3,1);		//16x16x30
-	// net.addConvLayer(40,1,3,1);		//16x16x40
-	// net.addMaxPoolLayer(2,2);		//8x8x40
-	// net.addConvLayer(50,1,3,1);		//8x8x50
-	// net.addMaxPoolLayer(2,2);		//4x4x50
-	// net.addFullyConnectedLayer(128);//1x1x128
-	// net.addFullyConnectedLayer(4);  //1x1x4
-	//*/
-	
-	
-	//small net 32 also 128
-	// net.setActivType(LEAKY_RELU);
-	// net.addConvLayer(6,1,5,0); //28x28x6
-	// net.addMaxPoolLayer(2,2);  //14x14x6
-	// //net.addConvLayer(7,1,3,1);
-	// net.addConvLayer(10,1,3,0);	//12x12x10
-	// net.addMaxPoolLayer(3,3);   //4x4x10
-	// //net.addConvLayer(5,1,3,1);	//4x4x5
-	// //net.addConvLayer(4,1,4,0);  //1x1x2
-	// net.addFullyConnectedLayer(4);
+		/* shallow 64x64x3 net */
+		// net.setActivType(LEAKY_RELU);		//64x64x3   //32x32x3
+		// net.addConvLayer(20,1,5,0);     	//60x60x20	//28x28x20
+		// net.addMaxPoolLayer(2,2); 	    	//30x30x20	//14x14x20
+		// net.addConvLayer(20,1,3,0);	  	//28x28x20	//12x12x20
+		// net.addMaxPoolLayer(2,2); 			//14x14x20	//6x6x20
+		// net.addConvLayer(20,1,3,0);		//12x12x20	//4x4x20
+		// net.addMaxPoolLayer(3,3);			//4x4x  20 	//fails for 32x32 start
+		// net.addFullyConnectedLayer(4);		//1x1x4	 	//1x1x4
+		
+		///large net 32
+		// net.setActivType(LEAKY_RELU);
+		// net.addConvLayer(20, 1, 3, 1);  //32x32x20 //numfilters, stride, filtersize, padding
+		// net.addConvLayer(20,1,3,1);		//32x32x10
+		// net.addMaxPoolLayer(2,2);		//16x16x20
+		// net.addConvLayer(30,1,3,1);		//16x16x30
+		// net.addConvLayer(40,1,3,1);		//16x16x40
+		// net.addMaxPoolLayer(2,2);		//8x8x40
+		// net.addConvLayer(50,1,3,1);		//8x8x50
+		// net.addMaxPoolLayer(2,2);		//4x4x50
+		// net.addFullyConnectedLayer(128);//1x1x128
+		// net.addFullyConnectedLayer(4);  //1x1x4
+		//*/
+		
+		
+		//small net 32 also 128
+		net.setActivType(LEAKY_RELU);
+		net.addConvLayer(6,1,5,0); //28x28x6
+		net.addMaxPoolLayer(2,2);  //14x14x6
+		//net.addConvLayer(7,1,3,1);
+		net.addConvLayer(10,1,3,0);	//12x12x10
+		net.addMaxPoolLayer(3,3);   //4x4x10
+		//net.addConvLayer(5,1,3,1);	//4x4x5
+		//net.addConvLayer(4,1,4,0);  //1x1x2
+		net.addFullyConnectedLayer(4);
 
-	//big small net 32
-	// net.setActivType(LEAKY_RELU);
-	// net.addConvLayer(20,1,5,0); //28x28x6
-	// net.addMaxPoolLayer(2,2);  //14x14x6
-	// net.addConvLayer(20,1,3,0);	//12x12x10
-	// net.addMaxPoolLayer(3,3);   //4x4x10
-	// net.addFullyConnectedLayer(1024);
-	// net.addFullyConnectedLayer(3);
+		//big small net 32
+		// net.setActivType(LEAKY_RELU);
+		// net.addConvLayer(20,1,5,0); //28x28x6
+		// net.addMaxPoolLayer(2,2);  //14x14x6
+		// net.addConvLayer(20,1,3,0);	//12x12x10
+		// net.addMaxPoolLayer(3,3);   //4x4x10
+		// net.addFullyConnectedLayer(1024);
+		// net.addFullyConnectedLayer(3);
+	}
     
 
 	//set hyperparameters

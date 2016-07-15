@@ -7,6 +7,7 @@
 #include <fstream>
 #include <random>
 #include <unordered_map>
+#include <sstream>
 
 // 	includes brought in from ConvNetCL.h
 //
@@ -28,10 +29,16 @@ using namespace std;
 using namespace cv;
 
 #define GETMAX(x,y) (x > y) ? x: y
+#define RET_FALSE {file.close(); return false}
 
 /*****************************************
  * Constructors and Destructors and inits
  *****************************************/
+
+Net::Net()
+{
+
+}
 
 Net::Net(const char* filename)
 {
@@ -105,10 +112,13 @@ Net::~Net()
 
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
+	if(__inited)
+		return;
 	pushBackLayerSize(inputWidth,inputHeight,inputDepth);
     Layer* abstract = new Layer;
 	__layers.resize(1);
     __layers.back() = abstract;
+    __inited = true;
 	initOpenCL();
 }
 
@@ -2241,12 +2251,44 @@ void Net::loadWeightsFromHolder(WeightHolder& holder)
 	}
 }
 
+string Net::tolower(string str)
+{
+	transform(str.begin(), str.end(), str.begin(), ::tolower);
+	return str;
+}
+
+bool Net::stringToDims(string str, int* dims)
+{
+	//should look like 32x32x3 or 32 x 32 x 3
+	str = tolower(str);
+	str.erase(remove(str.begin(), str.end(), ' '), str.end());
+	stringstream tokens(str);
+	string item;
+	int i = 0;
+	while(getline(tokens, item, 'x'))
+	{
+		if(i == 3)
+		{
+			printf("You can only have 3 dimensions for a layer size.\n");
+			return false;
+		}
+		if(!item.empty())
+		{
+			dims[i++] = stoi(item);
+		}
+
+	}
+	return true;
+}
+
 /*****************************************
  * Load and Save
  *****************************************/
 
 bool Net::load(const char* filename)
 {
+	if(__inited)
+		return false;
 	ifstream file;
 	file.open(filename);
 	string line;
@@ -2473,6 +2515,274 @@ bool Net::load(const char* filename)
 				return false;
 			}
 			getline(file,line); lineNum++;
+		}
+		file.close();
+		return true;
+	}
+	else if(tolower(line) == "net_config")
+	{
+		int lineNum = 1;
+		bool haveInput = false;
+		char buf[500];
+		//while(file >> line)
+		while(getline(file, line))
+		{
+			// if(!file.good())
+			// 	break;
+
+			lineNum++;
+
+			//see if it starts with pound. If so it is a comment.
+			int j = 0;
+			for(j = 0; j < line.length(); j++)
+			{
+				if(line[j] != ' ' && line[j] != '\t' && line[j] != '\n' && line[j] != '\r')
+					break;
+			}
+			if(j >= line.length() || line[j] == '#')
+				continue;
+
+			//tokenize the line and put the results in the items vector
+			vector<string> items;
+			stringstream tokens(line);
+			string item;
+			int dims[] = {-1,-1,-1};
+			while(getline(tokens, item, ' '))
+			{
+				if(!item.empty())
+				{
+					items.push_back(item);
+				}
+			}
+			// cout << "line: " << line << endl;
+			// cout << "items size: " << items.size() << endl;
+
+			items[0] = tolower(items[0]);
+
+			if(items[0] == "input")
+			{
+				if(!stringToDims(items[1],dims))
+					return false;
+				init(dims[0],dims[1],dims[2]);
+				haveInput = true;
+			}
+			else if(!haveInput)
+			{
+				printf("Line %d: You need to have the input layer before any other layers.\n", lineNum);
+				return false;
+			}
+			else if(items[0] == "global_activ")
+			{
+				if(tolower(items[1]) == "leaky_relu")
+					setActivType(LEAKY_RELU);
+				else if(tolower(items[1]) == "relu")
+					setActivType(RELU);
+				else
+				{
+					printf("Line %d: Unimplemented activation type \"%s\".\n", lineNum, items[1].c_str());
+					return false;
+				}
+			}
+			else if(items[0] == "auto_activ")
+			{
+				if(tolower(items[1]) == "false")
+					setAutoActivLayer(false);
+				else if(tolower(items[1]) == "true")
+					setAutoActivLayer(true);
+				else
+				{
+					printf("Line %d: auto_activ must be set to either true or false.\n",lineNum);
+					return false;
+				}
+			}
+			else if(items[0] == "conv")
+			{
+				int filSize = -1, pad = -1, stride = -1, numFil = -1;
+				int dimIndex;
+				for(int i = 1; i < items.size(); i++)
+				{
+					items[i] = tolower(items[i]);
+					// cout << "lowered items[i]: " << items[i] << endl;
+					if(items[i].find("numfil=") != string::npos)
+						numFil = stoi(items[i].substr(items[i].find('=')+1));
+					else if(items[i].find("filsize=") != string::npos)
+						filSize = stoi(items[i].substr(items[i].find('=')+1));
+					else if(items[i].find("pad=") != string::npos)
+						pad = stoi(items[i].substr(items[i].find('=')+1));
+					else if(items[i].find("stride=") != string::npos)
+						stride = stoi(items[i].substr(items[i].find('=')+1));
+					else if(items[i].find("x") != string::npos)
+					{
+						bool goodDims = stringToDims(items[i], dims);
+						if(!goodDims) return false;
+						dimIndex = i;
+					}
+					else
+					{
+						printf("Line %d: Unknown arg for Convolutional Layer \"%s\".\n",lineNum, items[i].c_str());
+						return false;
+					}
+				}
+				string errors = "";
+				if(filSize <= 0)
+				{
+					sprintf(buf,"Line %d: filSize must exist and be positive\n",lineNum);
+					errors += buf;
+				}
+				if(pad < 0)
+				{
+					sprintf(buf,"Line %d: pad must exist and be non-negative\n",lineNum);
+					errors += buf;
+				}
+				if(stride <= 0)
+				{
+					sprintf(buf,"Line %d: stride must exist and be positive\n",lineNum);
+					errors += buf;
+				}
+				if(numFil <= 0)
+				{
+					sprintf(buf,"Line %d: numFil must exist and be positive\n",lineNum);
+					errors += buf;
+				}
+				if(errors != "")
+				{
+					printf("%s\n", errors.c_str());
+					return false;
+				}
+				bool success = addConvLayer(numFil,stride,filSize,pad);
+				if(!success)
+				{
+					printf("Line %d: Conv Layer failed to load successfully. Make sure the stride fits previous layer size.\n", lineNum);
+					return false;
+				}
+				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
+				{
+					if(dims[0] != __neuronDims.back()[0] || dims[1] != __neuronDims.back()[1] || dims[2] != __neuronDims.back()[2])
+					{
+						printf("Line %d: The computed dimensions for conv layer do not match calculated.\n\t Given: %s, Calculated: %dx%dx%d\n", lineNum, items[dimIndex].c_str(),__neuronDims.back()[0],__neuronDims.back()[1],__neuronDims.back()[2]);
+						return false;
+					}
+				}
+			}
+			else if(items[0] == "activ")
+			{
+				string type = tolower(items[1]);
+				int activType;
+				if(type == "relu")
+					activType = RELU;
+				else if(type == "leaky_relu")
+					activType = LEAKY_RELU;
+				else
+				{
+					printf("Line %d: Unknown or unimplemented activation type \"%s\". Try \"relu\" or \"leaky_relu\".\n", lineNum,items[1].c_str());
+					return false;
+				}
+				bool success = addActivLayer(activType);
+				if(!success)
+				{
+					printf("Line %d: Error adding activation layer with type %s\n", lineNum, items[1].c_str());
+				}
+			}
+			else if(items[0] == "maxpool")
+			{
+				int stride = -1, pool = -1, dimIndex;
+				for(int i = 1; i < items.size(); i++)
+				{
+					items[i] = tolower(items[i]);
+					if(items[i].find("stride=") != string::npos)
+						stride = stoi(items[i].substr(items[i].find('=')+1));
+					else if(items[i].find("pool=") != string::npos)
+						pool  = stoi(items[i].substr(items[i].find('=')+1));
+					else if(items[i].find('x') != string::npos)
+					{
+						bool goodDims = stringToDims(items[i], dims);
+						if(!goodDims) return false;
+						dimIndex = i;						
+					}
+					else
+					{
+						printf("Line %d: Unknown arg for MaxPool Layer \"%s\".\n",lineNum, items[i].c_str());
+						return false;
+					}
+				}
+
+				string errors = "";
+				if(stride <= 0)
+				{
+					sprintf(buf,"Line %d: stride must exist and be positive\n",lineNum);
+					errors += buf;
+				}
+				if(pool <= 0)
+				{
+					sprintf(buf,"Line %d: pool must exist and be positive\n",lineNum);
+					errors += buf;
+				}
+				if(errors != "")
+				{
+					printf("%s\n", errors.c_str());
+					return false;
+				}
+				bool success = addMaxPoolLayer(pool, stride);
+				if(!success)
+				{
+					printf("Line %d: MaxPool Layer failed to load correctly. Make sure stride fits previous layer size.\n", lineNum);
+					return false;
+				}
+				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
+				{
+					if(dims[0] != __neuronDims.back()[0] || dims[1] != __neuronDims.back()[1] || dims[2] != __neuronDims.back()[2])
+					{
+						printf("Line %d: The computed dimensions for maxpool layer do not match calculated.\n\t Given: %s, Calculated: %dx%dx%d\n", lineNum, items[dimIndex].c_str(),__neuronDims.back()[0],__neuronDims.back()[1],__neuronDims.back()[2]);
+						return false;
+					}
+				}
+			}
+			else if(items[0] == "fc")
+			{
+				printf("fully connected\n");
+				int outputSize = -1, dimIndex;
+				if(items.size() > 3)
+				{
+					printf("Line %d: Too many args for Fully Connected Layer\n", lineNum);
+					return false;
+				}
+				for(int i = 1; i < items.size(); i++)
+				{
+					items[i] = tolower(items[i]);
+					if(items[i].find('x') != string::npos)
+					{
+						bool goodDims = stringToDims(items[i],dims);
+						if(!goodDims) return false;
+						dimIndex = i;
+					}
+					else
+						outputSize = stoi(items[i]);
+				}
+				if(outputSize <= 0)
+				{
+					printf("Line %d: pool must exist and be positive\n",lineNum);
+					return false;
+				}
+				bool success = addFullyConnectedLayer(outputSize);
+				if(!success)
+				{
+					printf("Line %d: Error adding Fully Connected Layer.\n", lineNum);
+					return false;
+				}
+				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
+				{
+					if(dims[0] != __neuronDims.back()[0] || dims[1] != __neuronDims.back()[1] || dims[2] != __neuronDims.back()[2])
+					{
+						printf("Line %d: The computed dimensions for fc layer do not match calculated.\n\t Given: %s, Calculated: %dx%dx%d\n", lineNum, items[dimIndex].c_str(),__neuronDims.back()[0],__neuronDims.back()[1],__neuronDims.back()[2]);
+						return false;
+					}
+				}
+			}
+			else
+			{
+				printf("Line %d: Unknown arg \"%s\"\n", lineNum, line.c_str());
+				return false;
+			}
 		}
 		file.close();
 		return true;

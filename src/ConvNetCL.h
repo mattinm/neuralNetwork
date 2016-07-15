@@ -86,6 +86,7 @@ private: 	// structs
 	};
 
 private: 	// members
+	bool __inited = false;
 	//hyperparameters
 	double __learningRate = 1e-4;
 	double __RELU_CAP = 5000.0;
@@ -155,8 +156,10 @@ private: 	// members
 
 public: 	// functions
 	//Constructors and Destructors
+	Net();
 	Net(const char* filename);
 	Net(int inputWidth, int inputHeight, int inputDepth);
+	void init(int inputWidth, int inputHeight, int inputDepth);
 	~Net();
 	
 	//functions dealing with layers and sizes
@@ -229,12 +232,13 @@ public: 	// functions
 	void setGPU(bool useGPU);
 	void setConstantMem(bool useConstantMem);
     
-    //save
+    //save and load
     bool save(const char* filename);
+	bool load(const char* filename);
 
 private:	// functions
 	//inits
-	void init(int inputWidth, int inputHeight, int inputDepth);
+	
 	void initOpenCL();
 
 	//functions dealing with layers
@@ -270,9 +274,8 @@ private:	// functions
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void storeWeightsInHolder(WeightHolder& holder);
 	void loadWeightsFromHolder(WeightHolder& holder);
-
-	//load
-	bool load(const char* filename);
+	std::string tolower(std::string str);
+	bool stringToDims(std::string str, int* dims);
 
 	//OpenCL functions
 	void CheckError(cl_int error);
