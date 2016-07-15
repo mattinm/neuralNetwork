@@ -8,7 +8,7 @@ Workflow:
 	1. Use TrainingImageSplitterFileConverter to make a binary file out of all your images. It will take full sized images and make subimages from them and put them all into a binary file.
 	1a. (optional) Use TrainingImageSplitterFileConverter to make a binary file for your test set that can be used to evaluate training.
 
-	2. Change the network dimensions and layout in ConvNetTrainerCL and recompile. Then use ConvTrainerCL to train the network. If you made a test set, you can add it in here also, but don't worry, it won't train on the test set. 
+	2. Create a CNN config file (see CNN_config_example.txt). Then use ConvTrainerCL to train the network. If you made a test set, you can add it in here also, but don't worry, it won't train on the test set. 
 	2a. (optional) Use ConvNetTester to see on what classes of images it normally misclassifies.
 	2b. (optional) Use ConvNetContinuanceCL to do more training on already trained networks. Can be useful for training extra on types of images it tends to misclassify.
 
