@@ -422,7 +422,7 @@ int main(int argc, char** argv)
 	Net net;
 	if(cnn_name != "")
 	{
-		printf("%s\n", cnn_name.c_str());
+		// printf("%s\n", cnn_name.c_str());
 		bool success = net.load(cnn_name.c_str());
 		if(!success)
 			return 0;

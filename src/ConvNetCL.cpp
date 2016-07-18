@@ -1501,12 +1501,12 @@ void Net::train(int epochs)
 	 		else
 	 		{
 	 			timesStale++;
-	 			if(timesStale == 4)
+	 			if(timesStale == 3)
 	 			{
 	 				__learningRate *= .5;
 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
 	 			}
-	 			else if(timesStale == 8)
+	 			else if(timesStale == 7)
 	 			{
 	 				printf("We don't seem to be learning anymore. Exiting.\n");
 	 				break;
@@ -2739,7 +2739,7 @@ bool Net::load(const char* filename)
 			}
 			else if(items[0] == "fc")
 			{
-				printf("fully connected\n");
+				// printf("fully connected\n");
 				int outputSize = -1, dimIndex;
 				if(items.size() > 3)
 				{

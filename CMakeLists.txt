@@ -33,6 +33,7 @@ add_executable( ConvNetTester src/ConvNetTester.cpp src/ConvNet.cpp )
 #CL
 add_executable( ConvNetTrainerCL src/ConvNetTrainerCL.cpp src/ConvNetCL.cpp )
 add_executable( ConvNetContinuanceCL src/ConvNetContinuanceCL.cpp src/ConvNetCL.cpp )
+# add_executable( ConvNetFullImageDriverCL_newOutput src/ConvNetFullImageDriverCL_newOutput.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetFullImageDriverCL src/ConvNetFullImageDriverCL.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetFullImageDriverParallelCL src/ConvNetFullImageDriverParallelCL.cpp src/ConvNetCL.cpp)
 # add_executable( ConvNetVideoDriverCL src/ConvNetVideoDriverCL.cpp src/ConvNetCL.cpp)
@@ -50,6 +51,8 @@ add_executable( TrainingImageSplitterFileCreator src/TrainingImageSplitterFileCr
 
 #Misc
 add_executable( kernelBuilder src/kernelBuilder.cpp )
+# add_executable( FileStorageOperations src/FileStorageOperations)
+
 
 ######
 ###### LINK LIBRARIES
@@ -66,6 +69,7 @@ target_link_libraries( ConvNetTester ${OPENCL_LIBRARY} )
 #CL
 target_link_libraries( ConvNetTrainerCL ${OPENCL_LIBRARY} )
 target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
+# target_link_libraries( ConvNetFullImageDriverCL_newOutput ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 # target_link_libraries( ConvNetVideoDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
@@ -84,3 +88,4 @@ target_link_libraries( TrainingImageSplitterFileCreator ${OpenCV_LIBS} )
 
 #Misc
 target_link_libraries( kernelBuilder ${OPENCL_LIBRARY} )
+# target_link_libraries( FileStorageOperations ${OpenCV_LIBS} )
