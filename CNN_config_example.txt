@@ -6,15 +6,15 @@ NET_CONFIG
 
   #spaces, \n, \r, and \t can come before a # for a comment. Empty lines are acceptable
 
-#input must be first real line after NET_CONFIG
-input 64x64x3
-
 #global_activ will set the default activation function
 global_activ leaky_relu
 
 #auto_activ defaults to true and will automatically put 
 #an activation layer after a convolutional layer. Set it to false to disable
 auto_activ false
+
+#input must come before any layer types (conv, maxpool, activ, or fc)
+input 64x64x3
 
 #all layers have some arguments. the 64x64x16 is what I expect the output
 #size of the layer to be after the convolution. If the net calculates this 
@@ -38,9 +38,10 @@ fc 4
 #real example of net for 32x32x3 images
 
 NET_CONFIG
-input 32x32x3
 global_activ leaky_relu
-conv numFil=15 filSize=3 pad=1 stride=1 
+
+input 32x32x3
+conv numFil=15 filSize=3 pad=1 stride=1 32x32x15
 maxpool stride=2 pool=2 16x16x15
 conv numfil=16 filSize=3 stride=1 pad=0 14x14x16
 maxpool stride=2 pool=2 7x7x16

@@ -2541,6 +2541,7 @@ bool Net::load(const char* filename)
 				if(line[j] != ' ' && line[j] != '\t' && line[j] != '\n' && line[j] != '\r')
 					break;
 			}
+			// printf("j: %d length: %lu\n", j, line.length());
 			if(j >= line.length() || line[j] == '#')
 				continue;
 
@@ -2561,19 +2562,7 @@ bool Net::load(const char* filename)
 
 			items[0] = tolower(items[0]);
 
-			if(items[0] == "input")
-			{
-				if(!stringToDims(items[1],dims))
-					return false;
-				init(dims[0],dims[1],dims[2]);
-				haveInput = true;
-			}
-			else if(!haveInput)
-			{
-				printf("Line %d: You need to have the input layer before any other layers.\n", lineNum);
-				return false;
-			}
-			else if(items[0] == "global_activ")
+			if(items[0] == "global_activ")
 			{
 				if(tolower(items[1]) == "leaky_relu")
 					setActivType(LEAKY_RELU);
@@ -2596,6 +2585,23 @@ bool Net::load(const char* filename)
 					printf("Line %d: auto_activ must be set to either true or false.\n",lineNum);
 					return false;
 				}
+			}
+			else if(items[0] == "input")
+			{
+				if(haveInput)
+				{
+					printf("Line %d. Cannot have input twice.\n", lineNum);
+					return false;
+				}
+				if(!stringToDims(items[1],dims))
+					return false;
+				init(dims[0],dims[1],dims[2]);
+				haveInput = true;
+			}
+			else if(!haveInput)
+			{
+				printf("Line %d: You need to have the input layer before any other layers.\n", lineNum);
+				return false;
 			}
 			else if(items[0] == "conv")
 			{
