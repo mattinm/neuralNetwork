@@ -1476,6 +1476,7 @@ void Net::train(int epochs)
 	 	printf("Accuracy on training data: %d out of %lu. %lf%% %s\n", numCorrect, trueVals.size(), accuracy,secondsToString(endtime-starttime).c_str());
 	 	if(__testData.size() != 0)
 	 	{
+	 		starttime = time(NULL);
 	 		printf("\tTest Set. ");
 	 		run(); //this will update __confidences
 	 		curError = 0;
@@ -1487,8 +1488,9 @@ void Net::train(int epochs)
 		 		if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
 		 			testCorrect++;
 		 	}
+		 	endtime = time(NULL);
 	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
-	 		printf("Accuracy on test data: %d out of %lu. %lf%%\n",testCorrect,__testData.size(), testAccuracy);
+	 		printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,secondsToString(endtime-starttime).c_str());
 
 	 		if(testAccuracy > holder.testAccuracy)
 	 		{
