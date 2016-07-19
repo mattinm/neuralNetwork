@@ -1495,6 +1495,8 @@ void Net::train(int epochs)
 	 		if(testAccuracy > holder.testAccuracy)
 	 		{
 	 			pullCLWeights();
+	 			if(__saveNet)
+	 				save(__saveName.c_str());
 	 			storeWeightsInHolder(holder);
 	 			holder.testAccuracy = testAccuracy;
 	 			holder.trainAccuracy = accuracy;

@@ -12,7 +12,7 @@
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
-#include <thread>
+// #include <thread>
 
 
 using namespace cv;
@@ -279,8 +279,8 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetFullImageDriver cnnConfig.txt imageOrFolderPath (stride=1) (device=0)\n");
-		return -1;
+		printf("use format: ./ConvNetFullImageDriverCL cnnConfig.txt imageOrFolderPath (stride=1) (device=0)\n");
+		return 0;
 	}
 
 	inPath = argv[2];

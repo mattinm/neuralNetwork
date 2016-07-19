@@ -385,6 +385,14 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	if(!saveWeights)
+	{
+		printf("If you continue no weights will be saved. Would you like to continue? (y/n)\n");
+		char cont = getchar();
+		if(cont != 'y' && cont != 'Y')
+			return 0;
+	}
+
 	ifstream in;
 	in.open(argv[1]);
 
