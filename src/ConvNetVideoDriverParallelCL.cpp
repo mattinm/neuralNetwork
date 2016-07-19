@@ -351,10 +351,13 @@ void breakUpImage(Frame& frame, Net& net, int device)
 				double noBird = 255 * fullImages[device][i][j][0];
 				double onGround = 255 * fullImages[device][i][j][1];
 				double flying;
+
+
 				if(numClasses > 2)
 					flying = 255 * fullImages[device][i][j][2];
 				else
 					flying = 0;
+				// printf("%lf %lf %lf\n", fullImages[device][i][j][0], fullImages[device][i][j][2], fullImages[device][i][j][1]);
 
 				outPix[0] = noBird; // blue
 				// outputMat->at<unsigned char>(i,j,0) = (unsigned char)noBird;
@@ -442,7 +445,7 @@ void breakUpVideo(const char* videoName)
 		fps = 1;
 
 	__outVideo.open(outName, 
-	 CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
+	 CV_FOURCC('m','p','4','v'),//CV_FOURCC('M', 'J', 'P', 'G'),//-1,//video.get(CV_CAP_PROP_FOURCC),
 	 fps,//video.get(CV_CAP_PROP_FPS), 
 	 Size(__video.get(CV_CAP_PROP_FRAME_WIDTH), __video.get(CV_CAP_PROP_FRAME_HEIGHT)));
 
