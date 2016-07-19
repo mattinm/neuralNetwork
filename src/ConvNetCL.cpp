@@ -366,6 +366,7 @@ void Net::setSaveName(const char* saveName)
 void Net::setSaveName(string saveName)
 {
 	__saveName = saveName;
+	__saveNet = true;
 }
 
 string Net::getErrorLog() const
