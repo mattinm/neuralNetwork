@@ -39,6 +39,7 @@ int stride = 1;
 Mat fullMat;
 
 int numrowsmin, numcolsmin;
+int numClasses;
 
 vector<imVector> fullImages;
 vector<Net*> nets;
@@ -243,7 +244,7 @@ void breakUpImage(const char* imageName)
 
 	for(int i = 0; i < nets.size(); i++)
 	{
-		resize3DVector(fullImages[i],__rows,__cols,3);
+		resize3DVector(fullImages[i],__rows,__cols,numClasses);
 		setAll3DVector(fullImages[i],0);
 	}
 
@@ -260,7 +261,7 @@ void breakUpImage(const char* imageName)
 
 	combineImages(); // combines into fullImages[0]
 
-	int numClasses = fullImages[0][0][0].size(); //fullImages[device][row][col]
+	// int numClasses = fullImages[0][0][0].size(); //fullImages[device][row][col]
 
 	//process the data
 	double sumsq;
@@ -448,11 +449,12 @@ int main(int argc, char** argv)
 
 	inputHeight = nets[0]->getInputHeight();
 	inputWidth = nets[0]->getInputWidth();
+	numClasses = nets[0]->getNumClasses();
 
 	//get the ones that work
 	for(int i = 0 ; i < nets.size(); i++)
 	{
-		nets[i]->setConstantMem(true);
+		// nets[i]->setConstantMem(true);
 		if(nets[i]->setDevice(i) && nets[i]->finalize())
 		{
 			deviceActive[i] = true;

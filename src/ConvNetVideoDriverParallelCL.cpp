@@ -382,7 +382,7 @@ void __parallelVideoProcessor(int device)
 {
 	Net net(__netName);
 
-	net.setConstantMem(true);
+	// net.setConstantMem(true);
 	if(!net.setDevice(device) || !net.finalize())
 		return;
 	printf("Thread using device %d\n",device);
