@@ -1094,6 +1094,7 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 			clSetKernelArg(maxPoolBackKernel, 1, sizeof(cl_mem), neurons);
 			clSetKernelArg(maxPoolBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i]));
 			clSetKernelArg(maxPoolBackKernel, 3, sizeof(int), &numIndexes);
+			clSetKernelArg(maxPoolBackKernel, 4, sizeof(int), &(__neuronDims[i][2]));
 			globalWorkSize[0] = (size_t)__neuronSizes[i-1];
 			CheckError(clEnqueueNDRangeKernel(queue, maxPoolBackKernel, 1,
 				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
@@ -2135,7 +2136,7 @@ void Net::preprocessTrainingDataCollective()
 	stddev = sqrt(stddev / numPixels);
 
 	//if already trained network is adding more data, adjust mean and stddev
-	if(false) // if new training data
+	if(__mean != 0 && numImages != 0) // if new training data
 	{
 		long totalSize = __trainingSize + numImages; 
 		__mean = (__mean * __trainingSize)/totalSize + (mean * numImages)/totalSize;
@@ -2143,7 +2144,7 @@ void Net::preprocessTrainingDataCollective()
 		__stddev = __stddev * stddev/__trainingSize + stddev * stddev/numImages;
 		__stddev = sqrt(stddev);
 	}
-	else
+	else if(numImages != 0)
 	{
 		__mean = mean;
 		__stddev = stddev;
@@ -2354,6 +2355,10 @@ bool Net::load(const char* filename)
 			{
 				loc = line.find("=") + 1;
 				__mean = stod(line.substr(loc));
+				if(__mean != 0)
+					__preprocessIndividual = false;
+				else
+					__preprocessIndividual = true;
 			}
 			else if(line.find("STDDEV") != string::npos)
 			{

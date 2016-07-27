@@ -189,7 +189,7 @@ void breakUpImage(const char* imageName, Net& net)
 		{
 			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
 			{
-				for(int jj=j; jj < j+inputHeight && jj < numcols; jj++)
+				for(int jj=j; jj < j+inputWidth && jj < numcols; jj++)
 				{
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{

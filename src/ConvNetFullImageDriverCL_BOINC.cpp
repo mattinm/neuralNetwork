@@ -43,70 +43,6 @@ int curRow = 0;
 bool readimVector = false;
 
 
-//BOINC FUNCTIONS
-std::string getBoincFilename(std::string filename) throw(std::runtime_error) {
-    std::string resolved_path = filename;
-	#ifdef _BOINC_APP_
-	    if(boinc_resolve_filename_s(filename.c_str(), resolved_path)) {
-	        printf("Could not resolve filename %s\n",filename.c_str());
-	        throw std::runtime_error("Boinc could not resolve filename");
-	    }
-	#endif
-    return resolved_path;
-}
-
-void writeCheckpoint(imVector& fullImage) throw(std::runtime_error)
-{
-	string resolved_checkpoint_name = getBoincFilename("checkpoint.yml");
-	FileStorage outfile(resolved_checkpoint_name, FileStorage::WRITE);
-	if(!outfile.isOpened())
-		throw std::runtime_error("Checkpoint file could not be opened for writing.");
-
-	printf("Writing Checkpoint: image: %d, last row completed: %d\n", curImage, curRow);
-
-	outfile << "CUR_IMAGE" << curImage;
-	outfile << "CUR_ROW" << curRow;
-
-	outfile << "FILENAMES" << "[:";
-	for(int i = 0; i < filenames.size(); i++)
-		outfile << filenames[i].c_str();
-	outfile << "]";
-
-	int numrows = fullImage.size();
-	int numcols = fullImage[0].size();
-	int depth = fullImage[0][0].size();
-	outfile << "NUMROWS" << numrows;
-	outfile << "NUMCOLS" << numcols;
-	outfile << "DEPTH" << depth;
-
-	outfile << "IMVECTOR" << "[:"
-	for(int i =0; i < fullImage.size(); i++)
-		for(int j = 0; j < fullImage[i].size(); j++)
-			for(int k = 0; k < fullImage[i][j].size(); k++)
-				outfile << fullImage[i][j][k];
-	outfile << "]";
-
-	outfile.release();
-}
-
-bool readCheckpoint()
-{
-	string resolved_checkpoint_name = getBoincFilename("checkpoint.yml");
-	FileStorage infile(resolved_checkpoint_name, FileStorage::READ);
-	if(!infile.isOpened())
-		return false;
-
-	infile["CUR_IMAGE"] >> curImage;
- 
-	return true;
-}
-
-void readSavedimVector(imVector& fullImage);
-{
-
-}
-//END - BOINC FUNCTIONS
-
 //VECTOR FUNCTIONS
 void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
 {
@@ -134,7 +70,143 @@ void setAll3DVector(vector<vector<vector<double> > > &vect, double val)
 		}
 	}
 }
+
+double vectorSum(const vector<double>& vect)
+{
+	double sum=0;
+	for(int i=0; i<vect.size(); i++)
+		sum += vect[i];
+	return sum;
+}
 //END - VECTOR FUNCTIONS
+
+//BOINC FUNCTIONS
+std::string getBoincFilename(std::string filename) throw(std::runtime_error) {
+    std::string resolved_path = filename;
+	#ifdef _BOINC_APP_
+	    if(boinc_resolve_filename_s(filename.c_str(), resolved_path)) {
+	        printf("Could not resolve filename %s\n",filename.c_str());
+	        throw std::runtime_error("Boinc could not resolve filename");
+	    }
+	#endif
+    return resolved_path;
+}
+
+void writeCheckpoint(imVector& fullImage) throw(std::runtime_error)
+{
+	boinc_begin_critical_section();
+	string resolved_checkpoint_name = getBoincFilename("checkpoint.yml");
+	FileStorage outfile(resolved_checkpoint_name, FileStorage::WRITE);
+	if(!outfile.isOpened())
+		throw std::runtime_error("Checkpoint file could not be opened for writing.");
+
+	printf("Writing Checkpoint: image: %d, last row completed: %d\n", curImage, curRow);
+
+	outfile << "CUR_IMAGE" << curImage;
+	outfile << "CUR_ROW" << curRow; // this is the compeleted row
+
+	outfile << "FILENAMES" << "[:";
+	for(int i = 0; i < filenames.size(); i++)
+		outfile << filenames[i].c_str();
+	outfile << "]";
+
+	outfile << "IMVECTOR" << "[:";
+	for(int i =0; i < fullImage.size(); i++)
+		for(int j = 0; j < fullImage[i].size(); j++)
+			for(int k = 0; k < fullImage[i][j].size(); k++)
+				outfile << fullImage[i][j][k];
+	outfile << "]";
+
+	int numrows = fullImage.size();
+	int numcols = fullImage[0].size();
+	int depth = fullImage[0][0].size();
+	// cout << "writing numrows" << endl;
+	outfile << "NUMROWS" << numrows;
+	outfile << "NUMCOLS" << numcols;
+	outfile << "DEPTH" << depth;
+
+	
+
+	outfile.release();
+	boinc_end_critical_section();
+
+	// getchar();
+}
+
+bool readCheckpoint()
+{
+	string resolved_checkpoint_name = getBoincFilename("checkpoint.yml");
+	FileStorage infile(resolved_checkpoint_name, FileStorage::READ);
+	if(!infile.isOpened())
+		return false;
+
+	infile["CUR_IMAGE"] >> curImage;
+	infile["CUR_ROW"]   >> curRow;
+	curRow += stride; //to get us to the next row
+	//infile["FILENAMES"] >> filenames;
+	FileNode nameNode = infile["FILENAMES"];
+	for(FileNodeIterator it = nameNode.begin(); it != nameNode.end(); it++)
+	{
+		string str;
+		(*it) >> str;
+		// printf("%s\n",str.c_str());
+		filenames.push_back(str);
+
+	}
+ 
+ 	infile.release();
+	return true;
+}
+
+void readSavedimVector(imVector& fullImage)
+{
+	string resolved_checkpoint_name = getBoincFilename("checkpoint.yml");
+	FileStorage infile(resolved_checkpoint_name, FileStorage::READ);
+	if(!infile.isOpened())
+	{
+		printf("Error opening checkpoint file to read predicted image.\n");
+		return;
+	}
+
+	int numrows, numcols, depth;
+	infile["NUMROWS"] >> numrows;
+	infile["NUMCOLS"] >> numcols;
+	infile["DEPTH"]   >> depth;
+
+	vector<double> flatVec;
+	// infile["IMVECTOR"] >> flatVec;
+	resize3DVector(fullImage,numrows,numcols,depth);
+
+	// double* flat = flatVec.data();
+	FileNode imVec = infile["IMVECTOR"];
+	FileNodeIterator imit = imVec.begin();
+	for(int i = 0; i < numrows; i++)
+		for(int j = 0; j < numcols; j++)
+			for(int k = 0; k < depth; k++)
+			{
+				// fullImage[i][j][k] = *(flat++);
+				*imit >> fullImage[i][j][k];
+				imit++;
+			}
+
+	infile.release();
+
+}
+
+double getFraction(double currow, double rowsInImage)
+{
+	double frac = 0;
+	double fracFor1Image = 1.0/filenames.size();
+
+	//fraction from completed images
+	frac += curImage*fracFor1Image;
+
+	//fraction from completion of current image
+	frac += currow/rowsInImage * fracFor1Image;
+
+	return frac;
+}
+//END - BOINC FUNCTIONS
 
 //FUNCTIONS FOR READING FILES AND DIRECTORIES
 int checkExtensions(const char* filename)
@@ -167,7 +239,7 @@ bool getFiles(const char* inPath)
 	}
 	else
 	{
-		printf("Error getting status of folder or file.\nExiting\n");
+		printf("Error getting status of folder or file to run over.\nExiting\n");
 		return false;
 	}
 	
@@ -240,7 +312,7 @@ void breakUpImage(const char* imageName, Net& net)
 	vector<vector< vector<double> > > fullImage; //2 dims for width and height, last dim for each possible category
 	int numClasses = net.getNumClasses();
 	if(readimVector)
-		readSavedimVector(fullImage)
+		readSavedimVector(fullImage);
 	else
 	{
 		resize3DVector(fullImage,numrows,numcols,net.getNumClasses());
@@ -254,20 +326,19 @@ void breakUpImage(const char* imageName, Net& net)
 
 	int numrowsmcnn = numrows - cnnHeight;
 	int numcolsmcnn = numcols - cnnWidth;
-	if(numrows < inputHeight || numcols < inputWidth)
+	if(numrows < cnnHeight || numcols < cnnWidth)
 	{
-		printf("The image %s is too small in at least one dimension. Minimum size is %dx%d.\n",imageName,inputHeight,inputWidth);
+		printf("The image %s is too small in at least one dimension. Minimum size is %dx%d.\n",imageName,cnnHeight,cnnWidth);
 		return;
 	}
 	for( ; curRow <= numrowsmcnn; curRow += stride) //curRow will be 0 unless set by checkpoint
 	{
 		imageRow.resize(0);
-		printf("row %d of %d (%d)\n",i,numrowsm32,numrows);
 
 		//get all subimages from a row
 		for(int j=0; j<= numcolsmcnn; j+=stride) //NOTE: each j is a different subimage
 		{
-			const Mat out = image(Range(i,i+inputHeight),Range(j,j+inputWidth));
+			const Mat out = image(Range(curRow,curRow+cnnHeight),Range(j,j+cnnWidth));
 			imageRow.push_back(out);
 		}
 
@@ -279,27 +350,36 @@ void breakUpImage(const char* imageName, Net& net)
 		int localCurImage = 0;
 		for(int j=0; j<= numcolsmcnn; j+=stride) //NOTE: each iteration of this loop is a different subimage
 		{
-			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
-				for(int jj=j; jj < j+inputHeight && jj < numcols; jj++)
+			for(int ii=curRow; ii < curRow+cnnHeight && ii < numrows; ii++)
+				for(int jj=j; jj < j+cnnWidth && jj < numcols; jj++)
 					for(int cat = 0; cat < confidences[localCurImage].size(); cat++)
 						fullImage[ii][jj][cat] += confidences[localCurImage][cat];
 			localCurImage++;
 		}
 
 		//update fraction done and see if we need to checkpoint
-		boinc_fraction_done(0);
+		double fraction = getFraction(curRow,numrowsmcnn);
+		printf("Row %d of %d (%d) \t Image %d of %lu. \t %lf%% total completion.\n",curRow,numrowsmcnn,numrows,curImage+1,filenames.size(),fraction*100.0);
+		#ifdef _BOINC_APP_
+		boinc_fraction_done(fraction);
 		if(boinc_time_to_checkpoint())
 		{
 			writeCheckpoint(fullImage);
 			boinc_checkpoint_completed();
 		}
+		#endif
+		// writeCheckpoint(fullImage);
 	}
 	curRow = 0; // this is set here so the next image will be right.
+
+	// cout << "Went through whole image" << endl;
 
 	//now we have the confidences for every pixel in the image
 	//so get the category for each pixel and make a new image from it
 	squareElements(fullImage);
-	vector<Mat*> outputMats;
+	vector<Mat*> outputMats(numClasses);
+	for(int m = 0; m < numClasses; m++)
+		outputMats[m] = new Mat(numrows,numcols,CV_8UC3);
 	for(int k = 0; k < numClasses; k++)
 	{
 		for(int i=0; i < numrows; i++)
@@ -312,7 +392,7 @@ void breakUpImage(const char* imageName, Net& net)
 					fullImage[i][j][n] /= sumsq;
 
 				//write the pixel
-				Vec3b& outPix = outputMat.at<Vec3b>(i,j);
+				Vec3b& outPix = outputMats[k]->at<Vec3b>(i,j);
 				if(allElementsEquals(fullImage[i][j]))
 				{
 					outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
@@ -327,15 +407,22 @@ void breakUpImage(const char* imageName, Net& net)
 			}
 		}
 	}
+
+	// cout << "Lets write the outputs" << endl;
+
 	char outName[255];
 	string origName(imageName);
 	size_t dot = origName.rfind('.');
 	const char *noExtension = origName.substr(0,dot).c_str();
 	const char *extension = origName.substr(dot).c_str();
 
-	sprintf(outName,"%s_prediction%s",noExtension,extension);
-	cout << "writing " << outName << endl;
-	imwrite(outName, outputMat);
+	for(int k = 0; k < numClasses; k++)
+	{
+		sprintf(outName,"%s_prediction_class%d%s",noExtension,k,extension);
+		cout << "writing " << outName << endl;
+		imwrite(outName, *(outputMats[k]));
+		delete outputMats[k];
+	}
 }
 //END - FUNCTIONS USED TO BREAK UP AN IMAGE
 
@@ -412,9 +499,10 @@ int main(int argc, char** argv)
 		}
 	}
 
-	for(int i = curImage; i < filenames.size(); i++)
+	printf("CurImage: %d. filenamesSize %lu\n",curImage,filenames.size());
+	for(; curImage < filenames.size(); curImage++)
 	{
-		breakUpImage(filenames[i].c_str(), net);
+		breakUpImage(filenames[curImage].c_str(), net);
 	}
 
 	boinc_finish(0);
