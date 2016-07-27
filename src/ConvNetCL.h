@@ -46,6 +46,11 @@
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 class Net{
+public:     // structs
+	struct ClassInfo{
+		std::string name = "";
+		int trueVal = -1;
+	};
 private: 	// structs
 	struct Layer{
 		int layerType = ABSTRACT_LAYER;
@@ -108,6 +113,7 @@ private: 	// members
 
 	//data and related members
 	int __numClasses = 0;
+	std::vector<ClassInfo> __classes;
 		//training
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
@@ -205,6 +211,8 @@ public: 	// functions
 		void clearData();
 
 	int getNumClasses() const;
+	void setClassNames(std::vector<std::string> names, std::vector<int> trueVals);
+	void getClassNames(std::vector<ClassInfo>& infos);
 
 	//sets for hyperparameters
 	bool set_learningRate(double rate);

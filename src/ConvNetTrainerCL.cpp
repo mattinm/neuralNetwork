@@ -426,6 +426,39 @@ int main(int argc, char** argv)
 		exit(0);
 	}
 
+	//stuff to allow for both configs. old and with names
+	vector<string> names;
+	vector<int> trues;
+
+	char oldOrNew = readChar(in);
+	if(oldOrNew == '\0') //new
+	{
+		// printf("New style\n");
+		int numClasses = readInt(in);
+		for(int i = 0; i < numClasses; i++)
+		{
+			unsigned int tru = readUInt(in);
+			char ch = readChar(in);
+			string name = "";
+			while(ch != '\0')
+			{
+				name += ch;
+				ch = readChar(in);
+			}
+
+			names.push_back(name);
+			trues.push_back(tru);
+			// printf("Found: %d, %s\n", trues.back(), names.back().c_str());
+		}
+	}
+	else //old
+	{
+		// printf("Old style\n");
+		in.seekg(0, in.beg);
+		for(int i = 0; i < 4; i++)
+			readShort(in);
+	}
+
 	//set up net
 	Net net;
 	if(cnn_name != "")
@@ -539,6 +572,8 @@ int main(int argc, char** argv)
     	net.preprocessIndividually();
     if(saveWeights)
     	net.setSaveName(outputName);
+    if(names.size() != 0)
+    	net.setClassNames(names,trues);
     net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{

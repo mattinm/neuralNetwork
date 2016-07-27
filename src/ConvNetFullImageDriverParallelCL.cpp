@@ -47,6 +47,8 @@ vector<bool> deviceActive;
 
 char* __netName;
 
+vector<Net::ClassInfo> infos;
+
 int inputWidth, inputHeight;
 int __rows, __cols;
 
@@ -225,6 +227,18 @@ void __parallelImageRowProcessor(int device)
 	}
 }
 
+string getNameForVal(int trueVal)
+{
+	for(int i = 0; i < infos.size(); i++)
+	{
+		if(infos[i].trueVal == trueVal)
+			return infos[i].name;
+	}
+	char buf[100];
+	sprintf(buf,"class%d",trueVal);
+	return string(buf);
+}
+
 
 /*
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
@@ -317,7 +331,11 @@ void breakUpImage(const char* imageName)
 
 	for(int k = 0; k < numClasses; k++)
 	{
-		sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
+		sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+		// if(infos.size() > k)
+		// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+		// else
+		// 	sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
 		printf("Writing %s\n", outName);
 		imwrite(outName,*(outputMats[k]));
 	}
@@ -343,7 +361,7 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt VideoOrFolderPath\n");
+		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt ImageOrFolderPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
 		printf("   stride=<int>        Stride across image. Defaults to 1.\n");
 		return -1;
@@ -450,6 +468,8 @@ int main(int argc, char** argv)
 	inputHeight = nets[0]->getInputHeight();
 	inputWidth = nets[0]->getInputWidth();
 	numClasses = nets[0]->getNumClasses();
+
+	nets[0]->getClassNames(infos);
 
 	//get the ones that work
 	for(int i = 0 ; i < nets.size(); i++)

@@ -6,8 +6,8 @@
 * 	All input images must be of the same size, specified in command line arguments. The format of the
 *	output file is this:
 *
-*		sizeByte xsize ysize zsize image1 trueVal1 image2 trueVal2... imageN trueValN
-*		short	 short short short 		  ushort		  ushort
+*		sizeByte xsize ysize zsize \0 numClasses trueVal   classname_c_str   image1 trueVal1 image2 trueVal2... imageN trueValN
+*		short	 short short short    int         uint   char[] ended by \0         ushort          ushort
 *
 *	The sizeByte says how large/what type each input is. 
 *		1 - unsigned byte 		-1 - signed byte
@@ -520,55 +520,112 @@ int main (int argc, char** argv)
 	outfile.write(reinterpret_cast<const char *>(&testf),sizeof(float));
 	*/
 
+	char slash0 = '\0';
+
 	outfile.write(reinterpret_cast<const char *>(&sizeByte),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&xsize),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&ysize),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&zsize),sizeof(short));
+	outfile.write(reinterpret_cast<const char *>(&slash0),sizeof(char));
 
-	byteCount += 4 * sizeof(short);
+	byteCount += 4 * sizeof(short) + sizeof(char);
+
+	bool endtrueVals = false;
+
+	vector<string> names;
+	vector<int> trues;
+	int numClasses = 0;
 
 	while(getline(imageConfig, line))
 	{
 		if(line.size() == 0 || line[0] == '#' || line[0] == '\n')
 			continue;
-		int comma1 = line.find(',');
-		int comma2 = line.find(',',comma1+1);
-		string folder = line.substr(0,comma1);
-		unsigned short trueVal;
-		if(comma2 != string::npos)
-		 	trueVal = stoi(line.substr(comma1+1));
-		else
-			trueVal = stoi(line.substr(comma1+1,comma2));
-		__globalTrueVal = trueVal;
-		if(comma2 == string::npos)
-			stride = globalStride;
+		if(line[0] == '$') // set a trueval
+		{
+			if(endtrueVals)
+			{
+				printf("All trueVals must come before the image folders.\n");
+				return -1;
+			}
+
+			int space1 = line.find(' ');
+			int space2 = line.find(' ', space1+1);
+			int trueVal = stoi(line.substr(space1+1, space2 - space1 - 1));
+			trues.push_back(trueVal);
+			// string name = line.substr(space2 + 1);
+			names.push_back(line.substr(space2 + 1));
+			numClasses++;
+		}
 		else
 		{
-			string stri = line.substr(comma2+1);
-			if(stri.find("stride=") != string::npos)
+			if(!endtrueVals)
 			{
-				stride = stoi(stri.substr(stri.find('=') + 1));
-			}
-			else
-				stride = stoi(stri);
-		}
+				//write the number of classes
+				outfile.write(reinterpret_cast<const char *>(&numClasses),sizeof(int));
+				byteCount += sizeof(int);
 
-		if(sizeByte == 1)
-				getImages<unsigned char>(folder.c_str(),outfile);
-		else if(sizeByte == -1)
-				getImages<char>(folder.c_str(),outfile);
-		else if(sizeByte == 2)
-				getImages<unsigned short>(folder.c_str(),outfile);
-		else if(sizeByte == -2)
-				getImages<short>(folder.c_str(),outfile);
-		else if(sizeByte == 4)
-				getImages<unsigned int>(folder.c_str(),outfile);
-		else if(sizeByte == -4)
-				getImages<int>(folder.c_str(),outfile);
-		else if(sizeByte == 5)
-				getImages<float>(folder.c_str(),outfile);
-		else if(sizeByte == 6)
-				getImages<double>(folder.c_str(),outfile);
+				//write the trueval and name for each class
+				for(int i = 0; i < numClasses; i++)
+				{
+					int trueVal = trues[i];
+					char out_name[names[i].length()];
+					for(int j= 0; j < names[i].length(); j++)
+					{
+						out_name[j] = names[i][j];
+						// printf("%c\n", name[i]);
+					}
+					out_name[names[i].length()] = '\0';
+					printf("Class %d, %s\n", trueVal, out_name);
+					outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(int));
+					outfile.write(out_name, sizeof(char) * (names[i].length() + 1)); // +1 for the '\0'
+
+					byteCount += sizeof(int) + (names[i].length()+1) * sizeof(char);
+
+				}
+				endtrueVals = true;
+
+				getchar();
+			}
+			
+			int comma1 = line.find(',');
+			int comma2 = line.find(',',comma1+1);
+			string folder = line.substr(0,comma1);
+			unsigned short trueVal;
+			if(comma2 != string::npos)
+			 	trueVal = stoi(line.substr(comma1+1));
+			else
+				trueVal = stoi(line.substr(comma1+1,comma2));
+			__globalTrueVal = trueVal;
+			if(comma2 == string::npos)
+				stride = globalStride;
+			else
+			{
+				string stri = line.substr(comma2+1);
+				if(stri.find("stride=") != string::npos)
+				{
+					stride = stoi(stri.substr(stri.find('=') + 1));
+				}
+				else
+					stride = stoi(stri);
+			}
+
+			if(sizeByte == 1)
+					getImages<unsigned char>(folder.c_str(),outfile);
+			else if(sizeByte == -1)
+					getImages<char>(folder.c_str(),outfile);
+			else if(sizeByte == 2)
+					getImages<unsigned short>(folder.c_str(),outfile);
+			else if(sizeByte == -2)
+					getImages<short>(folder.c_str(),outfile);
+			else if(sizeByte == 4)
+					getImages<unsigned int>(folder.c_str(),outfile);
+			else if(sizeByte == -4)
+					getImages<int>(folder.c_str(),outfile);
+			else if(sizeByte == 5)
+					getImages<float>(folder.c_str(),outfile);
+			else if(sizeByte == 6)
+					getImages<double>(folder.c_str(),outfile);
+		}
 	}
 
 	imageConfig.close();

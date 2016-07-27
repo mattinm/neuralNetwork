@@ -1796,6 +1796,24 @@ void Net::setData(const vector<Mat>& data)
 	addData(data);
 }
 
+void Net::setClassNames(vector<string> names, vector<int> trueVals)
+{
+	printf("Setting Class Names.\n");
+	__classes.resize(names.size());
+	for(int i = 0; i < __classes.size(); i++)
+	{
+		__classes[i].name = names[i];
+		__classes[i].trueVal = trueVals[i];
+
+		printf("Class %d, %s\n", __classes[i].trueVal, __classes[i].name.c_str());
+	}
+}
+
+void Net::getClassNames(vector<ClassInfo>& infos)
+{
+	infos = __classes;
+}
+
 //training
 bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<double>& trueVals)
 {
@@ -1809,8 +1827,6 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 		//if the trueVal does not yet have an index, this will resize the private class vectors and give it one.
 		int trueIndex = getTrueValIndex(trueVals[t]);
 
-		//__trainingData[trueIndex].resize(__trainingData[trueIndex].size() + 1);
-		//__trainingData[trueIndex].back() = new vector<double>(__neuronSizes[0]);
 		__trainingData[trueIndex].push_back(new vector<double>(inputSize));
 		int dat = 0;
 		for(int i=0; i < trainingData[t].size(); i++)
@@ -2370,6 +2386,21 @@ bool Net::load(const char* filename)
 				loc = line.find("=") + 1;
 				__trainingSize = stoul(line.substr(loc));
 			}
+			else if(line.find("CLASSES") != string::npos)
+			{
+				while(true)
+				{
+					ClassInfo info;
+					getline(file,line); lineNum++; //this should get the trueVal
+					if(line.find("END_CLASSES") != string::npos)
+						break;
+					info.trueVal = stoi(line);
+					getline(file,line); lineNum++;
+					info.name = line;
+
+					__classes.push_back(info);
+				}
+			}
 			else
 			{
 				cout << "Improper file structure while getting Net args at line " << lineNum << ". Exiting load.";
@@ -2848,6 +2879,16 @@ bool Net::save(const char* filename)
 
 	sprintf(data, "%lu", __trainingSize);
 	out += "TRAINING_SIZE="; out += data; out += '\n';
+
+	out  += "CLASSES\n";
+	for(int c = 0; c < __classes.size(); c++)
+	{
+		sprintf(data, "%d\n", __classes[c].trueVal);
+		out  += data;
+		sprintf(data, "%s\n", __classes[c].name.c_str());
+		out  += data;
+	}
+	out += "END_CLASSES\n";
 
 	out += "END_NET\n";
 
