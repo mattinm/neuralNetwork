@@ -584,7 +584,7 @@ int main (int argc, char** argv)
 				}
 				endtrueVals = true;
 
-				getchar();
+				// getchar();
 			}
 			
 			int comma1 = line.find(',');

@@ -212,7 +212,8 @@ public: 	// functions
 
 	int getNumClasses() const;
 	void setClassNames(std::vector<std::string> names, std::vector<int> trueVals);
-	void getClassNames(std::vector<ClassInfo>& infos);
+	void getClassNames(std::vector<ClassInfo>& infos) const;
+	std::string getClassForTrueVal(int trueVal) const;
 
 	//sets for hyperparameters
 	bool set_learningRate(double rate);

@@ -1809,7 +1809,7 @@ void Net::setClassNames(vector<string> names, vector<int> trueVals)
 	}
 }
 
-void Net::getClassNames(vector<ClassInfo>& infos)
+void Net::getClassNames(vector<ClassInfo>& infos) const
 {
 	infos = __classes;
 }
@@ -2177,6 +2177,14 @@ void Net::preprocessTrainingDataCollective()
 	__trainingDataPreprocessed = true;
 }
 
+string Net::getClassForTrueVal(int trueVal) const
+{
+	for(int i = 0; i < __classes.size(); i++)
+		if(__classes[i].trueVal == trueVal)
+			return __classes[i].name;
+	return "";
+}
+
 void Net::printTrainingDistribution() const
 {
     double numImages = 0;
@@ -2188,7 +2196,7 @@ void Net::printTrainingDistribution() const
     
     for(int i = 0; i < __trainingData.size(); i++)
     {
-        printf("True val: %.0lf. Amount %lu.   %.4lf%%\n", __trueVals[i], __trainingData[i].size(), __trainingData[i].size()/numImages * 100.0);
+        printf("True val: %.0lf %s   Amount %lu.   %.4lf%%\n", __trueVals[i], getClassForTrueVal(__trueVals[i]).c_str(), __trainingData[i].size(), __trainingData[i].size()/numImages * 100.0);
     }
 }
 

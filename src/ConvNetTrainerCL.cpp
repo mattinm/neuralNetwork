@@ -617,7 +617,7 @@ int main(int argc, char** argv)
 //    double *testTrueVals;
 	if(haveTest)
 	{
-		ifstream testIn;
+		// ifstream testIn;
 		in.open(testSetName.c_str());
 		if(!in.is_open())
 		{
@@ -636,6 +636,35 @@ int main(int argc, char** argv)
 		{
 			printf("Training and test images must be of same size.\n");
 			return 0;
+		}
+
+		char oldOrNew = readChar(in);
+		if(oldOrNew == '\0') //new
+		{
+			// read through the classes to get to the data
+			int numClasses = readInt(in);
+			for(int i = 0; i < numClasses; i++)
+			{
+				readUInt(in); //read the true val
+				char ch = readChar(in);
+				// string name = "";
+				while(ch != '\0')
+				{
+					// name += ch;
+					ch = readChar(in);
+				}
+
+				// names.push_back(name);
+				// trues.push_back(tru);
+				// printf("Found: %d, %s\n", trues.back(), names.back().c_str());
+			}
+		}
+		else //old
+		{
+			// printf("Old style\n");
+			in.seekg(0, in.beg);
+			for(int i = 0; i < 4; i++)
+				readShort(in);
 		}
 
 		printf("Bringing in testing data from file: %s\n", testSetName.c_str());
