@@ -457,9 +457,12 @@ int main(int argc, char** argv)
 		}
 	}
 
+	printf("Found %lu image(s).\n", filenames.size());
+
 	//init all nets
 	for(int i = 0; i < getNumDevices(); i++)
 	{
+		// printf("%d\n", i);
 		nets.push_back(new Net(__netName));	
 	}
 	fullImages.resize(nets.size());
@@ -471,6 +474,7 @@ int main(int argc, char** argv)
 
 	nets[0]->getClassNames(infos);
 
+	printf("Getting devices\n");
 	//get the ones that work
 	for(int i = 0 ; i < nets.size(); i++)
 	{

@@ -24,7 +24,12 @@ A. TrainingImageSplitterFileCreator
 	Format: (uint is unsigned int)
 	subimageWidth<uint> subimageHeight<uint> subimageDepth<uint>
 	sizeByte<int>
+
 	#pound at beginning of line is a comment. Pound must be first character in line. Blank lines are fine too.
+
+	#before the paths you can set the names of the classes with $set trueVal name
+	$set trueVal<int> name<string>
+	
 	pathToFolder,trueVal<int>,stride<int>
 	pathToFolder,trueVal<int>,stride<int>
 	...
@@ -32,6 +37,10 @@ A. TrainingImageSplitterFileCreator
 	Exp: (for 32x32x3 images with 2 possible classes)
 	32 32 3
 	1
+
+	$set 0 Background
+	$set 1 Dogs
+
 	/Users/user/Images/class0,0,15
 	/Users/user/Images/class1,1,30
 	/Users/user/Images/moreClass0,0,20

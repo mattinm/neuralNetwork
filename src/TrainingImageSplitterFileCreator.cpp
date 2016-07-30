@@ -35,11 +35,17 @@
 #include <sys/stat.h>
 #include <unordered_map>
 #include <random>
+#include <cstdlib>
 
 using namespace std;
 using namespace cv;
 
 #define MAX_ADJUST 0.3
+
+struct imstruct{
+	string name;
+	unsigned long count = 0;
+};
 
 short xsize = -1, ysize = -1, zsize = -1;
 
@@ -51,6 +57,8 @@ unsigned long imageCount = 0;
 unsigned long unalteredImageCount = 0;
 unsigned short __globalTrueVal;
 unordered_map<unsigned short, int> trueMap;
+vector<imstruct> counts;
+
 
 bool __horizontalReflect = false;
 bool __verticalReflect = false;
@@ -65,6 +73,15 @@ bool __output = true;
 default_random_engine gen(time(0));
 uniform_real_distribution<double> distr(-MAX_ADJUST,MAX_ADJUST);
 uniform_real_distribution<double> distr1(0,1);
+
+int compareRev(const void* p1, const void* p2)
+{
+	imstruct* im1 = (imstruct*) p1;
+	imstruct* im2 = (imstruct*) p2;
+	if(im1->count > im2->count) return -1;
+	if(im1->count == im2->count) return 0;
+	return 1;
+}
 
 unsigned char clamp (int val, int min, int max)
 {
@@ -256,6 +273,7 @@ unsigned long writeImage(Mat& image, ofstream& outfile)
 				delete(mat);
 
 				imageCount++;
+				counts.back().count++;
 				byteCount += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short));
 				unordered_map<unsigned short, int>::const_iterator got = trueMap.find(__globalTrueVal);
 				if(got == trueMap.end()) // not found
@@ -273,6 +291,7 @@ unsigned long writeImage(Mat& image, ofstream& outfile)
 			trueMap[__globalTrueVal]+=numWritesPerImage;
 		byteCount  += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short)) * numWritesPerImage; //extra for the ushort trueVal
 		imageCount += numWritesPerImage;
+		counts.back().count += numWritesPerImage;
 		if(imageCount % 100000 < numWritesPerImage)
 		{
 			printf("Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
@@ -297,14 +316,16 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 	int numThisImage = 0;
 	int numrows = image.rows;
 	int numcols = image.cols;
-	printf("%s rows: %d, cols: %d.     ",imageName, numrows,numcols);
+	// printf("%s rows: %d, cols: %d.     ",imageName, numrows,numcols);
 	if(numrows < ysize || numcols < xsize)
 	{
 		printf("The image %s is too small in at least one dimension. Minimum size is %dx%d.\n",imageName,xsize,ysize);
 		return;
 	}
 
-	cout << "Breaking with stride = " << stride << " and true val " << __globalTrueVal << endl;
+	// cout << "Breaking with stride = " << stride << " and true val " << __globalTrueVal << endl;
+	counts.resize(counts.size() + 1);
+	counts.back().name = imageName;
 	for(int i=0; i <= numrows-ysize; i+=stride)
 	{
 		for(int j=0; j<= numcols-xsize; j+=stride)
@@ -315,7 +336,7 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 			//imageNum++;
 		}
 	}
-	printf("%d images created.\n", numThisImage);	
+	// printf("%d images created.\n", numThisImage);	
 }
 
 int checkExtensions(const char* filename)
@@ -326,8 +347,6 @@ int checkExtensions(const char* filename)
 	if(name.rfind(".png")  == name.length() - 4) return 1;
 	return 0;
 }
-
-
 
 template<typename type>
 void getImages(const char* folder, ofstream& outfile)
@@ -631,6 +650,8 @@ int main (int argc, char** argv)
 	imageConfig.close();
 	outfile.close();
 
+	qsort(counts.data(), counts.size(), sizeof(imstruct), compareRev);
+
 	printf("Total Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
 	//cout << "Total: " << imageCount << " images created.";
     if(numWritesPerImage != 1)
@@ -646,6 +667,16 @@ int main (int argc, char** argv)
 	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
 	{
 		cout << "True val " << it->first << ": " << it->second << "   " << it->second/sum * 100 << "%\n";
+	}
+
+	printf("Type y to see the distribution by image. Type any other char to quit.\n");
+	char cont = getchar();
+	if(cont != 'y' && cont != 'Y')
+		return 0;
+
+	for(int i = 0; i < counts.size(); i++)
+	{
+		printf("%s - %lu images. %lf%%\n", counts[i].name.c_str(), counts[i].count, 100.0 * counts[i].count/imageCount);
 	}
 
 	return 0;

@@ -235,7 +235,7 @@ void breakUpImage(const char* imageName, Net& net)
 			else
 			{
 				outPix[0] = 255*fullImage[i][j][0]; // blue
-				outPix[1] = 255*fullImage[i][j][2]; // green
+				outPix[1] = 0;//255*fullImage[i][j][2]; // green
 				outPix[2] = 255*fullImage[i][j][1]; // red
 			}
 			/*//write only blue and red, no in between

@@ -324,6 +324,35 @@ int main(int argc, char** argv)
 		exit(0);
 	}
 
+	vector<string> names;
+	vector<int> trues;
+
+	char oldOrNew = readChar(in);
+	if(oldOrNew == '\0') // new
+	{
+		int numClasses = readInt(in);
+		for(int i = 0; i < numClasses; i++)
+		{
+			unsigned int tru = readUInt(in);
+			char ch = readChar(in);
+			string name = "";
+			while(ch != '\0')
+			{
+				name += ch;
+				ch = readChar(in);
+			}
+
+			names.push_back(name);
+			trues.push_back(tru);
+		}
+	}
+	else //old
+	{
+		in.seekg(0, in.beg);
+		for(int i = 0; i < 4; i++)
+			readShort(in);
+	}
+
 	//set up net
 	Net net(argv[1]);
 	if(learningRate != -1)
@@ -343,7 +372,11 @@ int main(int argc, char** argv)
     if(preprocessCollective)
     	net.preprocessCollectively();
     if(preprocessIndividual)
-    	net.preprocessIndividually();	
+    	net.preprocessIndividually();
+    if(saveNewWeights)
+    	net.setSaveName(outputName);
+    if(names.size() != 0)
+    	net.setClassNames(names, trues);	
     net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{

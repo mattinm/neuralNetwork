@@ -299,6 +299,7 @@ void Net::initRandomWeights(ConvLayer* conv, int prevDepth)
 
 void Net::initWeights(ConvLayer* conv, const string& weights)
 {
+	// cout << "start init weights" << endl;
 	int startIndex = 0, endIndex;
 	for(int f = 0; f < conv->numWeights; f++)
 	{
@@ -314,6 +315,7 @@ void Net::initWeights(ConvLayer* conv, const string& weights)
 		conv->biases[b] = stod(weights.substr(startIndex,endIndex));
 		startIndex = endIndex + 1;
 	}
+	// cout << "done init weights" << endl;
 }
 
 bool Net::setActivType(int activationType)
@@ -2017,6 +2019,7 @@ void Net::preprocessDataIndividual() // thread this
 
 void Net::preprocessDataCollective()
 {
+	// printf("Preprocessing data collectively. Mean %lf Stddev %lf\n", __mean, __stddev);
 	for(int i = 0; i < __data.size(); i++)
 	{
 		for(int pix = 0; pix < __data[i].size(); pix++)
@@ -2418,6 +2421,8 @@ bool Net::load(const char* filename)
 			getline(file,line); lineNum++;
 		}
 
+		// printf("End net\n");
+
 		//check and make sure all 4 args were found
 		if(netArgsFound < 4)
 		{
@@ -2436,6 +2441,7 @@ bool Net::load(const char* filename)
 		getline(file,line); lineNum++;
 		while(line != "END_ALL")
 		{
+			// printf("%s\n", line.c_str());
 			if(line == "ACTIV_LAYER")
 			{
 				int numActivArgs = 0, layer_activationType;
@@ -2509,6 +2515,7 @@ bool Net::load(const char* filename)
 				getline(file,line); lineNum++;
 				while(line != "END_CONV_LAYER")
 				{
+					// printf("%s\n", line.c_str());
 					if(line.find("stride") != string::npos)
 					{
 						loc = line.find("=") + 1;
@@ -2565,6 +2572,8 @@ bool Net::load(const char* filename)
 			}
 			getline(file,line); lineNum++;
 		}
+
+		// printf("End load\n");
 		file.close();
 		return true;
 	}

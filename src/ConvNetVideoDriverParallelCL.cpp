@@ -46,6 +46,7 @@ vector<Frame*> waitingFrames(0);
 char *inPath, *outPath;
 int stride = 1;
 int jump = 1;
+vector<int> excludes;
 bool firstGot = false;
 
 imVector *fullImages;
@@ -383,6 +384,15 @@ void breakUpImage(Frame& frame, Net& net, int device)
 
 void __parallelVideoProcessor(int device)
 {
+	if(device == 0)
+		printf("Loading Nets. This could take a while for larger nets.\n");
+
+	for(int i = 0; i < excludes.size(); i++)
+	{
+		if(excludes[i] == device)
+			return;
+	}
+
 	Net net(__netName);
 
 	// net.setConstantMem(true);
@@ -479,13 +489,14 @@ int checkExtensions(char* filename)
 
 int main(int argc, char** argv)
 {
-	if(argc < 3 || 5 < argc)
+	if(argc < 3)
 	{
 		printf("Usage (Required to come first):\n ./ConvNetVideoDriverParallelCL cnnConfig.txt VideoOrFolderPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
 		printf("   stride=<int>        Stride across image. Defaults to 1.\n");
 		printf("   jump=<int>          How many frames to jump between computations. If jump=10,\n");
 		printf("                       it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
+		printf("   ex=<int>            Device to exclude from running. Can be used multiple times.\n");
 		return -1;
 	}
 	time_t starttime, endtime;
@@ -500,6 +511,8 @@ int main(int argc, char** argv)
 				stride = stoi(arg.substr(arg.find("=")+1));
 			else if(arg.find("jump=") != string::npos)
 				jump = stoi(arg.substr(arg.find("=")+1));
+			else if(arg.find("ex=") != string::npos)
+				excludes.push_back(stoi(arg.substr(arg.find('=')+1)));
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
