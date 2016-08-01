@@ -25,6 +25,7 @@
 
 
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -81,6 +82,25 @@ int compareRev(const void* p1, const void* p2)
 	if(im1->count > im2->count) return -1;
 	if(im1->count == im2->count) return 0;
 	return 1;
+}
+
+string getParallelName(const vector<string>& names, const vector<int>& trueVals, int trueVal)
+{
+	for(int i = 0; i < names.size(); i++)
+	{
+		if(trueVals[i] == trueVal)
+			return names[i];
+	}
+	return string("");
+}
+
+int getMaxNameSize(const vector<string>& names)
+{
+	int max = 0;
+	for(int i = 0; i < names.size(); i++)
+		if(names[i].length() > max)
+			max = names[i].length();
+	return max;
 }
 
 unsigned char clamp (int val, int min, int max)
@@ -650,7 +670,7 @@ int main (int argc, char** argv)
 	imageConfig.close();
 	outfile.close();
 
-	qsort(counts.data(), counts.size(), sizeof(imstruct), compareRev);
+	
 
 	printf("Total Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
 	//cout << "Total: " << imageCount << " images created.";
@@ -664,19 +684,67 @@ int main (int argc, char** argv)
 		sum += it->second;
 	}
 	cout << "Distribution:" << endl;
+	int nameSize = getMaxNameSize(names);
 	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
 	{
-		cout << "True val " << it->first << ": " << it->second << "   " << it->second/sum * 100 << "%\n";
+		cout << "True val " << it->first << ", ";
+		cout << setw(nameSize) << left << getParallelName(names, trues, it->first) << ": ";
+		cout << setw(6) << right << it->second << "   " << it->second/sum * 100 << "%\n";
 	}
 
 	printf("Type y to see the distribution by image. Type any other char to quit.\n");
 	char cont = getchar();
+	getchar();
 	if(cont != 'y' && cont != 'Y')
 		return 0;
 
+	qsort(counts.data(), counts.size(), sizeof(imstruct), compareRev);
 	for(int i = 0; i < counts.size(); i++)
 	{
 		printf("%s - %lu images. %lf%%\n", counts[i].name.c_str(), counts[i].count, 100.0 * counts[i].count/imageCount);
+	}
+
+	printf("Type y to see the distribution by folder. Type any other char to quit\n");
+	cont = getchar();
+	if(cont != 'y' && cont != 'Y')
+		return 0;
+
+	vector<vector<imstruct> > folderCounts(1);
+	folderCounts.back() = counts;
+	int f = 1;
+	while(folderCounts.back().size() > 1)
+	{
+		folderCounts.resize(folderCounts.size() + 1);
+		for(int i = 0; i < folderCounts[f-1].size(); i++)
+		{
+			bool found = false;
+			string folder = folderCounts[f-1][i].name.substr(0, folderCounts[f-1][i].name.rfind('/'));
+			for(int j = 0; j < folderCounts[f].size(); j++)
+			{
+				if(folderCounts[f][j].name == folder)
+				{
+					folderCounts[f][j].count += folderCounts[f-1][i].count;
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				imstruct s;
+				s.name = folder;
+				s.count = folderCounts[f-1][i].count;
+				folderCounts[f].push_back(s);
+			}
+		}
+
+		qsort(folderCounts[f].data(), folderCounts[f].size(), sizeof(imstruct), compareRev);
+		for(int j = 0; j < folderCounts[f].size(); j++)
+		{
+			printf("%s - %lu images. %lf%%\n", folderCounts[f][j].name.c_str(), folderCounts[f][j].count, 100.0 * folderCounts[f][j].count/imageCount);
+		}
+		printf("\n");
+
+		f++;
 	}
 
 	return 0;
