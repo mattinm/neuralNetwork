@@ -57,8 +57,8 @@ private: 	// structs
 	};
 
 	struct ConvLayer : Layer{
-		double* weights;
-		double* biases;
+		double* weights = nullptr;
+		double* biases = nullptr;
 		int numWeights;
 		int numBiases;
 		int numNeurons;
@@ -69,6 +69,8 @@ private: 	// structs
 		int paddedNeuronHeight;
 		int paddedNeuronSize;
 		int maxSizeNeeded;
+
+		ConvLayer& operator=(const ConvLayer& other);
 	};
 
 	struct MaxPoolLayer : Layer{
@@ -99,12 +101,13 @@ private: 	// members
 	double __l2Lambda = 0.05;
 	double __MOMENT_CONST = 0.9;
 	double __MAX_NORM_CAP = 6.0;
+	
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer
-	bool __autoActivLayer = true;
 	std::vector<int> __neuronSizes; //[0] is input layer
-	int __maxNeuronSize;
 	std::vector<std::vector<int> > __neuronDims;  //[0] is input layer
+	bool __autoActivLayer = true;
+	int __maxNeuronSize;
 	int __defaultActivType = 0;
 	int __maxWeightSize = 0;
 
@@ -167,6 +170,9 @@ public: 	// functions
 	Net(int inputWidth, int inputHeight, int inputDepth);
 	void init(int inputWidth, int inputHeight, int inputDepth);
 	~Net();
+
+	//Equals
+	Net& operator=(const Net& other);
 	
 	//functions dealing with layers and sizes
 	bool addActivLayer();
@@ -246,8 +252,10 @@ public: 	// functions
 	bool load(const char* filename);
 
 private:	// functions
+	//functions for operator=
+	void copyLayers(const Net& other);
+
 	//inits
-	
 	void initOpenCL();
 
 	//functions dealing with layers

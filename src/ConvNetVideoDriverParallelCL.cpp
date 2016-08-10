@@ -466,7 +466,7 @@ void breakUpVideo(const char* videoName)
 	fullImages = new imVector[numDevices];
 	for(int i=0; i < numDevices; i++)
 	{
-		//start new thread for each device. Any thread for a device that does not support double will return early.
+		//start new thread for each device. Any thread for a device that does not support double or is excluded will return early.
 		t[i] = thread(__parallelVideoProcessor, i);
 	}
 

@@ -110,6 +110,122 @@ Net::~Net()
 	clReleaseContext(__context);
 }
 
+Net& Net::operator=(const Net& other)
+{
+	if(this != &other)
+	{
+		//clean up any currently used OpenCL stuff besides the context
+		if(__isFinalized)
+		{
+			clReleaseCommandQueue(queue);
+			clReleaseMemObject(*neurons);
+			clReleaseMemObject(*prevNeurons);
+			for(int w = 0; w < clWeights.size(); w++)
+			{
+				clReleaseMemObject(clWeights[w]);
+				clReleaseMemObject(clBiases[w]);
+			}
+			//running
+			clReleaseKernel(convKernelF);
+			clReleaseKernel(zeroPadKernelF);
+			clReleaseKernel(maxPoolKernelF);
+			clReleaseKernel(reluKernelF);
+			clReleaseKernel(leakyReluKernelF);
+			clReleaseKernel(softmaxKernelF);
+			clReleaseProgram(CNForward);
+
+			//training
+			clReleaseKernel(convKernel);
+			clReleaseKernel(zeroPadKernel);
+			clReleaseKernel(maxPoolKernel);
+			clReleaseKernel(reluKernel);
+			clReleaseKernel(leakyReluKernel);
+			clReleaseKernel(softmaxKernel);
+			clReleaseKernel(convBackNeuronsKernel);
+			clReleaseKernel(convBackBiasesKernel);
+			clReleaseKernel(convBackWeightsKernel);
+			clReleaseKernel(zeroPadBackKernel);
+			clReleaseKernel(maxPoolBackKernel);
+			clReleaseKernel(reluBackKernel);
+			clReleaseKernel(leakyReluBackKernel);
+			clReleaseKernel(softmaxBackKernel);
+			clReleaseProgram(CNTraining);
+		}
+	
+		this->__inited = other.__inited;
+		//hyperparameters
+		this->__learningRate = other.__learningRate;
+		this->__RELU_CAP = other.__RELU_CAP;
+		this->__LEAKY_RELU_CONST = other.__LEAKY_RELU_CONST;
+		this->__l2Lambda = other.__l2Lambda;
+		this->__MOMENT_CONST = other.__MOMENT_CONST;
+		this->__MAX_NORM_CAP = other.__MAX_NORM_CAP;
+
+		//Copy all layers
+		copyLayers(other);
+		//neuronSizes set by copyLayers
+		//neuronDims set by copyLayers
+		__autoActivLayer = other.__autoActivLayer;
+		__maxNeuronSize = other.__maxNeuronSize;
+		__defaultActivType = other.__defaultActivType;
+		__maxWeightSize = other.__maxWeightSize;
+
+		__isFinalized = false;
+		__errorLog = "";
+
+		//data and related members
+		//__numClasses set in addTrainingData
+		__classes = other.__classes;
+		__useMomentum = other.__useMomentum;
+		__stuffBuilt = false;
+	}
+	return *this;
+}
+
+void Net::copyLayers(const Net& other)
+{
+	//nicely delete all current layers
+	Layer *point;
+	for(int i=0; i< __layers.size(); i++)
+	{
+		point = __layers.back();
+		if(point->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)point;
+			delete conv->weights;
+			delete conv->biases;
+		}
+		__layers.pop_back();
+		delete point;
+	}
+	__layers.resize(0);
+
+	for(int l = 0; l < other.__layers.size(); l++)
+	{
+		if(other.__layers[l]->layerType == CONV_LAYER)
+		{
+			const ConvLayer* conv = (ConvLayer*) other.__layers[l];
+			__layers.push_back(new ConvLayer());
+			ConvLayer* myconv = ((ConvLayer*)__layers.back());
+			*myconv = *conv;
+			pushBackLayerSize(
+				myconv->paddedNeuronWidth  - 2 * myconv->padding, //width
+				myconv->paddedNeuronHeight - 2 * myconv->padding, //height
+				myconv->numBiases);  // numBiases == numFilters which is depth of new layer
+		}
+		else if(other.__layers[l]->layerType == MAX_POOL_LAYER)
+		{
+			const MaxPoolLayer* pool = (MaxPoolLayer*)other.__layers[l];
+			addMaxPoolLayer(pool->poolSize, pool->stride);
+		}
+		else if(other.__layers[l]->layerType == ACTIV_LAYER)
+		{
+			const ActivLayer* act = (ActivLayer*)other.__layers[l];
+			addActivLayer(act->activationType);
+		}
+	}
+}
+
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
 	if(__inited)
@@ -424,16 +540,16 @@ bool Net::finalize()
 	if(!__stuffBuilt)
 	{
 		//build the program
-		//running
+			//running
 		const char* foptions = "-cl-mad-enable";
 		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context, RUNNING_PROGRAM);
 		const cl_device_id* deviceToBuild = &(__deviceIds[q]);
 		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, foptions, nullptr, nullptr));
-		//training
+			//training
 		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
 		//Create the kernels; check for errors
-		//running
+			//running
 		reluKernelF = clCreateKernel(CNForward, "relu", &error); CheckError(error);
 		leakyReluKernelF = clCreateKernel(CNForward, "leakyRelu", &error); CheckError(error);
 		convKernelF = clCreateKernel(CNForward, "convolve", &error); CheckError(error);
@@ -441,7 +557,7 @@ bool Net::finalize()
 		zeroPadKernelF = clCreateKernel(CNForward, "zeroPad", &error); CheckError(error);
 		maxPoolKernelF = clCreateKernel(CNForward, "maxPool", &error); CheckError(error);
 		softmaxKernelF = clCreateKernel(CNForward, "softmax_allCL", &error); CheckError(error);
-		//training
+			//training
 		reluKernel = clCreateKernel(CNTraining, "relu", &error); CheckError(error);
 		reluBackKernel = clCreateKernel(CNTraining, "relu_back", &error); CheckError(error);
 		leakyReluKernel = clCreateKernel(CNTraining, "leakyRelu", &error); CheckError(error);
@@ -3101,4 +3217,37 @@ void Net::WeightHolder::clearWeights()
 	}
 	weights.resize(0);
 	biases.resize(0);
+}
+
+
+Net::ConvLayer& Net::ConvLayer::operator=(const Net::ConvLayer& other)
+{
+	if(this != &other)
+	{
+		//see if we need to clean up our weights and biases
+		if(weights != nullptr)
+			delete weights;
+		if(biases != nullptr)
+			delete biases;
+
+		//copy over everything
+		numWeights = other.numWeights;
+		numBiases = other.numBiases;
+		numNeurons = other.numNeurons;
+		padding = other.padding;
+		stride = other.stride;
+		filterSize = other.filterSize;
+		paddedNeuronWidth = other.paddedNeuronWidth;
+		paddedNeuronHeight = other.paddedNeuronHeight;
+		paddedNeuronSize = other.paddedNeuronSize;
+		maxSizeNeeded = other.maxSizeNeeded;
+
+		weights = new double[numWeights];
+		biases = new double[numBiases];
+		for(int i = 0; i < numWeights; i++)
+			weights[i] = other.weights[i];
+		for(int i = 0; i < numBiases; i++)
+			biases[i] = other.biases[i];
+	}
+	return *this;
 }
