@@ -1627,6 +1627,7 @@ void Net::train(int epochs)
 	 			timesStale++;
 	 			if(timesStale == 3)
 	 			{
+	 				loadWeightsFromHolder(holder);
 	 				__learningRate *= .5;
 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
 	 			}
@@ -1659,6 +1660,7 @@ void Net::train(int epochs)
 	 			timesStale++;
 	 			if(timesStale == 3)
 	 			{
+	 				loadWeightsFromHolder(holder);
 	 				__learningRate *= .5;
 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
 	 			}
