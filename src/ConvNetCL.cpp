@@ -458,6 +458,8 @@ void Net::printLayerDims() const
 			else if(act->activationType == RELU)
 			printf("RELU          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 		}
+		else
+			printf("Unknown Layer: %d\n",__layers[i]->layerType);
 }
 
 int Net::getInputHeight() const
@@ -2457,11 +2459,12 @@ bool Net::load(const char* filename)
 		return false;
 	}
 
-	setAutoActivLayer(false);
+	
 
 	getline(file, line);
 	if(line == "NET1.0")
 	{
+		setAutoActivLayer(false);
 		int inputWidth, inputHeight, inputDepth, activationType;
 		int netArgsFound = 0;
 		getline(file, line); lineNum++;

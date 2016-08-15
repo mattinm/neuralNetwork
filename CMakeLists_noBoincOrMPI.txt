@@ -33,6 +33,7 @@ add_executable( ConvNetFullImageDriverParallelCL src/ConvNetFullImageDriverParal
 
 add_executable( ConvNetVideoDriverCL src/ConvNetVideoDriverCL.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetVideoDriverParallelCL src/ConvNetVideoDriverParallelCL.cpp src/ConvNetCL.cpp)
+add_executable( ConvNetVideoDriverParallelCL_multiNet src/ConvNetVideoDriverParallelCL_multiNet.cpp src/ConvNetCL.cpp)
 
 add_executable( kernelBuilder src/kernelBuilder.cpp )
 
@@ -63,6 +64,7 @@ target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_
 
 target_link_libraries( ConvNetVideoDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 
 target_link_libraries( kernelBuilder ${OPENCL_LIBRARY} )
 
