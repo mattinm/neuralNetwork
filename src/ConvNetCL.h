@@ -57,6 +57,7 @@ private: 	// structs
 	};
 
 	struct ConvLayer : Layer{
+		// int layerType = CONV_LAYER;
 		double* weights = nullptr;
 		double* biases = nullptr;
 		int numWeights;
@@ -71,6 +72,7 @@ private: 	// structs
 		int maxSizeNeeded;
 
 		ConvLayer& operator=(const ConvLayer& other);
+		bool equals(const ConvLayer& other);
 	};
 
 	struct MaxPoolLayer : Layer{
@@ -166,6 +168,7 @@ private: 	// members
 public: 	// functions
 	//Constructors and Destructors
 	Net();
+	Net(const Net& other);
 	Net(const char* filename);
 	Net(int inputWidth, int inputHeight, int inputDepth);
 	void init(int inputWidth, int inputHeight, int inputDepth);

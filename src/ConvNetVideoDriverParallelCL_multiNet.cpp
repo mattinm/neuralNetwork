@@ -56,7 +56,7 @@ imVector *fullImages;
 VideoCapture __video;
 VideoWriter __outVideo;
 ofstream __outcsv;
-vector<const char*> __netNames;
+vector<string> __netNames;
 
 vector<int> inputWidths, inputHeights;
 int __rows, __cols;
@@ -79,9 +79,12 @@ string secondsToString(time_t seconds)
 	return outString;
 }
 
-void loadNet(Net& net, const char* filepath)
+void loadNet(Net*& net, const char* filepath)
 {
-	net.load(filepath);
+	time_t start = time(NULL);
+    printf("Loading net %s\n",filepath);
+    net = new Net(filepath);
+    printf("Loaded %s - %s\n",filepath,secondsToString(time(NULL) - start).c_str());
 }
 
 void resize3DVector(vector<vector<vector<double> > > &vect, int width, int height, int depth)
@@ -176,8 +179,8 @@ void submitFrame(Frame& frame)
 		// __outcsv << frame.red << "," << (frame.frameNum/10.0) << "\n";
 		__outcsv << frame.frameNum/10.0 << ',' << frame.red << ',' << frame.flyingElement << '\n';
 		curSubmittedFrame+=jump;
-		delete frame.mat;
 		printf("Frame %ld completed. %.2lf%% complete.\n",frame.frameNum,frame.percentDone);
+		delete frame.mat;
 		int i=0; 
 		//printf("starting while\n");
 		while(i < waitingFrames.size() && waitingFrames[i]->frameNum == curSubmittedFrame)
@@ -282,7 +285,6 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
-
 	for(int n = 0; n < net.size(); n++)
 	{
 		int numrowsm32 = numrows-inputHeights[n];
@@ -303,12 +305,16 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 				// imageRow.resize(imageRow.size()+1);
 				// convertColorMatToVector(out,imageRow.back());
 			}
-			//cout << imageRow[0] << endl;
 			//set them as the data in the net
-			//preprocess(imageRow);
+
 			net[n].setData(imageRow);
 			net[n].run();
 			net[n].getConfidences(confidences); //gets the confidence for each category for each image
+
+			// masternets[n]->setData(imageRow);
+			// masternets[n]->run();
+			// masternets[n]->getConfidences(confidences);
+
 
 			int curImage = 0;
 			for(int j=6; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
@@ -323,6 +329,8 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 						{
 							//printf("%d %d %d %d\n",i,j,jj,cat);
 							fullImages[device][ii][jj][cat] += confidences[curImage][cat];
+							// printf("%lf \n", confidences[curImage][cat]);
+							// getchar();
 						}
 					}
 				}
@@ -394,8 +402,8 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 
 void __parallelVideoProcessor(int device)
 {
-	if(device == 0)
-		printf("Loading Nets. This could take a while for larger nets.\n");
+	// if(device == 0)
+		// printf("Copying Nets. This could take a while for larger nets.\n");
 
 	for(int i = 0; i < excludes.size(); i++)
 	{
@@ -403,21 +411,37 @@ void __parallelVideoProcessor(int device)
 			return;
 	}
 
-	//Net net(__netName);
-	vector<Net> net(masternets.size());
-	for(int i = 0; i < masternets.size(); i++)
-		net[i] = *(masternets[i]);
+	// printf("Not excluding\n");
 
-	// net.setConstantMem(true);
+	// vector<Net> net(masternets.size());
+	vector<Net> net(0);
+	printf("Going into for dev %d\n",device);
+	for(int i = 0; i < masternets.size(); i++)
+	{
+		printf("in for dev %d net %d\n", device,i);
+		// net[i] = *(masternets[i]);
+		net.push_back(*masternets[i]);
+		// net[i].printLayerDims();
+	}
+	printf("Out of for dev %d\n", device);
 	for(int i = 0; i < net.size(); i++)
-		if(!net[i].setDevice(device) || !net[i].finalize())
+		if(!net[i].setDevice(device))
+		{
+			printf("Failed to use device %d\n", device);
 			return;
+		}
+		else if (!net[i].finalize())
+		{
+			printf("Failed to finalize net %d on device %d\n", i, device);
+			return;
+		}
 	printf("Thread using device %d\n",device);
 
 	resize3DVector(fullImages[device], __rows, __cols, net[0].getNumClasses());
 
 	Frame frame;
 	frame.mat = new Mat(__rows, __cols, CV_8UC3);
+	printf("Getting first frame in device %d\n",device);
 	getNextFrame(frame);
 
 	while(!done)
@@ -500,6 +524,7 @@ int checkExtensions(char* filename)
 
 int main(int argc, char** argv)
 {
+
 	if(argc < 3)
 	{
 		printf("Usage (Required to come first):\n ./ConvNetVideoDriverParallelCL cnnConfig.txt VideoOrFolderPath\n");
@@ -514,7 +539,7 @@ int main(int argc, char** argv)
 	time_t starttime, endtime;
 	inPath = argv[2];
 
-	__netNames.push_back(argv[1]);
+	__netNames.push_back(string(argv[1]));
 
 	if(argc > 3)
 	{
@@ -529,7 +554,7 @@ int main(int argc, char** argv)
 				excludes.push_back(stoi(arg.substr(arg.find('=')+1)));
 			else if(arg.find("cnn=") != string::npos)
 			{
-				__netNames.push_back(arg.substr(arg.find('=')+1).c_str());
+                __netNames.push_back(arg.substr(arg.find('=')+1));
 			}
 			else
 			{
@@ -617,25 +642,35 @@ int main(int argc, char** argv)
 	masternets.resize(__netNames.size());
 	inputWidths.resize(__netNames.size());
 	inputHeights.resize(__netNames.size());
+    
+//    for(int i = 0; i < __netNames.size(); i++)
+//    {
+//        printf("%s\n",__netNames[i].c_str());
+//    }
+    
 	thread* t = new thread[masternets.size()];
 	for(int i = 0; i < masternets.size(); i++)
-		t[i] = thread(loadNet,std::ref(*(masternets[i])),__netNames[i]);
+		t[i] = thread(loadNet,std::ref(masternets[i]),__netNames[i].c_str());
 	for(int i = 0; i < masternets.size(); i++)
 		t[i].join();
 
-	int numClass = masternets[0]->getNumClasses();
+	printf("Done threads\n");
+	printf("Number of nets %lu\n", masternets.size());
+	int numClass = masternets.at(0)->getNumClasses();
+	printf("numClasses %d\n", numClass);
 	for(int i = 1; i < masternets.size(); i++)
 		if(numClass != masternets[i]->getNumClasses())
 		{
 			printf("All nets must have the same number of classes\n");
 			return -1;
 		}
-
+	printf("after getting numClasses\n");
 	// masternet = new Net(__netName);
 	for(int i = 0; i < masternets.size(); i++)
 	{
 		inputWidths[i] = masternets[i]->getInputWidth();
 		inputHeights[i] = masternets[i]->getInputHeight();
+		printf("Net %d input is %d x %d\n", i, inputWidths[i], inputHeights[i]);
 	}
 	for(int i = 0; i < masternets.size(); i++)
 	{
@@ -643,7 +678,7 @@ int main(int argc, char** argv)
 		masternets[i]->printLayerDims();
 		printf("\n");
 	}
-
+	printf("run the stuff\n");
 	//run the stuff
 	for(int i=0; i < filenames.size(); i++)
 	{

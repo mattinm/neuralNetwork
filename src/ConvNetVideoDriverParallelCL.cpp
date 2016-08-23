@@ -395,8 +395,12 @@ void __parallelVideoProcessor(int device)
 			return;
 	}
 
-	//Net net(__netName);
-	Net net = *masternet;
+	// Net net(__netName); //0
+	Net net = *masternet; //1
+	// Net net;
+	// net = *masternet;
+
+	printf("Device %d loc %p\n",device, (void *)&net);
 
 	// net.setConstantMem(true);
 	if(!net.setDevice(device) || !net.finalize())

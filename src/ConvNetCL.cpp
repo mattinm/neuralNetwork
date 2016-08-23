@@ -29,7 +29,7 @@ using namespace std;
 using namespace cv;
 
 #define GETMAX(x,y) (x > y) ? x: y
-#define RET_FALSE {file.close(); return false}
+#define RET_FALSE {file.close(); return false;}
 
 /*****************************************
  * Constructors and Destructors and inits
@@ -38,6 +38,82 @@ using namespace cv;
 Net::Net()
 {
 
+}
+
+Net::Net(const Net &other) // Copy constructor
+{
+	printf("copy ------------------\n");
+	if(this != &other)
+	{
+		printf("in copy-----------\n");
+		//clean up any currently used OpenCL stuff besides the context
+		if(__isFinalized)
+		{
+			clReleaseCommandQueue(queue);
+			clReleaseMemObject(*neurons);
+			clReleaseMemObject(*prevNeurons);
+			for(int w = 0; w < clWeights.size(); w++)
+			{
+				clReleaseMemObject(clWeights[w]);
+				clReleaseMemObject(clBiases[w]);
+			}
+			//running
+			clReleaseKernel(convKernelF);
+			clReleaseKernel(zeroPadKernelF);
+			clReleaseKernel(maxPoolKernelF);
+			clReleaseKernel(reluKernelF);
+			clReleaseKernel(leakyReluKernelF);
+			clReleaseKernel(softmaxKernelF);
+			clReleaseProgram(CNForward);
+
+			//training
+			clReleaseKernel(convKernel);
+			clReleaseKernel(zeroPadKernel);
+			clReleaseKernel(maxPoolKernel);
+			clReleaseKernel(reluKernel);
+			clReleaseKernel(leakyReluKernel);
+			clReleaseKernel(softmaxKernel);
+			clReleaseKernel(convBackNeuronsKernel);
+			clReleaseKernel(convBackBiasesKernel);
+			clReleaseKernel(convBackWeightsKernel);
+			clReleaseKernel(zeroPadBackKernel);
+			clReleaseKernel(maxPoolBackKernel);
+			clReleaseKernel(reluBackKernel);
+			clReleaseKernel(leakyReluBackKernel);
+			clReleaseKernel(softmaxBackKernel);
+			clReleaseProgram(CNTraining);
+		}
+	
+		this->__inited = true;
+		//hyperparameters
+		this->__learningRate = other.__learningRate;
+		this->__RELU_CAP = other.__RELU_CAP;
+		this->__LEAKY_RELU_CONST = other.__LEAKY_RELU_CONST;
+		this->__l2Lambda = other.__l2Lambda;
+		this->__MOMENT_CONST = other.__MOMENT_CONST;
+		this->__MAX_NORM_CAP = other.__MAX_NORM_CAP;
+
+		//Copy all layers
+		this->copyLayers(other);
+		//neuronSizes set by copyLayers
+		//neuronDims set by copyLayers
+		this->__autoActivLayer = other.__autoActivLayer;
+		this->__maxNeuronSize = other.__maxNeuronSize;
+		this->__defaultActivType = other.__defaultActivType;
+		this->__maxWeightSize = other.__maxWeightSize;
+
+		this->__isFinalized = false;
+		this->__errorLog = "";
+
+		//data and related members
+		//__numClasses set in addTrainingData
+		this->__classes = other.__classes;
+		this->__useMomentum = other.__useMomentum;
+		this->__stuffBuilt = false;
+
+		this->initOpenCL();
+	}
+	printf("END copy --- \n");
 }
 
 Net::Net(const char* filename)
@@ -112,6 +188,7 @@ Net::~Net()
 
 Net& Net::operator=(const Net& other)
 {
+	printf("EQUALS ------------------\n");
 	if(this != &other)
 	{
 		//clean up any currently used OpenCL stuff besides the context
@@ -178,7 +255,10 @@ Net& Net::operator=(const Net& other)
 		__classes = other.__classes;
 		__useMomentum = other.__useMomentum;
 		__stuffBuilt = false;
+
+		initOpenCL();
 	}
+	printf("END EQUALS --- \n");
 	return *this;
 }
 
@@ -200,18 +280,38 @@ void Net::copyLayers(const Net& other)
 	}
 	__layers.resize(0);
 
-	for(int l = 0; l < other.__layers.size(); l++)
+	__layers.push_back(new Layer); //input layer
+	int wid = other.__neuronDims[0][0];
+	int hei = other.__neuronDims[0][1];
+	int dep = other.__neuronDims[0][2];
+	pushBackLayerSize(wid,hei,dep);
+
+	for(int l = 1; l < other.__layers.size(); l++)
 	{
 		if(other.__layers[l]->layerType == CONV_LAYER)
 		{
 			const ConvLayer* conv = (ConvLayer*) other.__layers[l];
-			__layers.push_back(new ConvLayer());
-			ConvLayer* myconv = ((ConvLayer*)__layers.back());
+			for(int i = 0; i < 10; i++)
+				printf("%lf,",conv->weights[i]);
+			printf("\n");
+			printf("%p\n",(void *)conv->weights);
+			
+			ConvLayer* myconv = new ConvLayer();
+
+			// ConvLayer* myconv = (ConvLayer*) other.__layers[l];
+			// __layers.push_back(myconv);
+
 			*myconv = *conv;
+			for(int i = 0; i < 10; i++)
+				printf("%lf,",myconv->weights[i]);
+			printf("\n");
+			printf("%p\n",(void *)myconv->weights);
+			myconv->layerType = CONV_LAYER;
 			pushBackLayerSize(
 				myconv->paddedNeuronWidth  - 2 * myconv->padding, //width
 				myconv->paddedNeuronHeight - 2 * myconv->padding, //height
 				myconv->numBiases);  // numBiases == numFilters which is depth of new layer
+			__layers.push_back(myconv);
 		}
 		else if(other.__layers[l]->layerType == MAX_POOL_LAYER)
 		{
@@ -222,6 +322,13 @@ void Net::copyLayers(const Net& other)
 		{
 			const ActivLayer* act = (ActivLayer*)other.__layers[l];
 			addActivLayer(act->activationType);
+		}
+
+		if(other.__layers[l]->layerType == CONV_LAYER)
+		{
+			ConvLayer* myconv = (ConvLayer*)__layers.back();
+			ConvLayer* otherConv = (ConvLayer*)other.__layers[l];
+			printf("ConvLayers equal: %d\n", myconv->equals(*otherConv));
 		}
 	}
 }
@@ -240,6 +347,7 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 
 void Net::initOpenCL()
 {
+	// printf("OpenCL initing\n");
 	cl_int error;
 	//platforms
 	clGetPlatformIDs(0, nullptr, &__platformIdCount);
@@ -276,7 +384,10 @@ bool Net::addActivLayer()
 bool Net::addActivLayer(int activType)
 {
 	if(activType >= MAX_ACTIV || activType < 0)
+	{
+		printf("ActivLayer failing to add with type number %d\n", activType);
 		return false;
+	}
 
 	int prevWidth  = __neuronDims.back()[0];
 	int prevHeight = __neuronDims.back()[1];
@@ -598,6 +709,8 @@ bool Net::finalize()
 	clWeights.resize(0);
 	clBiases.resize(0);
 
+	// for(int i = 0; i < __layers.size(); i++)
+	// 	printf("type %d\n", __layers[i]->layerType);
 	for(int i=1; i < __layers.size(); i++)
 	{
 		int type = __layers[i]->layerType;
@@ -2459,6 +2572,8 @@ bool Net::load(const char* filename)
 		return false;
 	}
 
+
+
 	
 
 	getline(file, line);
@@ -2753,7 +2868,7 @@ bool Net::load(const char* filename)
 				else
 				{
 					printf("Line %d: Unimplemented activation type \"%s\".\n", lineNum, items[1].c_str());
-					return false;
+					RET_FALSE;
 				}
 			}
 			else if(items[0] == "auto_activ")
@@ -2765,7 +2880,7 @@ bool Net::load(const char* filename)
 				else
 				{
 					printf("Line %d: auto_activ must be set to either true or false.\n",lineNum);
-					return false;
+					RET_FALSE;
 				}
 			}
 			else if(items[0] == "input")
@@ -2773,17 +2888,17 @@ bool Net::load(const char* filename)
 				if(haveInput)
 				{
 					printf("Line %d. Cannot have input twice.\n", lineNum);
-					return false;
+					RET_FALSE;
 				}
 				if(!stringToDims(items[1],dims))
-					return false;
+					RET_FALSE;
 				init(dims[0],dims[1],dims[2]);
 				haveInput = true;
 			}
 			else if(!haveInput)
 			{
 				printf("Line %d: You need to have the input layer before any other layers.\n", lineNum);
-				return false;
+				RET_FALSE;
 			}
 			else if(items[0] == "conv")
 			{
@@ -2804,13 +2919,13 @@ bool Net::load(const char* filename)
 					else if(items[i].find("x") != string::npos)
 					{
 						bool goodDims = stringToDims(items[i], dims);
-						if(!goodDims) return false;
+						if(!goodDims) RET_FALSE;
 						dimIndex = i;
 					}
 					else
 					{
 						printf("Line %d: Unknown arg for Convolutional Layer \"%s\".\n",lineNum, items[i].c_str());
-						return false;
+						RET_FALSE;
 					}
 				}
 				string errors = "";
@@ -2837,20 +2952,20 @@ bool Net::load(const char* filename)
 				if(errors != "")
 				{
 					printf("%s\n", errors.c_str());
-					return false;
+					RET_FALSE;
 				}
 				bool success = addConvLayer(numFil,stride,filSize,pad);
 				if(!success)
 				{
 					printf("Line %d: Conv Layer failed to load successfully. Make sure the stride fits previous layer size.\n", lineNum);
-					return false;
+					RET_FALSE;
 				}
 				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
 				{
 					if(dims[0] != __neuronDims.back()[0] || dims[1] != __neuronDims.back()[1] || dims[2] != __neuronDims.back()[2])
 					{
 						printf("Line %d: The computed dimensions for conv layer do not match calculated.\n\t Given: %s, Calculated: %dx%dx%d\n", lineNum, items[dimIndex].c_str(),__neuronDims.back()[0],__neuronDims.back()[1],__neuronDims.back()[2]);
-						return false;
+						RET_FALSE;
 					}
 				}
 			}
@@ -2865,7 +2980,7 @@ bool Net::load(const char* filename)
 				else
 				{
 					printf("Line %d: Unknown or unimplemented activation type \"%s\". Try \"relu\" or \"leaky_relu\".\n", lineNum,items[1].c_str());
-					return false;
+					RET_FALSE;
 				}
 				bool success = addActivLayer(activType);
 				if(!success)
@@ -2886,13 +3001,13 @@ bool Net::load(const char* filename)
 					else if(items[i].find('x') != string::npos)
 					{
 						bool goodDims = stringToDims(items[i], dims);
-						if(!goodDims) return false;
+						if(!goodDims) RET_FALSE;
 						dimIndex = i;						
 					}
 					else
 					{
 						printf("Line %d: Unknown arg for MaxPool Layer \"%s\".\n",lineNum, items[i].c_str());
-						return false;
+						RET_FALSE;
 					}
 				}
 
@@ -2910,20 +3025,20 @@ bool Net::load(const char* filename)
 				if(errors != "")
 				{
 					printf("%s\n", errors.c_str());
-					return false;
+					RET_FALSE;
 				}
 				bool success = addMaxPoolLayer(pool, stride);
 				if(!success)
 				{
 					printf("Line %d: MaxPool Layer failed to load correctly. Make sure stride fits previous layer size.\n", lineNum);
-					return false;
+					RET_FALSE;
 				}
 				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
 				{
 					if(dims[0] != __neuronDims.back()[0] || dims[1] != __neuronDims.back()[1] || dims[2] != __neuronDims.back()[2])
 					{
 						printf("Line %d: The computed dimensions for maxpool layer do not match calculated.\n\t Given: %s, Calculated: %dx%dx%d\n", lineNum, items[dimIndex].c_str(),__neuronDims.back()[0],__neuronDims.back()[1],__neuronDims.back()[2]);
-						return false;
+						RET_FALSE;
 					}
 				}
 			}
@@ -2934,7 +3049,7 @@ bool Net::load(const char* filename)
 				if(items.size() > 3)
 				{
 					printf("Line %d: Too many args for Fully Connected Layer\n", lineNum);
-					return false;
+					RET_FALSE;
 				}
 				for(int i = 1; i < items.size(); i++)
 				{
@@ -2942,7 +3057,7 @@ bool Net::load(const char* filename)
 					if(items[i].find('x') != string::npos)
 					{
 						bool goodDims = stringToDims(items[i],dims);
-						if(!goodDims) return false;
+						if(!goodDims) RET_FALSE;
 						dimIndex = i;
 					}
 					else
@@ -2951,27 +3066,27 @@ bool Net::load(const char* filename)
 				if(outputSize <= 0)
 				{
 					printf("Line %d: pool must exist and be positive\n",lineNum);
-					return false;
+					RET_FALSE;
 				}
 				bool success = addFullyConnectedLayer(outputSize);
 				if(!success)
 				{
 					printf("Line %d: Error adding Fully Connected Layer.\n", lineNum);
-					return false;
+					RET_FALSE;
 				}
 				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
 				{
 					if(dims[0] != __neuronDims.back()[0] || dims[1] != __neuronDims.back()[1] || dims[2] != __neuronDims.back()[2])
 					{
 						printf("Line %d: The computed dimensions for fc layer do not match calculated.\n\t Given: %s, Calculated: %dx%dx%d\n", lineNum, items[dimIndex].c_str(),__neuronDims.back()[0],__neuronDims.back()[1],__neuronDims.back()[2]);
-						return false;
+						RET_FALSE;
 					}
 				}
 			}
 			else
 			{
 				printf("Line %d: Unknown arg \"%s\"\n", lineNum, line.c_str());
-				return false;
+				RET_FALSE;
 			}
 		}
 		file.close();
@@ -3229,11 +3344,18 @@ Net::ConvLayer& Net::ConvLayer::operator=(const Net::ConvLayer& other)
 {
 	if(this != &other)
 	{
+		printf("Copying convLayer\n");
 		//see if we need to clean up our weights and biases
 		if(weights != nullptr)
+		{
+			printf("Deleting old weights\n");
 			delete weights;
+		}
 		if(biases != nullptr)
+		{
+			printf("Deleting old biases\n");
 			delete biases;
+		}
 
 		//copy over everything
 		numWeights = other.numWeights;
@@ -3256,3 +3378,29 @@ Net::ConvLayer& Net::ConvLayer::operator=(const Net::ConvLayer& other)
 	}
 	return *this;
 }
+
+bool Net::ConvLayer::equals(const Net::ConvLayer& other)
+{
+	bool ret = true;
+	ret = ret && (numWeights == other.numWeights);
+	ret = ret && (numBiases == other.numBiases);
+	ret = ret && (numNeurons == other.numNeurons);
+	ret = ret && (padding == other.padding);
+	ret = ret && (stride == other.stride);
+	ret = ret && (filterSize == other.filterSize);
+	ret = ret && (paddedNeuronWidth == other.paddedNeuronWidth);
+	ret = ret && (paddedNeuronHeight == other.paddedNeuronHeight);
+	ret = ret && (paddedNeuronSize == other.paddedNeuronSize);
+	ret = ret && (maxSizeNeeded == other.maxSizeNeeded);
+	if(!ret)
+		return !ret;
+	for(int i = 0; i < numWeights; i++)
+		ret = ret && (weights[i] == other.weights[i]);
+	for(int i = 0; i < numBiases; i++)
+		ret = ret && (biases[i] == other.biases[i]);
+
+	return ret;
+}
+
+
+
