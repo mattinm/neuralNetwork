@@ -188,6 +188,7 @@ void submitFrame(Frame& frame)
 			curSubmittedFrame+=jump;
 			i++;
 		}
+		__outcsv.flush();
 		// printf("after while\n");
 		if(i != 0) //if we took any away from the waitingFrames
 		{

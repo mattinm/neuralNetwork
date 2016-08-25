@@ -196,6 +196,7 @@ void submitFrame(Frame& frame)
 			curSubmittedFrame+=jump;
 			i++;
 		}
+		__outcsv.flush();
 		// printf("after while\n");
 		if(i != 0) //if we took any away from the waitingFrames
 		{
@@ -415,15 +416,15 @@ void __parallelVideoProcessor(int device)
 
 	// vector<Net> net(masternets.size());
 	vector<Net> net(0);
-	printf("Going into for dev %d\n",device);
+	// printf("Going into for dev %d\n",device);
 	for(int i = 0; i < masternets.size(); i++)
 	{
-		printf("in for dev %d net %d\n", device,i);
+		// printf("in for dev %d net %d\n", device,i);
 		// net[i] = *(masternets[i]);
 		net.push_back(*masternets[i]);
 		// net[i].printLayerDims();
 	}
-	printf("Out of for dev %d\n", device);
+	// printf("Out of for dev %d\n", device);
 	for(int i = 0; i < net.size(); i++)
 		if(!net[i].setDevice(device))
 		{

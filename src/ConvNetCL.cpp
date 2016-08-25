@@ -111,6 +111,12 @@ Net::Net(const Net &other) // Copy constructor
 		this->__useMomentum = other.__useMomentum;
 		this->__stuffBuilt = false;
 
+		this->__isTraining = false;
+
+		this->__mean = other.__mean;
+		this->__stddev = other.__stddev;
+		this->__trainingSize = other.__trainingSize;
+
 		this->initOpenCL();
 	}
 	printf("END copy --- \n");
@@ -237,6 +243,11 @@ Net& Net::operator=(const Net& other)
 		this->__l2Lambda = other.__l2Lambda;
 		this->__MOMENT_CONST = other.__MOMENT_CONST;
 		this->__MAX_NORM_CAP = other.__MAX_NORM_CAP;
+		this->__isTraining = false;
+
+		this->__mean = other.__mean;
+		this->__stddev = other.__stddev;
+		this->__trainingSize = other.__trainingSize;
 
 		//Copy all layers
 		copyLayers(other);
@@ -291,37 +302,48 @@ void Net::copyLayers(const Net& other)
 		if(other.__layers[l]->layerType == CONV_LAYER)
 		{
 			const ConvLayer* conv = (ConvLayer*) other.__layers[l];
-			for(int i = 0; i < 10; i++)
+			for(int i = 0; i < 20; i++)
 				printf("%lf,",conv->weights[i]);
 			printf("\n");
 			printf("%p\n",(void *)conv->weights);
 			
 			ConvLayer* myconv = new ConvLayer();
-
-			// ConvLayer* myconv = (ConvLayer*) other.__layers[l];
-			// __layers.push_back(myconv);
-
 			*myconv = *conv;
-			for(int i = 0; i < 10; i++)
+			// ConvLayer* myconv = new ConvLayer(*conv);
+			
+			for(int i = 0; i < 20; i++)
 				printf("%lf,",myconv->weights[i]);
 			printf("\n");
 			printf("%p\n",(void *)myconv->weights);
 			myconv->layerType = CONV_LAYER;
-			pushBackLayerSize(
-				myconv->paddedNeuronWidth  - 2 * myconv->padding, //width
-				myconv->paddedNeuronHeight - 2 * myconv->padding, //height
-				myconv->numBiases);  // numBiases == numFilters which is depth of new layer
+
+			int widthNumer  = conv->paddedNeuronWidth - conv->filterSize;//prevWidth - filterSize + 2 * pad;
+			int heightNumer = conv->paddedNeuronHeight - conv->filterSize;//prevHeight- filterSize + 2 * pad;
+			int newWidth = widthNumer/conv->stride + 1;
+			int newHeight = heightNumer/conv->stride + 1;
+			int newDepth = conv->numBiases;// = numFilters;
+			pushBackLayerSize(newWidth,newHeight,newDepth);
+			// pushBackLayerSize(
+			// 	myconv->paddedNeuronWidth  - 2 * myconv->padding, //width
+			// 	myconv->paddedNeuronHeight - 2 * myconv->padding, //height
+			// 	myconv->numBiases);  // numBiases == numFilters which is depth of new layer
 			__layers.push_back(myconv);
 		}
 		else if(other.__layers[l]->layerType == MAX_POOL_LAYER)
 		{
 			const MaxPoolLayer* pool = (MaxPoolLayer*)other.__layers[l];
 			addMaxPoolLayer(pool->poolSize, pool->stride);
+			MaxPoolLayer* mypool = (MaxPoolLayer*)__layers.back();
+
+			printf("pool x stride. Old: %d x %d. New: %d x %d.\n",pool->poolSize,pool->stride, mypool->poolSize, mypool->stride);
 		}
 		else if(other.__layers[l]->layerType == ACTIV_LAYER)
 		{
 			const ActivLayer* act = (ActivLayer*)other.__layers[l];
 			addActivLayer(act->activationType);
+			ActivLayer* myact = (ActivLayer*)__layers.back();
+
+			printf("Old: %d. New %d.", act->activationType, myact->activationType);
 		}
 
 		if(other.__layers[l]->layerType == CONV_LAYER)
@@ -752,6 +774,7 @@ bool Net::finalize()
 			return false;
 		}
 	}
+	cout << "Max Neuron Size: " << __maxNeuronSize << endl;
 	n = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __maxNeuronSize,
 			nullptr, &error);
 	CheckError(error);
@@ -833,6 +856,9 @@ void Net::run()
  	// 	__isFinalized = false;
  	// }
 
+ 	// for(int j =0 ; j < __neuronSizes.size(); j++)
+ 	// 	printf("Layer %d: Size %d\n", j, __neuronSizes[j]);
+
  	if(!__isFinalized)
  		finalize();
 
@@ -844,8 +870,13 @@ void Net::run()
  			preprocessDataCollective();
  	}
 
+ 	// printf("__data[0][0] = %lf\n",__data[0][0]);
+
  	if(!__isTraining)
+ 	{
+ 		// printf("Not training\n");
  		__dataPointer = &__data;
+ 	}
  	else
  	{
  		__confidences.resize(__dataPointer->size());
@@ -857,18 +888,24 @@ void Net::run()
  	for(int i=0; i < __confidences.size(); i++)
  		__confidences[i].resize(__neuronSizes.back());
 
- 	//vector<double> test(__maxNeuronSize);
+ 	vector<double> test(__maxNeuronSize);
 
 	cl_mem *temp;
 
 	// printf("Running\n");
  	for(int r = 0; r < __dataPointer->size(); r++)
  	{
+ 		// printf("Row image num %d\n",r);
  		//put in the next image
  		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
 				sizeof(double) * __neuronSizes[0],
 				(*__dataPointer)[r].data(), 0, nullptr, nullptr));
 		clFinish(queue);
+
+		// printf("Image\n");
+		// for(int j = 0; j < __dataPointer->at(r).size(); j++)
+		// 	cout << __dataPointer->at(r)[j] << ",";
+		// cout << endl << endl;
 
 		int curConvLayer = 0;
 		size_t globalWorkSize[] = {0,0,0};
@@ -879,6 +916,20 @@ void Net::run()
 			if(__layers[i]->layerType == CONV_LAYER)
 			{
 				ConvLayer* conv = (ConvLayer*)__layers[i];
+
+				// pull the weights from the cl_mem and see if they are the same
+				// cout << "Weights ConvLayer " << curConvLayer << " Layer #" << i << endl;
+				// CheckError(clEnqueueReadBuffer(queue, clWeights[curConvLayer], CL_TRUE, 0, sizeof(double) * conv->numWeights,
+				// 	test.data(), 0, nullptr, nullptr));
+				// for(int j=0; j< conv->numWeights; j++)
+				// {
+				// 	cout << test[j] << ",";
+				// }
+				// cout << endl << endl;
+				// getchar();
+
+
+				
 				if(conv->padding != 0) //if we need to do padding on the input
 				{
 					clSetKernelArg(zeroPadKernelF, 0, sizeof(cl_mem), prevNeurons);
@@ -982,15 +1033,15 @@ void Net::run()
 
 			clFinish(queue);
 
-		// cout << "Layer " << i << endl;
-		// 	CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
-		// 		test.data(), 0, nullptr, nullptr));
-		// 	for(int j=0; j< __neuronSizes[i]; j++)
-		// 	{
-		// 		cout << test[j] << ", ";
-		// 	}
-		// 	cout << endl << endl;
-		// 	getchar();
+			// cout << "Layer " << i << endl;
+			// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+			// 	test.data(), 0, nullptr, nullptr));
+			// for(int j=0; j< __neuronSizes[i]; j++)
+			// {
+			// 	cout << test[j] << ", ";
+			// }
+			// cout << endl << endl;
+			// getchar();
 
 			temp = neurons;
 			neurons = prevNeurons;
@@ -1998,11 +2049,16 @@ void Net::addData(const vector<imVector>& data)
 
 void Net::addData(const vector<Mat>& data)
 {
+	//__data is class member. data is parameter
+	// cout << "Add data mat" << endl;
 	int oldSize = __data.size();
+	// printf("Old %d data.size %lu\n", oldSize, data.size());
+	// printf("neuron[0] %d\n", __neuronSizes[0]);
 	__data.resize(oldSize + data.size());
 	int curIndex;
 	for(int d = 0; d < data.size(); d++)
 	{
+		// printf("curIndex = %d\n",curIndex);
 		curIndex = oldSize + d;
 		__data[curIndex].resize(__neuronSizes[0]);
 		int dat = 0; 
@@ -2010,11 +2066,14 @@ void Net::addData(const vector<Mat>& data)
 			for(int j = 0; j < data[d].cols; j++)
 			{
 				const Vec3b& curPixel = data[d].at<Vec3b>(i,j);
+				//printf("%d,%d,%d", curPixel[0],curPixel[1],curPixel[2]);
 				__data[curIndex][dat++] = curPixel[0];
 				__data[curIndex][dat++] = curPixel[1];
 				__data[curIndex][dat++] = curPixel[2];
 			}
+		//printf("\n");
 	}
+	// printf("__data[0][0] = %lf\n",__data[0][0]);
 	__confidences.resize(__data.size());
 	__dataPreprocessed = false;
 }
@@ -2032,6 +2091,7 @@ void Net::setData(const vector<imVector>& data)
 
 void Net::setData(const vector<Mat>& data)
 {
+	// cout << "Set data mat" << endl;
 	clearData();
 	addData(data);
 }
