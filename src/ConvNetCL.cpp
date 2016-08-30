@@ -42,10 +42,10 @@ Net::Net()
 
 Net::Net(const Net &other) // Copy constructor
 {
-	printf("copy ------------------\n");
+	// printf("copy ------------------\n");
 	if(this != &other)
 	{
-		printf("in copy-----------\n");
+		// printf("in copy-----------\n");
 		//clean up any currently used OpenCL stuff besides the context
 		if(__isFinalized)
 		{
@@ -119,7 +119,7 @@ Net::Net(const Net &other) // Copy constructor
 
 		this->initOpenCL();
 	}
-	printf("END copy --- \n");
+	// printf("END copy --- \n");
 }
 
 Net::Net(const char* filename)
@@ -302,19 +302,19 @@ void Net::copyLayers(const Net& other)
 		if(other.__layers[l]->layerType == CONV_LAYER)
 		{
 			const ConvLayer* conv = (ConvLayer*) other.__layers[l];
-			for(int i = 0; i < 20; i++)
-				printf("%lf,",conv->weights[i]);
-			printf("\n");
-			printf("%p\n",(void *)conv->weights);
+			// for(int i = 0; i < 20; i++)
+			// 	printf("%lf,",conv->weights[i]);
+			// printf("\n");
+			// printf("%p\n",(void *)conv->weights);
 			
 			ConvLayer* myconv = new ConvLayer();
 			*myconv = *conv;
 			// ConvLayer* myconv = new ConvLayer(*conv);
 			
-			for(int i = 0; i < 20; i++)
-				printf("%lf,",myconv->weights[i]);
-			printf("\n");
-			printf("%p\n",(void *)myconv->weights);
+			// for(int i = 0; i < 20; i++)
+			// 	printf("%lf,",myconv->weights[i]);
+			// printf("\n");
+			// printf("%p\n",(void *)myconv->weights);
 			myconv->layerType = CONV_LAYER;
 
 			int widthNumer  = conv->paddedNeuronWidth - conv->filterSize;//prevWidth - filterSize + 2 * pad;
@@ -333,25 +333,25 @@ void Net::copyLayers(const Net& other)
 		{
 			const MaxPoolLayer* pool = (MaxPoolLayer*)other.__layers[l];
 			addMaxPoolLayer(pool->poolSize, pool->stride);
-			MaxPoolLayer* mypool = (MaxPoolLayer*)__layers.back();
+			// MaxPoolLayer* mypool = (MaxPoolLayer*)__layers.back();
 
-			printf("pool x stride. Old: %d x %d. New: %d x %d.\n",pool->poolSize,pool->stride, mypool->poolSize, mypool->stride);
+			// printf("pool x stride. Old: %d x %d. New: %d x %d.\n",pool->poolSize,pool->stride, mypool->poolSize, mypool->stride);
 		}
 		else if(other.__layers[l]->layerType == ACTIV_LAYER)
 		{
 			const ActivLayer* act = (ActivLayer*)other.__layers[l];
 			addActivLayer(act->activationType);
-			ActivLayer* myact = (ActivLayer*)__layers.back();
+			// ActivLayer* myact = (ActivLayer*)__layers.back();
 
-			printf("Old: %d. New %d.", act->activationType, myact->activationType);
+			// printf("Old: %d. New %d.", act->activationType, myact->activationType);
 		}
 
-		if(other.__layers[l]->layerType == CONV_LAYER)
-		{
-			ConvLayer* myconv = (ConvLayer*)__layers.back();
-			ConvLayer* otherConv = (ConvLayer*)other.__layers[l];
-			printf("ConvLayers equal: %d\n", myconv->equals(*otherConv));
-		}
+		// if(other.__layers[l]->layerType == CONV_LAYER)
+		// {
+		// 	ConvLayer* myconv = (ConvLayer*)__layers.back();
+		// 	ConvLayer* otherConv = (ConvLayer*)other.__layers[l];
+		// 	// printf("ConvLayers equal: %d\n", myconv->equals(*otherConv));
+		// }
 	}
 }
 
@@ -774,7 +774,7 @@ bool Net::finalize()
 			return false;
 		}
 	}
-	cout << "Max Neuron Size: " << __maxNeuronSize << endl;
+	// cout << "Max Neuron Size: " << __maxNeuronSize << endl;
 	n = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __maxNeuronSize,
 			nullptr, &error);
 	CheckError(error);
@@ -3404,7 +3404,7 @@ Net::ConvLayer& Net::ConvLayer::operator=(const Net::ConvLayer& other)
 {
 	if(this != &other)
 	{
-		printf("Copying convLayer\n");
+		// printf("Copying convLayer\n");
 		//see if we need to clean up our weights and biases
 		if(weights != nullptr)
 		{

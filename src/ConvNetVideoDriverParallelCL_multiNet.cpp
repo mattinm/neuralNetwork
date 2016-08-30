@@ -38,6 +38,7 @@ struct Frame
 	Mat* mat;
 	size_t red = 0;
 	size_t flyingElement;
+	vector<double> percents;
 	double percentDone;
 };
 
@@ -177,7 +178,13 @@ void submitFrame(Frame& frame)
 		//printf("sub if\n");
 		__outVideo << *(frame.mat);
 		// __outcsv << frame.red << "," << (frame.frameNum/10.0) << "\n";
-		__outcsv << frame.frameNum/10.0 << ',' << frame.red << ',' << frame.flyingElement << '\n';
+		//__outcsv << frame.frameNum/10.0 << ',' << frame.red << ',' << frame.flyingElement << '\n';
+
+		__outcsv << frame.frameNum/10.0 << ",";
+		for(int f = 0; f < frame.percents.size(); f++)
+			__outcsv << frame.percents[f] << ",";
+		__outcsv << '\n';
+
 		curSubmittedFrame+=jump;
 		printf("Frame %ld completed. %.2lf%% complete.\n",frame.frameNum,frame.percentDone);
 		delete frame.mat;
@@ -188,7 +195,13 @@ void submitFrame(Frame& frame)
 			//printf("in while\n");
 			__outVideo << (*(waitingFrames[i]->mat));
 			// __outcsv << waitingFrames[i]->red << "," << (waitingFrames[i]->frameNum/10.0) << "\n";
-			__outcsv << (waitingFrames[i]->frameNum/10.0) << ',' << waitingFrames[i]->red << ',' << waitingFrames[i]->flyingElement << '\n';
+			//__outcsv << (waitingFrames[i]->frameNum/10.0) << ',' << waitingFrames[i]->red << ',' << waitingFrames[i]->flyingElement << '\n';
+
+			__outcsv << waitingFrames[i]->frameNum/10.0 << ",";
+			for(int f = 0; f < waitingFrames[i]->percents.size(); f++)
+				__outcsv << waitingFrames[i]->percents[f] << ",";
+			__outcsv << '\n';
+
 			printf("Frame %ld completed. %.2lf%% complete.\n",waitingFrames[i]->frameNum,waitingFrames[i]->percentDone);
 			delete waitingFrames[i]->mat;
 			delete waitingFrames[i];
@@ -215,6 +228,7 @@ void submitFrame(Frame& frame)
 		Frame *newframe = new Frame;
 		newframe->mat = frame.mat; 
 		newframe->frameNum = frame.frameNum;
+		newframe->percents = frame.percents;
 		newframe->red = frame.red;
 		newframe->flyingElement = frame.flyingElement;
 		newframe->percentDone = frame.percentDone;
@@ -286,6 +300,10 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
+
+	imVector masterFullImage;
+
+	
 	for(int n = 0; n < net.size(); n++)
 	{
 		int numrowsm32 = numrows-inputHeights[n];
@@ -311,6 +329,7 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 			net[n].setData(imageRow);
 			net[n].run();
 			net[n].getConfidences(confidences); //gets the confidence for each category for each image
+			
 
 			// masternets[n]->setData(imageRow);
 			// masternets[n]->run();
@@ -318,26 +337,54 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 
 
 			int curImage = 0;
-			for(int j=6; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
-			{
-				for(int ii=i; ii < i+inputHeights[n] && ii < numrows; ii++)
+			if(n == 0) // the first net will be the master
+				for(int j=6; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
 				{
-					for(int jj=j; jj < j+inputWidths[n] && jj < numcols; jj++)
+					for(int ii=i; ii < i+inputHeights[n] && ii < numrows; ii++)
 					{
-						if(ii > 417 && jj > 525)
-							break;
-						for(int cat = 0; cat < confidences[curImage].size(); cat++)
+						for(int jj=j; jj < j+inputWidths[n] && jj < numcols; jj++)
 						{
-							//printf("%d %d %d %d\n",i,j,jj,cat);
-							fullImages[device][ii][jj][cat] += confidences[curImage][cat];
-							// printf("%lf \n", confidences[curImage][cat]);
-							// getchar();
+							if(ii > 417 && jj > 525)
+								break;
+							for(int cat = 0; cat < confidences[curImage].size(); cat++)
+							{
+								//printf("%d %d %d %d\n",i,j,jj,cat);
+								fullImages[device][ii][jj][cat] += confidences[curImage][cat];
+								// printf("%lf \n", confidences[curImage][cat]);
+								// getchar();
+							}
 						}
 					}
+					curImage++;
 				}
-				curImage++;
-			}
+			else // only do if master is > .25. This should re-affirm what the master thinks if it's right. not re-affirm if not
+				for(int j=6; j<= numcolsm32; j+=stride) //NOTE: each iteration of this loop is a different subimage
+				{
+					for(int ii=i; ii < i+inputHeights[n] && ii < numrows; ii++)
+					{
+						for(int jj=j; jj < j+inputWidths[n] && jj < numcols; jj++)
+						{
+							if(ii > 417 && jj > 525)
+								break;
+							for(int cat = 0; cat < confidences[curImage].size(); cat++)
+							{
+								//printf("%d %d %d %d\n",i,j,jj,cat);
+								if(masterFullImage[ii][jj][1] > .75)
+								{
+									// fullImages[device][ii][jj][cat] += confidences[curImage][cat]; //Sum if over 
+									fullImages[device][ii][jj][cat] = confidences[curImage][cat]; //Replace if over 
+								}
+								// printf("%lf \n", confidences[curImage][cat]);
+								// getchar();
+							}
+						}
+					}
+					curImage++;
+				}
 		}
+
+		if(n == 0)
+			masterFullImage = fullImages[device];
 	}
 	//printf("starting red element\n");
 	squareElements(fullImages[device]);
@@ -349,16 +396,25 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 	//calculate what output image should look like and csv file should be
 	size_t redElement = 0;
 	size_t flyingElement = 0;
+	frame.percents.resize(numClasses);
+	for(int f = 0; f < frame.percents.size(); f++)
+		frame.percents[f] = 0;
+	// for(int f = 0; f < frame.percents.size(); f++)
+	// 	printf("%d %lf\n",f, frame.percents[f]);
+	// getchar();
 	for(int i=0; i < numrows; i++)
 	{
 		for(int j=0; j < numcols; j++)
 		{
+			// printf("j %d\n",j);
 			double sumsq = vectorSum(fullImages[device][i][j]);
-			for(int n=0; n < fullImages[device][i][j].size(); n++)
-			{
-				//fullImage[i][j][n] = fullImage[i][j][n] * fullImage[i][j][n] / sumsq;
-				fullImages[device][i][j][n] /= sumsq;
-			}
+			// printf("sumsq %lf\n",sumsq);
+			if(sumsq != 0)
+				for(int n=0; n < fullImages[device][i][j].size(); n++)
+				{
+					//fullImage[i][j][n] = fullImage[i][j][n] * fullImage[i][j][n] / sumsq;
+					fullImages[device][i][j][n] /= sumsq;
+				}
 
 			//write the pixel
 			Vec3b& outPix = outputMat->at<Vec3b>(i,j);
@@ -372,6 +428,14 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 				double onGround = 255 * fullImages[device][i][j][1];
 				double flying;
 
+				// cout << noBird << endl;
+
+				for(int f = 0; f < frame.percents.size(); f++)
+					frame.percents[f] += fullImages[device][i][j][f];
+				// for(int f = 0; f < frame.percents.size(); f++)
+				// 	printf("%d %lf\n",f, frame.percents[f]);
+				// getchar();
+
 
 				if(numClasses > 2)
 					flying = 255 * fullImages[device][i][j][2];
@@ -383,14 +447,13 @@ void breakUpImage(Frame& frame, vector<Net>& net, int device)
 				// outputMat->at<unsigned char>(i,j,0) = (unsigned char)noBird;
 				outPix[1] = flying;	  //green
 				outPix[2] = onGround;  // red
-				if(onGround > 150) //red > 50 || red > blue
-					redElement += (size_t)onGround;
-				if(flying > 150)
-					flyingElement += (size_t)flying;
+				
 
 			}
 		}
 	}
+	// for(int f = 0; f < frame.percents.size(); f++)
+	// 	printf("%d %lf\n",f, frame.percents[f]);
 	//replace original image with prediction
 	delete frame.mat;
 	frame.mat = outputMat;
@@ -480,6 +543,13 @@ void breakUpVideo(const char* videoName)
 
 	//Open csv
 	__outcsv.open(outNameCSV);
+	__outcsv << "Time" << ",";
+
+	vector<Net::ClassInfo> infos;
+	masternets[0]->getClassNames(infos);
+	for(int i = 0; i < infos.size(); i++)
+		__outcsv << infos[i].name << ",";
+	__outcsv << '\n';
 
 	//adjust FPS to account for jump
 	int fps = 10;
@@ -649,11 +719,19 @@ int main(int argc, char** argv)
 //        printf("%s\n",__netNames[i].c_str());
 //    }
     
-	thread* t = new thread[masternets.size()];
-	for(int i = 0; i < masternets.size(); i++)
-		t[i] = thread(loadNet,std::ref(masternets[i]),__netNames[i].c_str());
-	for(int i = 0; i < masternets.size(); i++)
-		t[i].join();
+	// thread* t = new thread[masternets.size()];
+	// for(int i = 0; i < masternets.size(); i++)
+	// 	t[i] = thread(loadNet,std::ref(masternets[i]),__netNames[i].c_str());
+	// for(int i = 0; i < masternets.size(); i++)
+	// 	t[i].join();
+
+	for(int n = 0; n < masternets.size(); n++)
+	{
+		time_t start = time(NULL);
+	    printf("Loading net %s\n",__netNames[n].c_str());
+	    masternets[n] = new Net(__netNames[n].c_str());
+	    printf("Loaded %s - %s\n",__netNames[n].c_str(),secondsToString(time(NULL) - start).c_str());
+	}
 
 	printf("Done threads\n");
 	printf("Number of nets %lu\n", masternets.size());
@@ -679,7 +757,7 @@ int main(int argc, char** argv)
 		masternets[i]->printLayerDims();
 		printf("\n");
 	}
-	printf("run the stuff\n");
+	// printf("run the stuff\n");
 	//run the stuff
 	for(int i=0; i < filenames.size(); i++)
 	{
