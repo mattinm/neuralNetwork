@@ -40,6 +40,88 @@ Net::Net()
 
 }
 
+Net::Net(const Net &other) // Copy constructor
+{
+	// printf("copy ------------------\n");
+	if(this != &other)
+	{
+		// printf("in copy-----------\n");
+		//clean up any currently used OpenCL stuff besides the context
+		if(__isFinalized)
+		{
+			clReleaseCommandQueue(queue);
+			clReleaseMemObject(*neurons);
+			clReleaseMemObject(*prevNeurons);
+			for(int w = 0; w < clWeights.size(); w++)
+			{
+				clReleaseMemObject(clWeights[w]);
+				clReleaseMemObject(clBiases[w]);
+			}
+			//running
+			clReleaseKernel(convKernelF);
+			clReleaseKernel(zeroPadKernelF);
+			clReleaseKernel(maxPoolKernelF);
+			clReleaseKernel(reluKernelF);
+			clReleaseKernel(leakyReluKernelF);
+			clReleaseKernel(softmaxKernelF);
+			clReleaseProgram(CNForward);
+
+			//training
+			clReleaseKernel(convKernel);
+			clReleaseKernel(zeroPadKernel);
+			clReleaseKernel(maxPoolKernel);
+			clReleaseKernel(reluKernel);
+			clReleaseKernel(leakyReluKernel);
+			clReleaseKernel(softmaxKernel);
+			clReleaseKernel(convBackNeuronsKernel);
+			clReleaseKernel(convBackBiasesKernel);
+			clReleaseKernel(convBackWeightsKernel);
+			clReleaseKernel(zeroPadBackKernel);
+			clReleaseKernel(maxPoolBackKernel);
+			clReleaseKernel(reluBackKernel);
+			clReleaseKernel(leakyReluBackKernel);
+			clReleaseKernel(softmaxBackKernel);
+			clReleaseProgram(CNTraining);
+		}
+	
+		this->__inited = true;
+		//hyperparameters
+		this->__learningRate = other.__learningRate;
+		this->__RELU_CAP = other.__RELU_CAP;
+		this->__LEAKY_RELU_CONST = other.__LEAKY_RELU_CONST;
+		this->__l2Lambda = other.__l2Lambda;
+		this->__MOMENT_CONST = other.__MOMENT_CONST;
+		this->__MAX_NORM_CAP = other.__MAX_NORM_CAP;
+
+		//Copy all layers
+		this->copyLayers(other);
+		//neuronSizes set by copyLayers
+		//neuronDims set by copyLayers
+		this->__autoActivLayer = other.__autoActivLayer;
+		this->__maxNeuronSize = other.__maxNeuronSize;
+		this->__defaultActivType = other.__defaultActivType;
+		this->__maxWeightSize = other.__maxWeightSize;
+
+		this->__isFinalized = false;
+		this->__errorLog = "";
+
+		//data and related members
+		//__numClasses set in addTrainingData
+		this->__classes = other.__classes;
+		this->__useMomentum = other.__useMomentum;
+		this->__stuffBuilt = false;
+
+		this->__isTraining = false;
+
+		this->__mean = other.__mean;
+		this->__stddev = other.__stddev;
+		this->__trainingSize = other.__trainingSize;
+
+		this->initOpenCL();
+	}
+	// printf("END copy --- \n");
+}
+
 Net::Net(const char* filename)
 {
 	load(filename);
@@ -160,6 +242,11 @@ Net& Net::operator=(const Net& other)
 		this->__l2Lambda = other.__l2Lambda;
 		this->__MOMENT_CONST = other.__MOMENT_CONST;
 		this->__MAX_NORM_CAP = other.__MAX_NORM_CAP;
+		this->__isTraining = false;
+
+		this->__mean = other.__mean;
+		this->__stddev = other.__stddev;
+		this->__trainingSize = other.__trainingSize;
 
 		//Copy all layers
 		copyLayers(other);
@@ -178,6 +265,8 @@ Net& Net::operator=(const Net& other)
 		__classes = other.__classes;
 		__useMomentum = other.__useMomentum;
 		__stuffBuilt = false;
+
+		initOpenCL();
 	}
 	return *this;
 }
@@ -200,18 +289,29 @@ void Net::copyLayers(const Net& other)
 	}
 	__layers.resize(0);
 
-	for(int l = 0; l < other.__layers.size(); l++)
+	__layers.push_back(new Layer); //input layer
+	int wid = other.__neuronDims[0][0];
+	int hei = other.__neuronDims[0][1];
+	int dep = other.__neuronDims[0][2];
+	pushBackLayerSize(wid,hei,dep);
+
+	for(int l = 1; l < other.__layers.size(); l++)
 	{
 		if(other.__layers[l]->layerType == CONV_LAYER)
 		{
 			const ConvLayer* conv = (ConvLayer*) other.__layers[l];
-			__layers.push_back(new ConvLayer());
-			ConvLayer* myconv = ((ConvLayer*)__layers.back());
+			
+			ConvLayer* myconv = new ConvLayer();
 			*myconv = *conv;
-			pushBackLayerSize(
-				myconv->paddedNeuronWidth  - 2 * myconv->padding, //width
-				myconv->paddedNeuronHeight - 2 * myconv->padding, //height
-				myconv->numBiases);  // numBiases == numFilters which is depth of new layer
+			myconv->layerType = CONV_LAYER;
+
+			int widthNumer  = conv->paddedNeuronWidth - conv->filterSize;//prevWidth - filterSize + 2 * pad;
+			int heightNumer = conv->paddedNeuronHeight - conv->filterSize;//prevHeight- filterSize + 2 * pad;
+			int newWidth = widthNumer/conv->stride + 1;
+			int newHeight = heightNumer/conv->stride + 1;
+			int newDepth = conv->numBiases;// = numFilters;
+			pushBackLayerSize(newWidth,newHeight,newDepth);
+			__layers.push_back(myconv);
 		}
 		else if(other.__layers[l]->layerType == MAX_POOL_LAYER)
 		{
@@ -222,6 +322,7 @@ void Net::copyLayers(const Net& other)
 		{
 			const ActivLayer* act = (ActivLayer*)other.__layers[l];
 			addActivLayer(act->activationType);
+
 		}
 	}
 }
@@ -3229,11 +3330,18 @@ Net::ConvLayer& Net::ConvLayer::operator=(const Net::ConvLayer& other)
 {
 	if(this != &other)
 	{
+		// printf("Copying convLayer\n");
 		//see if we need to clean up our weights and biases
 		if(weights != nullptr)
+		{
+			printf("Deleting old weights\n");
 			delete weights;
+		}
 		if(biases != nullptr)
+		{
+			printf("Deleting old biases\n");
 			delete biases;
+		}
 
 		//copy over everything
 		numWeights = other.numWeights;
@@ -3255,4 +3363,27 @@ Net::ConvLayer& Net::ConvLayer::operator=(const Net::ConvLayer& other)
 			biases[i] = other.biases[i];
 	}
 	return *this;
+}
+
+bool Net::ConvLayer::equals(const Net::ConvLayer& other)
+{
+	bool ret = true;
+	ret = ret && (numWeights == other.numWeights);
+	ret = ret && (numBiases == other.numBiases);
+	ret = ret && (numNeurons == other.numNeurons);
+	ret = ret && (padding == other.padding);
+	ret = ret && (stride == other.stride);
+	ret = ret && (filterSize == other.filterSize);
+	ret = ret && (paddedNeuronWidth == other.paddedNeuronWidth);
+	ret = ret && (paddedNeuronHeight == other.paddedNeuronHeight);
+	ret = ret && (paddedNeuronSize == other.paddedNeuronSize);
+	ret = ret && (maxSizeNeeded == other.maxSizeNeeded);
+	if(!ret)
+		return !ret;
+	for(int i = 0; i < numWeights; i++)
+		ret = ret && (weights[i] == other.weights[i]);
+	for(int i = 0; i < numBiases; i++)
+		ret = ret && (biases[i] == other.biases[i]);
+
+	return ret;
 }
