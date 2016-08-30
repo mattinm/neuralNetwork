@@ -23,7 +23,7 @@ find_package( MySQL REQUIRED )
 include_directories( ${OpenCV_INCLUDE_DIRS} 
 	${OpenCL_INCLUDE_DIRS} 
 	${MPI_INCLUDE_PATH} 
-	${BOINC_INCLUDE_DIRS} 
+	${BOINC_INCLUDE_DIR}/boinc 
 	# "../test/boinc" 
 	"/usr/local/Cellar/mysql/5.7.11/include/mysql" 
 	"/usr/local/Cellar/"
@@ -93,12 +93,12 @@ target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
 # target_link_libraries( ConvNetFullImageDriverCL_newOutput ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
-target_link_libraries( ConvNetFullImageDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_LIBRARIES})
+target_link_libraries( ConvNetFullImageDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_APP_LIBRARIES} ${BOINC_SERVER_LIBRARIES})
 # target_link_libraries( ConvNetVideoDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverMPI ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${MPI_LIBRARY} ${MPI_EXTRA_LIBRARY})
-target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_LIBRARIES})
+target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_APP_LIBRARIES})
 
 
 #Image/Binary
