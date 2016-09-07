@@ -56,7 +56,7 @@ void __mysql_check(MYSQL *conn, string query, const char* file, const int line)
 
 double estfpops(double video_length, double cnn_size)
 {
-	return 1e12;
+	return video_length * cnn_size * 1e12;
 }
 
 void init_wildlife_database()
@@ -78,7 +78,7 @@ void init_wildlife_database()
 	}
 }
 
-int make_job(vector<string>& cnns, string video_name, int speciesID, int stride, int jump)
+int make_job(vector<string>& cnns, string video_name, int speciesID, int stride, int jump, double duration_s)
 {
 
 	DB_WORKUNIT wu;
@@ -89,16 +89,20 @@ int make_job(vector<string>& cnns, string video_name, int speciesID, int stride,
 	int retval;
 	string extraCNNs = "";
 
-	infiles.push_back(video_name.c_str());
+	string short_video_name  = video_name.substr(video_name.rfind('/')+1);
+	vector<string> short_cnns;
 	for(uint i = 0; i < cnns.size(); i++)
-		infiles.push_back(cnns[i].c_str());
+		short_cnns.push_back(cnns[i].substr(cnns[i].rfind('/')+1));
+	infiles.push_back(short_video_name.c_str());
+	for(uint i = 0; i < short_cnns.size(); i++)
+		infiles.push_back(short_cnns[i].c_str());
 
 	//Command line options
 	//int stride = 1;
 	//int jump = 1;
 
 
-	double fpops_est = estfpops(3600, 7);
+	double fpops_est = estfpops(duration_s, 7);
 
 	double credit = fpops_est / (2.5 * 10e10);
 
@@ -117,6 +121,7 @@ int make_job(vector<string>& cnns, string video_name, int speciesID, int stride,
 	wu.rsc_fpops_bound = fpops_est * 100;
 	wu.rsc_memory_bound = 2e9;
 	wu.rsc_disk_bound = 2e9;
+	wu.delay_bound = 86400 * 7; //one week delay bound
 	wu.min_quorum = REPLICATION_FACTOR;
 	wu.target_nresults = REPLICATION_FACTOR;
 	wu.max_error_results = REPLICATION_FACTOR * 4;
@@ -128,8 +133,8 @@ int make_job(vector<string>& cnns, string video_name, int speciesID, int stride,
 
 	for(uint i = 1; i < cnns.size(); i++)
 	{
-		extraCNNS += " cnn=";
-		extraCNNS += cnns[i];
+		extraCNNs += " cnn=";
+		extraCNNs += cnns[i];
 	}
 	sprintf(command_line, " %s %s stride=%d jump=%d %s", cnns[0].c_str(), video_name.c_str(), stride, jump, extraCNNs.c_str());
 	
@@ -295,17 +300,17 @@ void main_loop(int argc, char** argv)
 	MYSQL_ROW video_row;
 	while((video_row = mysql_fetch_row(video_result)))
 	{
-		int video_id = atoi(video_row[0]);
+		//int video_id = atoi(video_row[0]);
 		string video_address = video_row[1];
 		video_address += ".mp4";
 		double duration_s = atof(video_row[2]);
 		int species_id = atoi(video_row[3]);
-		int location_id = atoi(video_row[4]);
-		int filesize = atoi(video_row[5]);
+		//int location_id = atoi(video_row[4]);
+		//int filesize = atoi(video_row[5]);
 		string md5_hash = video_row[6];
 		
 		printf("generating work unit\n");
-		int job_id = make_job(cnns, video_address, species_id, stride, jump);
+		int job_id = make_job(cnns, video_address, species_id, stride, jump, duration_s);
 		if(job_id == -1)
 			total_errors++;
 		else
