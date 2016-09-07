@@ -32,7 +32,7 @@ include_directories( ${OpenCV_INCLUDE_DIRS}
 	"/Users/connorbowley/Development/test/boinc/sched"
 	"/Users/connorbowley/Development/test/boinc/db")
 
-SET(MYSQL_SRCS "/usr/local/Cellar/mysql/5.7.11/include/mysql/mysql.h")
+# SET(MYSQL_SRCS "/usr/local/Cellar/mysql/5.7.11/include/mysql/mysql.h")
 
 ######
 ###### MAKE EXECUTABLES
