@@ -3,6 +3,7 @@
 #include "sched_util.h"
 #include "sched_msgs.h"
 #include "validate_util.h"
+#include "validate_util2.h"
 #include "md5_file.h"
 #include "error_numbers.h"
 #include "stdint.h"
@@ -114,7 +115,7 @@ int init_result(RESULT& result, void*& data)
 	return 0;
 }
 
-int compare_results(RESULT &r1, void *data1, RESULT &r2, void *data2, bool& match)
+int compare_results(RESULT &r1, void *data1, RESULT const& r2, void *data2, bool& match)
 {
 	float threshold = 0.015;
 	cnn_output *res1 = (cnn_output*)data1;

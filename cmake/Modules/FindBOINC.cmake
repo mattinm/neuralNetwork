@@ -46,7 +46,7 @@ FIND_LIBRARY(BOINC_SCHED_LIBRARY
     PATHS /boinc/src/boinc /home/tdesell/boinc /Users/Deselt/Software/boinc/mac_build/build/Deployment/ ~/BOINC_SOURCE/
     PATH_SUFFIXES sched
 )
-#MESSAGE(STATUS "BOINC sched library: ${BOINC_SCHED_LIBRARY}")
+MESSAGE(STATUS "BOINC sched library: ${BOINC_SCHED_LIBRARY}")
 
 IF (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY)
     add_definitions( -D_BOINC_APP_ )

@@ -14,7 +14,7 @@ find_package( BOINC REQUIRED )
 #find_package( OpenCL REQUIRED )
 find_package( MySQL REQUIRED )
 #find_library( OPENCL_LIBRARY OpenCL.framework )
-
+find_package( OpenSSL REQUIRED )
 #set include directories
 include_directories(
 	${MPI_INCLUDE_PATH}
@@ -47,13 +47,17 @@ include_directories(${UNDVC_COMMON_INCLUDE_DIR})
 ######
 #BOINC Specific
 add_executable( ConvNet_Video_work_generator src/ConvNet_Video_work_generator.cxx )
-add_executable( ConvNet_Video_validator src/ConvNet_Video_validator.cxx 
-	${BOINC_INCLUDE_DIR}/sched/validate_util.cpp )
+add_executable( ConvNet_Video_validator 
+	${BOINC_INCLUDE_DIR}/sched/validator
+	${BOINC_INCLUDE_DIR}/sched/validate_util 
+	${BOINC_INCLUDE_DIR}/sched/validate_util2
+	src/ConvNet_Video_validator.cxx 
+	)
 
 ######
 ###### LINK LIBRARIES
 ######
 
 #BOINC Specific
-target_link_libraries( ConvNet_Video_work_generator ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_APP_LIBRARIES} ${BOINC_SCHED_LIBRARIES} )
+target_link_libraries( ConvNet_Video_work_generator  ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_APP_LIBRARIES} ${BOINC_SCHED_LIBRARIES} ${OPENSSL_LIBRARIES})
 target_link_libraries( ConvNet_Video_validator      ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_APP_LIBRARIES} ${BOINC_SCHED_LIBRARIES} ${UNDVC_COMMON_LIBRARY})
