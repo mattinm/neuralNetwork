@@ -19,18 +19,22 @@ find_package( OpenCL REQUIRED )
 find_package( MySQL REQUIRED )
 #find_library( OPENCL_LIBRARY OpenCL.framework )
 
+
 #set include directories
 include_directories( ${OpenCV_INCLUDE_DIRS} 
 	${OpenCL_INCLUDE_DIRS} 
 	${MPI_INCLUDE_PATH} 
 	${BOINC_INCLUDE_DIRS} 
+	${CMAKE_SOURCE_DIR}/src
+	${MYSQL_INCLUDE_DIR}
 	# "../test/boinc" 
-	"/usr/local/Cellar/mysql/5.7.11/include/mysql" 
-	"/usr/local/Cellar/"
-	"/usr/local/opt/openssl/include" 
-	"/usr/local/opt/openssl/lib" 
-	"/Users/connorbowley/Development/test/boinc/sched"
-	"/Users/connorbowley/Development/test/boinc/db")
+	# "/usr/local/Cellar/mysql/5.7.11/include/mysql" 
+	# "/usr/local/Cellar/"
+	# "/usr/local/opt/openssl/include" 
+	# "/usr/local/opt/openssl/lib" 
+	# "/Users/connorbowley/Development/test/boinc/sched"
+	# "/Users/connorbowley/Development/test/boinc/db"
+	)
 
 SET(MYSQL_SRCS "/usr/local/Cellar/mysql/5.7.11/include/mysql/mysql.h")
 
@@ -58,6 +62,10 @@ add_executable( ConvNetVideoDriverParallelCL src/ConvNetVideoDriverParallelCL.cp
 add_executable( ConvNetVideoDriverParallelCL_multiNet src/ConvNetVideoDriverParallelCL_multiNet.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetVideoDriverMPI src/ConvNetVideoDriverMPI.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetVideoDriverCL_BOINC src/ConvNetVideoDriverCL_BOINC.cpp src/ConvNetCL.cpp)
+
+#Seam
+add_executable( ConvNetSeamTrain src/ConvNetSeamTrain.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp )
+target_link_libraries( ConvNetSeamTrain ${OPENCL_LIBRARY} ${OpenCV_LIBS} ${MYSQL_LIBRARIES} )
 
 
 #Image/Binary
@@ -99,6 +107,8 @@ target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBR
 target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverMPI ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${MPI_LIBRARY} ${MPI_EXTRA_LIBRARY})
 target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_LIBRARIES})
+
+
 
 
 #Image/Binary
