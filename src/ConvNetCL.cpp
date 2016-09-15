@@ -302,19 +302,9 @@ void Net::copyLayers(const Net& other)
 		if(other.__layers[l]->layerType == CONV_LAYER)
 		{
 			const ConvLayer* conv = (ConvLayer*) other.__layers[l];
-			// for(int i = 0; i < 20; i++)
-			// 	printf("%lf,",conv->weights[i]);
-			// printf("\n");
-			// printf("%p\n",(void *)conv->weights);
-			
+
 			ConvLayer* myconv = new ConvLayer();
 			*myconv = *conv;
-			// ConvLayer* myconv = new ConvLayer(*conv);
-			
-			// for(int i = 0; i < 20; i++)
-			// 	printf("%lf,",myconv->weights[i]);
-			// printf("\n");
-			// printf("%p\n",(void *)myconv->weights);
 			myconv->layerType = CONV_LAYER;
 
 			int widthNumer  = conv->paddedNeuronWidth - conv->filterSize;//prevWidth - filterSize + 2 * pad;
@@ -323,10 +313,6 @@ void Net::copyLayers(const Net& other)
 			int newHeight = heightNumer/conv->stride + 1;
 			int newDepth = conv->numBiases;// = numFilters;
 			pushBackLayerSize(newWidth,newHeight,newDepth);
-			// pushBackLayerSize(
-			// 	myconv->paddedNeuronWidth  - 2 * myconv->padding, //width
-			// 	myconv->paddedNeuronHeight - 2 * myconv->padding, //height
-			// 	myconv->numBiases);  // numBiases == numFilters which is depth of new layer
 			__layers.push_back(myconv);
 		}
 		else if(other.__layers[l]->layerType == MAX_POOL_LAYER)
@@ -341,9 +327,6 @@ void Net::copyLayers(const Net& other)
 		{
 			const ActivLayer* act = (ActivLayer*)other.__layers[l];
 			addActivLayer(act->activationType);
-			// ActivLayer* myact = (ActivLayer*)__layers.back();
-
-			// printf("Old: %d. New %d.", act->activationType, myact->activationType);
 		}
 
 		// if(other.__layers[l]->layerType == CONV_LAYER)
@@ -3461,6 +3444,3 @@ bool Net::ConvLayer::equals(const Net::ConvLayer& other)
 
 	return ret;
 }
-
-
-

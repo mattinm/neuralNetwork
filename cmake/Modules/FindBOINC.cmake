@@ -1,126 +1,79 @@
-# Finds the BOINC library and includes
-# Copyright © 2005-2013 Swiss Tropical Institute and Liverpool School Of Tropical Medicine
-# Licence: GNU General Public Licence version 2 or later (see COPYING)
+# - Find BOINC 
+# Find the native BOINC includes and libraries
 #
-# Defines:
-# BOINC_FOUND
-# BOINC_LIBRARIES
-# BOINC_INCLUDE_DIRS
-# (plus some cache variables)
+#  BOINC_INCLUDE_DIR        - where to find boinc.h, etc.
+#  BOINC_SERVER_FOUND       - true if libraries required for compiling boinc server code are found
+#  BOINC_SERVER_LIBRARIES   - all the libraries required for compiling boinc server code
+#  BOINC_APP_FOUND          - true if libraries required for compiling boinc apps are found 
+#  BOINC_APP_LIBRARIES      - all the libraries required for compiling boinc apps
 
-# Note: on Unix, this will search for BOINC in the standard paths
-# (/usr/include, /usr/local/include for headers, etc.).
-# You can install BOINC here by (1) downloading from
-# http://boinc.berkeley.edu/trac/wiki/SourceCodeGit
-# (2) ./_autosetup
-# (3) ./configure --disable-client --disable-manager --disable-server
-# (4) make && sudo make install
+IF (BOINC_INCLUDE_DIR)
+    # Already in cache, be silent
+    SET(BOINC_FIND_QUIETLY TRUE)
+ENDIF (BOINC_INCLUDE_DIR)
 
-# On all platforms this will also look for BOINC in ../boinc
-# (in this case it doesn't need to be "installed").
-
-unset (BOINC_BASE_PATH CACHE)	# don't use this now
-if (MSVC)
-else ()
-  # unset things not needed elsewhere:
-  unset (BOINC_LIB_DBG CACHE)
-  unset (BOINC_API_LIB_DBG CACHE)
-endif()
-
-# Look for headers in the standard locations:
-FIND_PATH(BOINC_INCLUDE_DIR boinc/boinc_api.h api/boinc_api.h
-  PATHS ${CMAKE_SOURCE_DIR}/../boinc
-  DOC "Either an install path like /usr/local/include which contains boinc/boinc_api.h or a BOINC source directory containing api/boinc_api.h"
+FIND_PATH(BOINC_INCLUDE_DIR api/boinc_api.h
+    /boinc/src/boinc
+    /home/tdesell/boinc
+    /Users/deselt/Software/boinc
+    ~/BOINC_SOURCE
 )
-if (BOINC_INCLUDE_DIR)
-  if (EXISTS "${BOINC_INCLUDE_DIR}/api/boinc_api.h")
-    # Assume source directory
-    # Include all three of these directories:
-    set (BOINC_INCLUDE_DIRS ${BOINC_INCLUDE_DIR}
-      ${BOINC_INCLUDE_DIR}/api ${BOINC_INCLUDE_DIR}/lib)
-  else()
-    # Assume install directory; need to include the subdirectory:
-    set (BOINC_INCLUDE_DIRS "${BOINC_INCLUDE_DIR}/boinc")
-  endif ()
-else()
-  message (FATAL_ERROR "Not found: boinc/boinc_api.h or api/boinc_api.h (make sure BOINC is installed or has source code available and adjust BOINC_INCLUDE_DIR)")
-endif()
+MESSAGE(STATUS "BOINC include directory: ${BOINC_INCLUDE_DIR}")
 
-# We now co-opt BOINC_INCLUDE_DIR to try to find libraries.
-# On Windows it is only useful if it points to the BOINC source directory.
-
-if (OM_STATICALLY_LINK) # unix static
-  set (BOINC_LIB_NAME "libboinc.a")
-  set (BOINC_API_NAME "libboinc_api.a")
-elseif (OM_USE_LIBCMT) # windows static
-  set (BOINC_LIB_NAME "libboinc_staticcrt.lib")
-  set (BOINC_API_NAME "libboincapi_staticcrt.lib")
-else ()
-  # generic
-  set (BOINC_LIB_NAME boinc boinc_staticcrt)
-  set (BOINC_API_NAME boinc_api boincapi boincapi_staticcrt)
-endif ()
-
-# Find libboinc and libboinc_api/libboincapi
-# Note that we always prefer static libraries when building for BOINC.
-
-find_library (BOINC_LIB_OPT ${BOINC_LIB_NAME}
-  PATHS
-    ${BOINC_INCLUDE_DIR}/win_build/Build/Win32/Release
-    ${BOINC_INCLUDE_DIR}/lib
-    ${BOINC_INCLUDE_DIR}/../lib
+FIND_LIBRARY(BOINC_LIBRARY
+    NAMES boinc
+    PATHS /boinc/src/boinc /home/tdesell/boinc /Users/deselt/Software/boinc/mac_build/build/Deployment/ ~/BOINC_SOURCE/
+    PATH_SUFFIXES lib
 )
-find_library (BOINC_API_LIB_OPT ${BOINC_API_NAME}
-  PATHS
-    ${BOINC_INCLUDE_DIR}/win_build/Build/Win32/Release
-    ${BOINC_INCLUDE_DIR}/api
-    ${BOINC_INCLUDE_DIR}/../lib
+#MESSAGE(STATUS "BOINC library: ${BOINC_LIBRARY}")
+
+FIND_LIBRARY(BOINC_CRYPT_LIBRARY
+    NAMES boinc_crypt
+    PATHS /boinc/src/boinc /home/tdesell/boinc /Users/Deselt/Software/boinc/mac_build/build/Deployment/ ~/BOINC_SOURCE/
+    PATH_SUFFIXES lib
 )
+#MESSAGE(STATUS "BOINC crypt library: ${BOINC_CRYPT_LIBRARY}")
 
-if (MSVC)
-  # debug libraries may also be needed on Windows
-  find_library (BOINC_LIB_DBG ${BOINC_LIB_NAME}
-    PATHS
-      ${BOINC_INCLUDE_DIR}/win_build/Build/Win32/Debug
-  )
-  find_library (BOINC_API_LIB_DBG ${BOINC_API_NAME}
-    PATHS
-      ${BOINC_INCLUDE_DIR}/win_build/Build/Win32/Debug
-  )
-endif()
+FIND_LIBRARY(BOINC_API_LIBRARY
+    NAMES boinc_api
+    PATHS /boinc/src/boinc /home/tdesell/boinc /Users/Deselt/Software/boinc/mac_build/build/Deployment/ ~/BOINC_SOURCE/
+    PATH_SUFFIXES api
+)
+#MESSAGE(STATUS "BOINC api library: ${BOINC_API_LIBRARY}")
 
-if (BOINC_LIB_OPT)
-  if (BOINC_LIB_DBG)
-    set (BOINC_LIB optimized ${BOINC_LIB_OPT} debug ${BOINC_LIB_DBG})
-  else ()
-    set (BOINC_LIB ${BOINC_LIB_OPT})
-  endif ()
-else ()
-  if (BOINC_LIB_DBG)
-    set (BOINC_LIB ${BOINC_LIB_DBG})
-  else ()
-    message (FATAL_ERROR "Unable to find boinc library")
-  endif ()
-endif ()
-if (BOINC_API_LIB_OPT)
-  if (BOINC_API_LIB_DBG)
-    set (BOINC_API_LIB optimized ${BOINC_API_LIB_OPT} debug ${BOINC_API_LIB_DBG})
-  else ()
-    set (BOINC_API_LIB ${BOINC_API_LIB_OPT})
-  endif ()
-else ()
-  if (BOINC_API_LIB_DBG)
-    set (BOINC_API_LIB ${BOINC_API_LIB_DBG})
-  else ()
-    message (FATAL_ERROR "Unable to find boinc_api/libboincapi library")
-  endif ()
-endif ()
+FIND_LIBRARY(BOINC_SCHED_LIBRARY
+    NAMES sched
+    PATHS /boinc/src/boinc /home/tdesell/boinc /Users/Deselt/Software/boinc/mac_build/build/Deployment/ ~/BOINC_SOURCE/
+    PATH_SUFFIXES sched
+)
+MESSAGE(STATUS "BOINC sched library: ${BOINC_SCHED_LIBRARY}")
 
-add_definitions(-D_BOINC_APP_)
-set (BOINC_FOUND TRUE)
-set (BOINC_LIBRARIES ${BOINC_API_LIB} ${BOINC_LIB})
+IF (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY)
+    add_definitions( -D_BOINC_APP_ )
+    SET (BOINC_APP_FOUND TRUE)
+    SET (BOINC_APP_LIBRARIES ${BOINC_API_LIBRARY} ${BOINC_LIBRARY})
 
-mark_as_advanced (BOINC_API_LIB BOINC_LIB
-  BOINC_API_LIB_OPT BOINC_API_LIB_DBG
-  BOINC_LIB_OPT BOINC_LIB_DBG
-  BOINC_INCLUDE_DIR)
+    MESSAGE(STATUS "Found BOINC_APP_LIBRARIES: ${BOINC_APP_LIBRARIES}")
+    MESSAGE(STATUS "BOINC include directory: ${BOINC_INCLUDE_DIR}")
+ELSE (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY)
+    SET (BOINC_APP_FOUND FALSE)
+    SET (BOINC_APP_LIBRARIES )
+ENDIF (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY)
+
+IF (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY AND BOINC_SCHED_LIBRARY AND BOINC_CRYPT_LIBRARY)
+    add_definitions( -D_BOINC_SERVER_ )
+    SET(BOINC_SERVER_FOUND TRUE)
+    SET( BOINC_SERVER_LIBRARIES ${BOINC_SCHED_LIBRARY} ${BOINC_LIBRARY} ${BOINC_API_LIBRARY} ${BOINC_CRYPT_LIBRARY})
+
+    MESSAGE(STATUS "Found BOINC_SERVER_LIBRARIES: ${BOINC_SERVER_LIBRARIES}")
+    MESSAGE(STATUS "BOINC include directory: ${BOINC_INCLUDE_DIR}")
+ELSE (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY AND BOINC_SCHED_LIBRARY AND BOINC_CRYPT_LIBRARY)
+    SET(BOINC_FOUND FALSE)
+    SET( BOINC_LIBRARIES )
+ENDIF (BOINC_INCLUDE_DIR AND BOINC_LIBRARY AND BOINC_API_LIBRARY AND BOINC_SCHED_LIBRARY AND BOINC_CRYPT_LIBRARY)
+
+MARK_AS_ADVANCED(
+    BOINC_APP_LIBRARIES
+    BOINC_SCHED_LIBRARIES
+    BOINC_INCLUDE_DIR
+    )

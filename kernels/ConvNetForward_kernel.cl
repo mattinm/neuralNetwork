@@ -197,10 +197,11 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 		neurons[x] = 0;
 	else
 	{
-		int i = ourRow - pad;
-		int j = ourCol - pad;
-		int k = ourDepth;
-		int oldIndex = (i * prevwidth * depth) + (j * depth) + k;
+		//int i = ourRow - pad;
+		//int j = ourCol - pad;
+		//int k = ourDepth;
+		//int oldIndex = (i * prevwidth * depth) + (j * depth) + k;
+		int oldIndex = ((ourRow - pad) * prevwidth * depth) + ((ourCol - pad) * depth) + ourDepth
 
 		neurons[x] = prevNeurons[oldIndex];
 	}
