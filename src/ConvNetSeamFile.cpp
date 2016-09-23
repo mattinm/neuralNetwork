@@ -11,7 +11,7 @@
 
 
 //ConvNet
-#include <ConvNetCL.h>
+// #include <ConvNetCL.h>
 #include <ConvNetSeam.h>
 
 //OpenCV
@@ -592,9 +592,33 @@ int main(int argc, const char **argv)
 	if(!setupDetailLevel(d))
 		return 0;
 
-	Net net;
-	net.load(cnn_path.c_str());
-	inputSize = net.getInputWidth();
+	// Net net;
+	// net.load(cnn_path.c_str());
+	// inputSize = net.getInputWidth();
+	ifstream file(cnn_path.c_str());
+	if(!file.is_open())
+	{
+		printf("Unable to open file: '%s'\n", cnn_path.c_str());
+		return 0;
+	}
+	bool got = false;
+	string line;
+	getline(file, line);
+	while(line != "END_NET")
+	{
+		if(line.find("inputWidth") != string::npos)
+		{
+			inputSize = stoi(line.substr(line.find('=')+1));
+			got = true;
+			break;
+		}
+	}
+	if(!got)
+	{
+		printf("Unable to find inputWidth in CNN file\n");
+		return 0;
+	}
+
 	cvSize = Size(inputSize,inputSize);
 
 	if(max_time != -1)//turn hours to seconds
