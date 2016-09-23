@@ -23,10 +23,12 @@
 
 //Other
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <vector>
 #include <string>
 #include <sstream>
+#include <unordered_map>
 
 using namespace std;
 using namespace cv;
@@ -39,14 +41,15 @@ using namespace cv;
 
 #define DISTORT_DOWN 0
 #define SCALE_DOWN 1
-#define CARVE_DOWN 2
+#define CARVE_DOWN_vth 2
 
-int detailLevel = CLASSES_IN_OUT_FRAME;
-
-vector<string> class_names;
-vector<int> class_true_vals;
 
 //class definitions
+struct imstruct{
+	string name;
+	unsigned long count = 0;
+};
+
 struct Event
 {
 	string type;
@@ -68,6 +71,22 @@ public:
 
 //Global variables
 MYSQL *wildlife_db_conn = NULL;
+int detailLevel = CLASSES_IN_OUT_FRAME;
+vector<string> class_names;
+vector<int> class_true_vals;
+vector<imstruct> video_infos;
+int inputSize;
+int scaleType = SCALE_DOWN;
+bool __horizontalReflect = false;
+vector<int> video_ids;
+bool expert = true;
+int jump = 1;
+int species_id = -1;
+string cnn_path = ""; 
+string outname = "";
+int max_videos = -1;
+int max_time = -1;
+int device = -1;
 
 //Helper functions
 void __mysql_check(MYSQL *conn, string query, const char* file, const int line)
@@ -101,6 +120,55 @@ bool containsEvent(vector<Event> events, string type)
 	return false;
 }
 
+int compareRev(const void* p1, const void* p2) //compares 2 imstructs from greatest to least
+{
+	imstruct* im1 = (imstruct*) p1;
+	imstruct* im2 = (imstruct*) p2;
+	if(im1->count > im2->count) return -1;
+	if(im1->count == im2->count) return 0;
+	return 1;
+}
+
+int compareInt(const void* p1, const void* p2)
+{
+	int *i1 = (int*)p1;
+	int *i2 = (int*)p2;
+	if(*i1 < *i2)  return -1;
+	if(*i1 == *i2) return 0;
+	return 1;
+}
+
+int getMaxNameSize(const vector<string>& names)
+{
+	int max = 0;
+	for(int i = 0; i < names.size(); i++)
+		if(names[i].length() > max)
+			max = names[i].length();
+	return max;
+}
+
+string getResizeMethod(int method)
+{
+	if(method == DISTORT_DOWN)
+		return "Distort down (simple resizing)";
+	if(method == SCALE_DOWN)
+		return "Scale down (seamcarve to square, scale to size)";
+	if(method == CARVE_DOWN_vth)
+		return "Carve down vth (seamcarve vertical to size, then horizontal to size)"; 
+	char buf[100];
+	sprintf(buf,"Unknown: %d",method);
+	return string(buf);
+}
+
+string getParallelName(const vector<string>& names, const vector<int>& trueVals, int trueVal)
+{
+	for(int i = 0; i < names.size(); i++)
+	{
+		if(trueVals[i] == trueVal)
+			return names[i];
+	}
+	return string("");
+}
 
 //Class Level functions (and getTime)
 void Observations::addEvent(string type, string starttime, string endtime)
@@ -266,47 +334,207 @@ bool getNextFrame(VideoCapture& video, Mat& frame, int& framenum, int jump = 1)
 	return moreFrames;
 }
 
+//if you are not me, look up sizeByte at the top of TrainingImageSplitterFileCreator
+template<typename type>
+void imagesToFile(vector<vector<Mat> >& vects, vector<vector<double> >& trueVals, string outname, short sizeByte)
+{
+	string dirName = outname.substr(0,outname.rfind('.')-1);
+	char sys_cmd[500];
+
+	//make a directory for the output
+	sprintf(sys_cmd,"mkdir %s",dirName.c_str());
+	system(sys_cmd);
+
+	string outpath_file = dirName + "/" + outname;
+	string outpath_info = dirName + "/" + dirName + "_info.txt";
+
+	ofstream outfile(outpath_file, ios::binary | ios::trunc);
+	unsigned long unalteredImageCount = 0;
+	unordered_map<unsigned short, unsigned long> trueMap;
+	int numWritesPerImage = 1;
+	// unsigned long byteCount;
+	if(__horizontalReflect) numWritesPerImage++;
+
+
+	int xsize = inputSize;
+	int ysize = inputSize;
+	int zsize = 3;
+	char slash0 = '\0';
+
+	outfile.write(reinterpret_cast<const char *>(&sizeByte),sizeof(short));
+	outfile.write(reinterpret_cast<const char *>(&xsize),sizeof(short));
+	outfile.write(reinterpret_cast<const char *>(&ysize),sizeof(short));
+	outfile.write(reinterpret_cast<const char *>(&zsize),sizeof(short));
+	outfile.write(reinterpret_cast<const char *>(&slash0),sizeof(char));
+
+	if(class_names.size() > 0)
+	{
+		//write num of classes
+		int numClasses = class_names.size();
+		outfile.write(reinterpret_cast<const char *>(&numClasses), sizeof(int));
+
+		//write trueval and name for each class
+		for(int c = 0; c < class_names.size(); c++)
+		{
+			int trueVal = class_true_vals[c];
+			unsigned int len = class_names[c].length();
+			char out_name[len+1];
+			for(int c1 = 0; c1 < len; c1++)
+				out_name[c1] = class_names[c][c1];
+			out_name[len] = '\0';
+			outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(int));
+			outfile.write(out_name,sizeof(char) * (len + 1));
+		}
+	}
+
+	type pixel[3];
+	long size = sizeof(type) * 3;
+	for(unsigned long v = 0; v < vects.size(); v++)
+	{
+		for(unsigned long w = 0; w < vects[v].size(); w++)
+		{
+			Mat& image = vects[v][w];
+			unsigned short trueVal = (unsigned short)trueVals[v][w];
+
+			if(image.type() == CV_8UC3)
+			{
+				for(int i=0; i < xsize; i++)
+				{
+					for(int j=0; j < ysize; j++)
+					{
+						const Vec3b& curPixel = image.at<Vec3b>(i,j);
+						pixel[0] = (type)curPixel[0];
+						pixel[1] = (type)curPixel[1];
+						pixel[2] = (type)curPixel[2];
+
+						//cout << "writing" << endl;
+						outfile.write(reinterpret_cast<const char *>(pixel),size);
+					}
+				}
+				outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(unsigned short));
+				unalteredImageCount++;
+
+				//horizontal reflection
+				if(__horizontalReflect)
+				{
+					for(int i = xsize-1; i >= 0; i--)
+					{
+						for(int j = 0; j < ysize; j++)
+						{
+							const Vec3b& curPixel = image.at<Vec3b>(i,j);
+							pixel[0] = (type)curPixel[0];
+							pixel[1] = (type)curPixel[1];
+							pixel[2] = (type)curPixel[2];
+							outfile.write(reinterpret_cast<const char *>(pixel),size);
+						}
+					}
+					outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(unsigned short));
+				}
+
+				unordered_map<unsigned short, unsigned long>::const_iterator got = trueMap.find(trueVal);
+				if(got == trueMap.end()) // not found
+					trueMap[trueVal] = numWritesPerImage;
+				else //found
+					trueMap[trueVal] += numWritesPerImage;
+			}
+			else
+			{
+				printf("Unsupported image type\n");
+			}
+		}
+	}
+	outfile.close();
+
+	//get total number of images
+	unsigned long sum = 0;
+	for( auto it  = trueMap.begin(); it != trueMap.end(); it++)
+	{
+		sum += it->second;
+	}
+
+	//Now lets do the info file
+	ofstream outfile_info(outpath_info, ios::trunc);
+
+	outfile_info << "Name: " << outname << endl;
+	outfile_info << "Image size:      " << inputSize << " x " << inputSize << " x 3\n"; 
+	outfile_info << "Intended CNN:    " << cnn_path.substr(cnn_path.rfind('/')+1) << endl;
+	outfile_info << "Resizing method: " << getResizeMethod(scaleType) << endl;
+	outfile_info << "Horizontal flip: " << boolalpha << __horizontalReflect << endl << endl;
+
+	outfile_info << "Species id: " << species_id << endl;
+	outfile_info << "Max videos: " << max_videos << endl;
+	outfile_info << "Max time:   " << max_time << endl;
+	outfile_info << "Jump:       " << jump << endl;
+	outfile_info << "Requested video ids:\n";
+	for(int i = 0; i < video_ids.size(); i++)
+		outfile_info << "   " << video_ids[i] << endl;
+
+
+	outfile_info << "Total images: " << sum << endl;
+	outfile_info << "  (" << unalteredImageCount << " without transformations)\n";
+
+	//sort the infos from greatest to least
+	qsort(video_infos.data(),video_infos.size(), sizeof(imstruct),compareRev);
+
+	
+
+	//Do distribution of classes and videos
+	int nameSize = getMaxNameSize(class_names);
+	outfile << "Distribution:\n";
+	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
+	{
+		outfile_info << "True val " << it->first << ",";
+		outfile_info << setw(nameSize) << left << getParallelName(class_names,class_true_vals,it->first) << ": ";
+		outfile_info << setw(6) << right << it->second << "   " << 100.0 * it->second/sum << "%\n";
+	}
+
+	for(unsigned int i = 0; i < video_infos.size(); i++)
+	{
+		outfile_info << video_infos[i].name.c_str() << " - " << video_infos[i].count << " images.  " << 100.0 * video_infos[i].count/sum << "%\n";
+	}
+
+}
+
 int main(int argc, const char **argv)
 {
 	if(argc == 1)
 	{
 		printf("Usage: ./ConvNetSeamTrain \n");
-		printf(" -cnn=<cnn_config>        Sets CNN architecture. Required.\n");
-		printf(" -outname=<name>          Sets name of output cnn. Required.\n");
-		printf(" -video=<video_id>        Picks a video to use for training. Must be in database. Can be used multiple times.\n");
+		printf(" -cnn=<cnn_config>           Sets CNN architecture. Required for input size.\n");
+		printf(" -outname=<name>             Sets name of output file. Required.\n");
+		printf(" -video=<video_id>           Picks a video to use for training. Must be in database. Can be used multiple times.\n");
 		printf(" -species_id=<species_num>   Sets species to grab videos of\n");
-		printf(" -max_videos=<int>        Max videos to bring in for training.\n");
-		printf(" -max_time=<double>       Max number of hours of video to train on\n");
-		printf(" -testPercent=<0-100>     Percent of data to use as test data.");
-		printf(" -carveDown               Image is seamcarved both horizontally and vertically down to size\n");
-		printf(" -scaleDown               Image is seamcarved to square and scaled down to size\n");
-		printf(" -distortDown             Image is scaled down to size. No seamcarving. Possible distortion.\n");
+		printf(" -max_videos=<int>           Max videos to bring in for training.\n");
+		printf(" -max_time=<double>          Max number of hours of video to train on\n");
+		// printf(" -testPercent=<0-100>        Percent of data to use as test data.");
+		printf(" -carveDown                  Image is seamcarved both horizontally and vertically down to size\n");
+		printf(" -scaleDown (default)        Image is seamcarved to square and scaled down to size\n");
+		printf(" -distortDown                Image is scaled down to size. No seamcarving. Possible distortion.\n");
+		printf(" -horizontal                 Images have a copy made of them that are horizontally flipped\n");
 		//printf(" -images=<path_to_images> Picks path_to_images for training. Can be used multiple times.\n");
-		printf(" -device=<device_num>     OpenCL device to run CNN on\n");
-		printf(" -jump=<int>              How many frames to jump between using frames. If jump=10,\n");
-		printf("                          it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
+		// printf(" -device=<device_num>        OpenCL device to run seamcarving on\n");
+		printf(" -jump=<int>                 How many frames to jump between using frames. If jump=10,\n");
+		printf("                             it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
 		//printf(" -non_expert              Sets it not to pull from expert observed\n");
 
-		printf(" -train_as_is. Default\n");
-		printf(" -train_equal_prop\n");
-		printf(" -detail=<int>            0 is in or out of frame (default). 1 is out of frame, on nest, flying\n");
+		// printf(" -train_as_is. Default\n");
+		// printf(" -train_equal_prop\n");
+		printf(" -detail=<int>               0 is in or out of frame (default). 1 is out of frame, on nest, flying\n");
 		return 0;
 	}
-	//variable declarations
-	vector<int> video_ids;
-	bool expert = true;
-	int jump = 1;
-	int species_id = -1;
-	string cnn_path = "";
-	string outname = "";
-	int max_videos = -1;
-	int max_time = -1;
-	int device = -1;
-	bool train_as_is = true;
-	int detail = 0;
-	double testPercent = 0;
-	int scaleType = SCALE_DOWN;
-	int inputSize; //assumes square input
+	// global variable declarations
+	// vector<int> video_ids;
+	// bool expert = true;
+	// int jump = 1;
+	// int species_id = -1;
+	// string cnn_path = ""; 
+	// string outname = "";
+	// int max_videos = -1;
+	// int max_time = -1;
+	// int device = -1;
+	int d = 0; //detail
+	// int scaleType = SCALE_DOWN; 
+	//int inputSize; //assumes square input
 	Size cvSize;
 
 	//0a. Parse through command line args
@@ -329,18 +557,20 @@ int main(int argc, const char **argv)
 			device = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-jump=") != string::npos)
 			jump = stoi(arg.substr(arg.find('=')+1));
-		else if(arg.find("-train_equal_prop") != string::npos)
-			train_as_is = false;
+		// else if(arg.find("-train_equal_prop") != string::npos)
+		// 	train_as_is = false;
 		else if(arg.find("-detail=") != string::npos)
-			detail = stoi(arg.substr(arg.find('=')+1));
-		else if(arg.find("-testPercent=") != string::npos)
-			testPercent = stod(arg.substr(arg.find('=')+1));
+			d = stoi(arg.substr(arg.find('=')+1));
+		// else if(arg.find("-testPercent=") != string::npos)
+		// 	testPercent = stod(arg.substr(arg.find('=')+1));
 		else if(arg.find("-distortDown") != string::npos)
 			scaleType = DISTORT_DOWN;
 		else if(arg.find("-scaleDown") != string::npos)
 			scaleType = SCALE_DOWN;
-		else if(arg.find("-carveDown") != string::npos)
-			scaleType = CARVE_DOWN;
+		else if(arg.find("-carveDown_vth") != string::npos)
+			scaleType = CARVE_DOWN_vth;
+		else if(arg.find("-horizontal") != string::npos)
+			__horizontalReflect = true;
 		else
 		{
 			printf("Unknown arg: '%s'\n", argv[i]);
@@ -359,7 +589,7 @@ int main(int argc, const char **argv)
 		return 0;
 	}
 
-	if(!setupDetailLevel(detail))
+	if(!setupDetailLevel(d))
 		return 0;
 
 	Net net;
@@ -423,6 +653,9 @@ int main(int argc, const char **argv)
 		int starttime = getTime(startDateAndTime.substr(startDateAndTime.find(' ')+1));
 		int duration = atoi(video_row[4]);
 
+		imstruct video_info;
+		video_info.name = video_path;
+
 		printf("Video #%d, %s. Dur: %d\n", video_id, video_name.c_str(), duration);
 
 		//if we are going to go over max time, continue and see if there is a shorter video
@@ -464,7 +697,6 @@ int main(int argc, const char **argv)
 		//positive numSeams means width  > height - landscape
 		//negative numSeams means height > width  - portrait
 		int numSeams = video.get(CV_CAP_PROP_FRAME_WIDTH) - video.get(CV_CAP_PROP_FRAME_HEIGHT);
-
 		Mat frame;
 		int framenum = 0;
 		vector<Event> curEvents;
@@ -491,20 +723,24 @@ int main(int argc, const char **argv)
 				else // height > width. portrait
 				{
 					//horizontal seams, fast
-					//seamcarve_hf(numSeams, frame, temp);
+					seamcarve_hf(-numSeams, frame, temp);
 					resize(temp, trainingData.back().back(),cvSize);
 				}
 			}
-			else if(scaleType == CARVE_DOWN) // seamcarve in both directions down to size. No normal scaling
+			else if(scaleType == CARVE_DOWN_vth) // seamcarve in both directions down to size. No normal scaling
 			{
 				//both types seams, fast
-				//seamcarve_bf(frame, trainingData.back().back());
+				int vseams = video.get(CV_CAP_PROP_FRAME_WIDTH)  - inputSize;
+				int hseams = video.get(CV_CAP_PROP_FRAME_HEIGHT) - inputSize;
+				seamcarve_both_vth(vseams, hseams, frame, trainingData.back().back());
 			}
 
 			//get true val and put in
 			observations.getEvents(starttime + framenum * .1, curEvents); //assuming 10 frames per second.
 			int trueVal = getTrueVal(curEvents);
 			training_trueVals.back().push_back(trueVal);
+
+			video_info.count++;
 		}
 		video.release();
 			
@@ -512,97 +748,101 @@ int main(int argc, const char **argv)
 		//rm video
 		sys_cmd = "rm " + video_name;
 		system(sys_cmd.c_str());
+
+		video_infos.push_back(video_info);
 	}
 
 	//free video_2_result
 	mysql_free_result(video_2_result);
 
-	if(scaleType == CARVE_DOWN || scaleType == SCALE_DOWN)
+	if(scaleType == CARVE_DOWN_vth || scaleType == SCALE_DOWN)
 		seamcarve_cleanup();
 
+	imagesToFile<unsigned char>(trainingData, training_trueVals, outname, 1);
 
-	//2. Train CNN over seamcarved images
+
+	//2. Train CNN over seamcarved images - now in separate file
 	//initialized up top
-	net.setSaveName(outname);
-	net.setClassNames(class_names,class_true_vals);
-	if(train_as_is)
-		net.setTrainingType(TRAIN_AS_IS);
-	else
-		net.setTrainingType(TRAIN_EQUAL_PROP);
-	if(device != -1)
-		net.setDevice(device);
-	if(!net.finalize())
-	{
-		printf("Error finalizing Net: \n%s\n",net.getErrorLog().c_str());
-		return 0;
-	}
+	// net.setSaveName(outname);
+	// net.setClassNames(class_names,class_true_vals);
+	// if(train_as_is)
+	// 	net.setTrainingType(TRAIN_AS_IS);
+	// else
+	// 	net.setTrainingType(TRAIN_EQUAL_PROP);
+	// if(device != -1)
+	// 	net.setDevice(device);
+	// if(!net.finalize())
+	// {
+	// 	printf("Error finalizing Net: \n%s\n",net.getErrorLog().c_str());
+	// 	return 0;
+	// }
 
-	printf("CNN Layer Sizes\n");
-	net.printLayerDims();
+	// printf("CNN Layer Sizes\n");
+	// net.printLayerDims();
 
-	//add training and test data. get percentages as close as possible 
-	//while using separate vidoes for each
-	//if percent diff > 5 tell the user?
-	unsigned long minSize = -1; // should be max ulong
-	int minIndex = -1;
-	if(testPercent == 0 || trainingData.size() < 2)
-	{
-		//put it all for training
-		for(int i = 0; i < trainingData.size(); i++)
-			net.addTrainingData(trainingData[i],training_trueVals[i]);
-	}
-	else
-	{
-		//for accountability reasons, try to keep training and test videos from separate videos
-		//if we can't get percents right, use smallest video for test
-		vector<bool> isTraining(trainingData.size(),true);
-		testPercent *= .01; //make this a decimal again.
-		double totalTest = 0;
-		bool noTestFound = true;
-		for(int i = 0; i < trainingData.size(); i++)
-		{
-			double curPercent = trainingData[i].size() / totalAmountData;
-			if(curPercent + totalTest < testPercent)
-			{
-				isTraining[i] = false;
-				totalTest += curPercent;
-				noTestFound = false;
-			}
-			// if we can make this and only go over by 3% lets do it.
-			else if(curPercent + totalTest < testPercent + .03)
-			{
-				isTraining[i] = false;
-				totalTest += curPercent;
-				break;
-			}
-			else
-			{
-				if(noTestFound && trainingData[i].size() < minSize)
-				{
-					minSize = trainingData[i].size();
-					minIndex = i;
-				}
-			}
-		}
+	// //add training and test data. get percentages as close as possible 
+	// //while using separate vidoes for each
+	// //if percent diff > 5 tell the user?
+	// unsigned long minSize = -1; // should be max ulong
+	// int minIndex = -1;
+	// if(testPercent == 0 || trainingData.size() < 2)
+	// {
+	// 	//put it all for training
+	// 	for(int i = 0; i < trainingData.size(); i++)
+	// 		net.addTrainingData(trainingData[i],training_trueVals[i]);
+	// }
+	// else
+	// {
+	// 	//for accountability reasons, try to keep training and test videos from separate videos
+	// 	//if we can't get percents right, use smallest video for test
+	// 	vector<bool> isTraining(trainingData.size(),true);
+	// 	testPercent *= .01; //make this a decimal again.
+	// 	double totalTest = 0;
+	// 	bool noTestFound = true;
+	// 	for(int i = 0; i < trainingData.size(); i++)
+	// 	{
+	// 		double curPercent = trainingData[i].size() / totalAmountData;
+	// 		if(curPercent + totalTest < testPercent)
+	// 		{
+	// 			isTraining[i] = false;
+	// 			totalTest += curPercent;
+	// 			noTestFound = false;
+	// 		}
+	// 		// if we can make this and only go over by 3% lets do it.
+	// 		else if(curPercent + totalTest < testPercent + .03)
+	// 		{
+	// 			isTraining[i] = false;
+	// 			totalTest += curPercent;
+	// 			break;
+	// 		}
+	// 		else
+	// 		{
+	// 			if(noTestFound && trainingData[i].size() < minSize)
+	// 			{
+	// 				minSize = trainingData[i].size();
+	// 				minIndex = i;
+	// 			}
+	// 		}
+	// 	}
 
-		if(noTestFound)
-		{
-			isTraining[minIndex] = false;
-			totalTest += trainingData[minIndex].size() / totalAmountData;
-		}
+	// 	if(noTestFound)
+	// 	{
+	// 		isTraining[minIndex] = false;
+	// 		totalTest += trainingData[minIndex].size() / totalAmountData;
+	// 	}
 
-		//now we know who is training and who is test
-		for(int i = 0; i < trainingData.size(); i++)
-		{
-			if(isTraining[i])
-				net.addTrainingData(trainingData[i],training_trueVals[i]);
-			else
-				net.addTestData(trainingData[i],training_trueVals[i]);
-		}
-	}
+	// 	//now we know who is training and who is test
+	// 	for(int i = 0; i < trainingData.size(); i++)
+	// 	{
+	// 		if(isTraining[i])
+	// 			net.addTrainingData(trainingData[i],training_trueVals[i]);
+	// 		else
+	// 			net.addTestData(trainingData[i],training_trueVals[i]);
+	// 	}
+	// }
 
-	printf("Training Distribution\n");
-	net.printTrainingDistribution();
+	// printf("Training Distribution\n");
+	// net.printTrainingDistribution();
 
-	net.train(); //this will save using the save name because of net.setSaveName called above
+	// net.train(); //this will save using the save name because of net.setSaveName called above
 }
