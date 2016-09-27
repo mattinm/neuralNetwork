@@ -4,7 +4,7 @@
 #define ____ConvNetSeam__
 
 //OpenCV
-#include "opencv2/imgproc/imgproc.hpp"
+#include "/home/cbowley/opencv/modules/imgproc/include/opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
 bool seamcarve_vf(int numSeams, const cv::Mat& source, cv::Mat& dest);

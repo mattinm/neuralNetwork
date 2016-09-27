@@ -15,8 +15,9 @@
 #include <ConvNetSeam.h>
 
 //OpenCV
-#include "opencv2/imgproc/imgproc.hpp"
-#include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc.hpp"
+#include "opencv2/highgui.hpp"
+#include "opencv.hpp"
 
 //MySQL
 #include <mysql.h>
@@ -112,7 +113,7 @@ int getTime(string tim) // must be in format hh::mm::ss. Military time
 
 bool containsEvent(vector<Event> events, string type)
 {
-	for(int i = 0; i < events.size(); i++)
+	for(unsigned int i = 0; i < events.size(); i++)
 	{
 		if(events[i].type == type)
 			return true;
@@ -140,8 +141,8 @@ int compareInt(const void* p1, const void* p2)
 
 int getMaxNameSize(const vector<string>& names)
 {
-	int max = 0;
-	for(int i = 0; i < names.size(); i++)
+	unsigned int max = 0;
+	for(unsigned int i = 0; i < names.size(); i++)
 		if(names[i].length() > max)
 			max = names[i].length();
 	return max;
@@ -162,7 +163,7 @@ string getResizeMethod(int method)
 
 string getParallelName(const vector<string>& names, const vector<int>& trueVals, int trueVal)
 {
-	for(int i = 0; i < names.size(); i++)
+	for(unsigned int i = 0; i < names.size(); i++)
 	{
 		if(trueVals[i] == trueVal)
 			return names[i];
@@ -187,7 +188,7 @@ void Observations::getEvents(int tim, vector<Event>& dest)
 	dest.resize(0);
 	//seconds in a day = 3600 * 24 = 86400
 	tim %= 86400; //make sure we are within a valid time for a day
-	for(int i = 0; i < events.size(); i++)
+	for(unsigned int i = 0; i < events.size(); i++)
 	{
 		//check if time is within event time. if so add to dest
 		if(events[i].isOvernight) 
@@ -211,7 +212,7 @@ void Observations::getEvents(string tim, vector<Event>& dest)
 void Observations::getAllEvents(vector<Event>& dest)
 {
 	dest.resize(0);
-	for(int i = 0; i < events.size(); i++)
+	for(unsigned int i = 0; i < events.size(); i++)
 		dest.push_back(events[i]);
 }
 
@@ -643,7 +644,7 @@ int main(int argc, const char **argv)
 	if(video_ids.size() > 0)
 	{
 		query << " AND ( ";
-		for(int i = 0; i < video_ids.size(); i++)
+		for(unsigned int i = 0; i < video_ids.size(); i++)
 		{
 			if(i > 0)
 				query << " OR";

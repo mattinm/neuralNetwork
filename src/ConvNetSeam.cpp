@@ -1,7 +1,7 @@
 #include "ConvNetSeam.h"
 
 //ConvNet
-#include "ConvNetCL.h"
+//#include "ConvNetCL.h"
 
 //OpenCV
 #include "opencv2/imgproc/imgproc.hpp"
