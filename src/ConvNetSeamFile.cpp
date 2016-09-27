@@ -102,6 +102,36 @@ void __mysql_check(MYSQL *conn, string query, const char* file, const int line)
 	}
 }
 
+string myTolower(string str)
+{
+	transform(str.begin(), str.end(), str.begin(), ::tolower);
+	return str;
+}
+
+bool stringToDims(string str, int* dims)
+{
+	//should look like 32x32x3 or 32 x 32 x 3
+	str = myTolower(str);
+	str.erase(remove(str.begin(), str.end(), ' '), str.end());
+	stringstream tokens(str);
+	string item;
+	int i = 0;
+	while(getline(tokens, item, 'x'))
+	{
+		if(i == 3)
+		{
+			printf("You can only have 3 dimensions for a layer size.\n");
+			return false;
+		}
+		if(!item.empty())
+		{
+			dims[i++] = stoi(item);
+		}
+
+	}
+	return true;
+}
+
 int getTime(string tim) // must be in format hh::mm::ss. Military time
 {
 	int t = 0;
@@ -219,6 +249,7 @@ void Observations::getAllEvents(vector<Event>& dest)
 //Other Functions
 void init_wildlife_database()
 {
+	printf("Attempting to connect to wildlife DB\n");
 	wildlife_db_conn = mysql_init(NULL);
 
 	//get database info from file
@@ -554,8 +585,8 @@ int main(int argc, const char **argv)
 			max_videos = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-max_time=") != string::npos)
 			max_time = stoi(arg.substr(arg.find('=')+1));
-		else if(arg.find("-device=") != string::npos)
-			device = stoi(arg.substr(arg.find('=')+1));
+		// else if(arg.find("-device=") != string::npos)
+		// 	device = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-jump=") != string::npos)
 			jump = stoi(arg.substr(arg.find('=')+1));
 		// else if(arg.find("-train_equal_prop") != string::npos)
@@ -604,21 +635,53 @@ int main(int argc, const char **argv)
 	}
 	bool got = false;
 	string line;
-	getline(file, line);
-	while(line != "END_NET")
+	while(getline(file,line))
 	{
-		if(line.find("inputWidth") != string::npos)
+		printf("%s\n", line.c_str());
+		
+		//see if it starts with pound. If so it is a comment.
+		int j = 0;
+		for(j = 0; j < line.length(); j++)
 		{
-			inputSize = stoi(line.substr(line.find('=')+1));
+			if(line[j] != ' ' && line[j] != '\t' && line[j] != '\n' && line[j] != '\r')
+				break;
+		}
+		// printf("j: %d length: %lu\n", j, line.length());
+		if(j >= line.length() || line[j] == '#')
+			continue;
+
+		//tokenize the line and put the results in the items vector
+		vector<string> items;
+		stringstream tokens(line);
+		string item;
+		while(getline(tokens, item, ' '))
+		{
+			if(!item.empty())
+			{
+				items.push_back(item);
+			}
+		}
+		items[0] = myTolower(items[0]);
+		if(items[0] == "input")
+		{
+			int dims[3];
+			if(!stringToDims(items[1],dims))
+			{
+				printf("Error getting inputSize\n");
+				return 0;
+			}
+			inputSize = dims[0];
 			got = true;
 			break;
 		}
+		
 	}
 	if(!got)
 	{
 		printf("Unable to find inputWidth in CNN file\n");
 		return 0;
 	}
+	printf("Input width is %d\n", inputSize);
 
 	cvSize = Size(inputSize,inputSize);
 
