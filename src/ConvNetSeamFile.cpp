@@ -764,6 +764,7 @@ int main(int argc, const char **argv)
 			observations.getEvents(starttime + framenum * .1, curEvents); //assuming 10 frames per second.
 			int trueVal = getTrueVal(curEvents);
 			training_trueVals.back().push_back(trueVal);
+			printf("Frame %d TrueVal %d  --  %lf%% through %s\n",framenum, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0, video_name);
 
 			video_info.count++;
 		}
