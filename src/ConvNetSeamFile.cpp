@@ -17,7 +17,7 @@
 //OpenCV
 #include "opencv2/imgproc.hpp"
 #include "opencv2/highgui.hpp"
-#include "opencv.hpp"
+#include "opencv2/opencv.hpp"
 
 //MySQL
 #include <mysql.h>
@@ -764,7 +764,7 @@ int main(int argc, const char **argv)
 			observations.getEvents(starttime + framenum * .1, curEvents); //assuming 10 frames per second.
 			int trueVal = getTrueVal(curEvents);
 			training_trueVals.back().push_back(trueVal);
-			printf("Frame %d TrueVal %d  --  %lf%% through %s\n",framenum, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0, video_name);
+			printf("Frame %d TrueVal %d  --  %lf%% through %s\n",framenum, trueVal, video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0, video_name.c_str());
 
 			video_info.count++;
 		}
