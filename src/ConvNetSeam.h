@@ -27,4 +27,6 @@ bool seamcarve_both_scaled_cpu(int vseams, int hseams, const cv::Mat& source, cv
 
 void seamcarve_cleanup();
 
+void seamcarve_setDevice(int deviceNum);
+
 #endif /* defined(____ConvNetSeam__)*/

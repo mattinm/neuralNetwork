@@ -24,6 +24,8 @@ int main(int argc, char** argv)
 	imshow("Original image",image);
 	// waitKey(1);
 
+	seamcarve_setDevice(0);
+
 	Size cvSize = Size(120,120);
 
 	// Mat seamImage;
