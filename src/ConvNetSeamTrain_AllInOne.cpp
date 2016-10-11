@@ -27,6 +27,8 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <random>
+#include <time.h>
 
 using namespace std;
 using namespace cv;
@@ -37,9 +39,13 @@ using namespace cv;
 #define CLASSES_DETAILED 1
 #define CLASSES_SUPER_DETAILED 2
 
+#define RANDOM_CROP -1
 #define DISTORT_DOWN 0
 #define SCALE_DOWN 1
-#define CARVE_DOWN 2
+#define CARVE_DOWN_VTH 2
+#define CARVE_DOWN_HTV 3
+#define CARVE_DOWN_BOTH_RAW 4
+#define CARVE_DOWN_BOTH_SCALED 5
 
 int detailLevel = CLASSES_IN_OUT_FRAME;
 
@@ -80,6 +86,22 @@ void __mysql_check(MYSQL *conn, string query, const char* file, const int line)
 		cerr << ex_msg.str() << endl;
 		exit(1);
 	}
+}
+
+string secondsToString(time_t seconds)
+{
+	time_t secs = seconds%60;
+	time_t mins = (seconds%3600)/60;
+	time_t hours = seconds/3600;
+	char out[100];
+	if(hours > 0)
+		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
+	else if(mins > 0)
+		sprintf(out,"%ld mins, %ld secs",mins,secs);
+	else
+		sprintf(out,"%ld secs",secs);
+	string outString = out;
+	return outString;
 }
 
 int getTime(string tim) // must be in format hh::mm::ss. Military time
@@ -271,25 +293,30 @@ int main(int argc, const char **argv)
 	if(argc == 1)
 	{
 		printf("Usage: ./ConvNetSeamTrain \n");
-		printf(" -cnn=<cnn_config>        Sets CNN architecture. Required.\n");
-		printf(" -outname=<name>          Sets name of output cnn. Required.\n");
-		printf(" -video=<video_id>        Picks a video to use for training. Must be in database. Can be used multiple times.\n");
-		printf(" -species_id=<species_num>   Sets species to grab videos of\n");
-		printf(" -max_videos=<int>        Max videos to bring in for training.\n");
-		printf(" -max_time=<double>       Max number of hours of video to train on\n");
-		printf(" -testPercent=<0-100>     Percent of data to use as test data.");
-		printf(" -carveDown               Image is seamcarved both horizontally and vertically down to size\n");
-		printf(" -scaleDown               Image is seamcarved to square and scaled down to size\n");
-		printf(" -distortDown             Image is scaled down to size. No seamcarving. Possible distortion.\n");
+		printf(" -cnn=<cnn_config>          Sets CNN architecture. Required.\n");
+		printf(" -outname=<name>            Sets name of output cnn. Required.\n");
+		printf(" -video=<video_id>          Picks a video to use for training. Must be in database. Can be used multiple times.\n");
+		printf(" -species_id=<species_num>  Sets species to grab videos of\n");
+		printf(" -max_videos=<int>          Max videos to bring in for training.\n");
+		printf(" -max_time=<double>         Max number of hours of video to train on\n");
+		printf(" -testPercent=<0-100>       Percent of data to use as test data.");
+		printf(" -carveDown_both_scaled     Frames are seamcarved in both directions at the same time based on scaled energy values.\n");
+		printf(" -carveDown_both_raw        Frames are seamcarved in both directions at the same time based on raw energy values.\n");
+		printf(" -carveDown_htv             Frames are seamcarved horizontally then vertically down to size.\n");
+		printf(" -carveDown_vth             Frames are seamcarved vertically then horizontally down to size.\n");
+		printf(" -scaleDown                 Frames are seamcarved to square and scaled down to size\n");
+		printf(" -distortDown               Frames are scaled down to size. No seamcarving. Possible distortion.\n");
+		printf(" -random_crop               A random subimage of needed size is extracted from frames\n");
 		//printf(" -images=<path_to_images> Picks path_to_images for training. Can be used multiple times.\n");
-		printf(" -device=<device_num>     OpenCL device to run CNN on\n");
-		printf(" -jump=<int>              How many frames to jump between using frames. If jump=10,\n");
-		printf("                          it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
+		printf(" -device=<device_num>       OpenCL device to run CNN on\n");
+		printf(" -jump=<int>                How many frames to jump between using frames. If jump=10,\n");
+		printf("                            it will calc on frames 0, 10, 20, etc. Defaults to 1.\n");
 		//printf(" -non_expert              Sets it not to pull from expert observed\n");
 
-		printf(" -train_as_is. Default\n");
+		printf(" -train_as_is.              Default\n");
 		printf(" -train_equal_prop\n");
-		printf(" -detail=<int>            0 is in or out of frame (default). 1 is out of frame, on nest, flying\n");
+		printf(" -detail=<int>              0 is in or out of frame (default). 1 is out of frame, on nest, flying\n");
+		printf(" -horizontal                Adds a horizontal flipped version of every image to the training and test sets\n");
 		return 0;
 	}
 	//variable declarations
@@ -308,6 +335,8 @@ int main(int argc, const char **argv)
 	int scaleType = SCALE_DOWN;
 	int inputSize; //assumes square input
 	Size cvSize;
+	bool horizontal = false;
+	time_t starttime;
 
 	//0a. Parse through command line args
 	for(int i = 1; i < argc; i++)
@@ -335,12 +364,22 @@ int main(int argc, const char **argv)
 			detail = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-testPercent=") != string::npos)
 			testPercent = stod(arg.substr(arg.find('=')+1));
+		else if(arg.find("-random_crop") != string::npos)
+			scaleType = RANDOM_CROP;
 		else if(arg.find("-distortDown") != string::npos)
 			scaleType = DISTORT_DOWN;
 		else if(arg.find("-scaleDown") != string::npos)
 			scaleType = SCALE_DOWN;
-		else if(arg.find("-carveDown") != string::npos)
-			scaleType = CARVE_DOWN;
+		else if(arg.find("-carveDown_vth") != string::npos)
+			scaleType = CARVE_DOWN_VTH;
+		else if(arg.find("-carveDown_htv") != string::npos)
+			scaleType = CARVE_DOWN_HTV;
+		else if(arg.find("-carveDown_both_raw") != string::npos)
+			scaleType = CARVE_DOWN_BOTH_RAW;
+		else if(arg.find("-carveDown_both_scaled") != string::npos)
+			scaleType = CARVE_DOWN_BOTH_SCALED;
+		else if(arg.find("-horizontal") != string::npos)
+			horizontal = true;
 		else
 		{
 			printf("Unknown arg: '%s'\n", argv[i]);
@@ -413,6 +452,7 @@ int main(int argc, const char **argv)
 	vector<vector<Mat> > trainingData; // should probably find some way of reserving mem for this
 	vector<vector<double> > training_trueVals;
 	unsigned long totalAmountData = 0;
+	default_random_engine gen(time(NULL));
 	while((video_row = mysql_fetch_row(video_2_result)))
 	{
 		//for each video, get variables
@@ -461,9 +501,25 @@ int main(int argc, const char **argv)
 			continue;
 		}
 
+		int frameWidth = video.get(CV_CAP_PROP_FRAME_WIDTH);
+		int frameHeight = video.get(CV_CAP_PROP_FRAME_HEIGHT);
+
+		//used for random crop
+		uniform_int_distribution<int> disI(0,frameHeight - inputSize);
+		uniform_int_distribution<int> disJ(0,frameWidth - inputSize);
+
+		//numSeams is for SCALE_DOWN and is number of seams to square (NOT input size).
 		//positive numSeams means width  > height - landscape
 		//negative numSeams means height > width  - portrait
-		int numSeams = video.get(CV_CAP_PROP_FRAME_WIDTH) - video.get(CV_CAP_PROP_FRAME_HEIGHT);
+		int numSeams = frameWidth - frameHeight;
+
+		//vseams is number of vertical seams (removing cols) until we get to input size
+		int vseams = video.get(CV_CAP_PROP_FRAME_WIDTH)  - inputSize;
+
+		//hseams is number of horizontal seams (removing rows) until we get to input size
+		int hseams = video.get(CV_CAP_PROP_FRAME_HEIGHT) - inputSize;
+
+
 
 		Mat frame;
 		int framenum = 0;
@@ -471,13 +527,22 @@ int main(int argc, const char **argv)
 		//go through video frame by frame.
 		trainingData.resize(trainingData.size() + 1);
 		training_trueVals.resize(training_trueVals.size() + 1);
+		time_t videostarttime = time(NULL);
 		while(getNextFrame(video, frame, framenum, jump))
 		{
+			starttime = time(NULL);
 			//seamcarve/scale frame and put in trainingData
 			trainingData.back().resize(trainingData.size() + 1);
 			if(scaleType == DISTORT_DOWN) // straight scale to size. Distort if necessary
 			{
 				resize(frame,trainingData.back().back(),cvSize);
+			}
+			else if(scaleType == RANDOM_CROP)
+			{
+				int si = disI(gen);
+				int sj = disJ(gen);
+				Mat temp(frame,Range(si,si+inputSize),Range(sj,sj+inputSize));
+				trainingData.back().back() = temp;
 			}
 			else if(scaleType == SCALE_DOWN) // seamcarve to square. Scale to size
 			{
@@ -491,20 +556,24 @@ int main(int argc, const char **argv)
 				else // height > width. portrait
 				{
 					//horizontal seams, fast
-					//seamcarve_hf(numSeams, frame, temp);
+					seamcarve_hf(-numSeams, frame, temp);
 					resize(temp, trainingData.back().back(),cvSize);
 				}
 			}
-			else if(scaleType == CARVE_DOWN) // seamcarve in both directions down to size. No normal scaling
-			{
-				//both types seams, fast
-				//seamcarve_bf(frame, trainingData.back().back());
-			}
+			else if(scaleType == CARVE_DOWN_VTH) // seamcarve in both directions down to size. No normal scaling
+				seamcarve_both_vth(vseams, hseams, frame, trainingData.back().back());
+			else if(scaleType == CARVE_DOWN_HTV)
+				seamcarve_both_htv(hseams, vseams, frame, trainingData.back().back());
+			else if(scaleType == CARVE_DOWN_BOTH_RAW)
+				seamcarve_both_raw(vseams, hseams, frame, trainingData.back().back());
+			else if(scaleType == CARVE_DOWN_BOTH_SCALED)
+				seamcarve_both_scaled(vseams, hseams, frame, trainingData.back().back());
 
 			//get true val and put in
 			observations.getEvents(starttime + framenum * .1, curEvents); //assuming 10 frames per second.
 			int trueVal = getTrueVal(curEvents);
 			training_trueVals.back().push_back(trueVal);
+			printf("Video %s: frame %d\n\tVideo so far: %s\n\tFrame: %s", video_name.c_str(), framenum, secondsToString(time(NULL)-videostarttime).c_str(),secondsToString(time(NULL)-starttime).c_str());
 		}
 		video.release();
 			
@@ -517,7 +586,7 @@ int main(int argc, const char **argv)
 	//free video_2_result
 	mysql_free_result(video_2_result);
 
-	if(scaleType == CARVE_DOWN || scaleType == SCALE_DOWN)
+	if(scaleType >= SCALE_DOWN && scaleType <= CARVE_DOWN_BOTH_SCALED)
 		seamcarve_cleanup();
 
 
@@ -604,5 +673,7 @@ int main(int argc, const char **argv)
 	printf("Training Distribution\n");
 	net.printTrainingDistribution();
 
+	starttime = time(NULL);
 	net.train(); //this will save using the save name because of net.setSaveName called above
+	printf("Total training time: %s\n", secondsToString(time(NULL)-starttime).c_str());
 }

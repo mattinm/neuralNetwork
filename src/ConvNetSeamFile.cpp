@@ -552,6 +552,7 @@ int main(int argc, const char **argv)
 		// printf(" -train_as_is. Default\n");
 		// printf(" -train_equal_prop\n");
 		printf(" -detail=<int>               0 is in or out of frame (default). 1 is out of frame, on nest, flying\n");
+		printf(" -horizontal              Adds a horizontal flipped version of every image to the set of images\n");
 		return 0;
 	}
 	// global variable declarations
@@ -734,12 +735,12 @@ int main(int argc, const char **argv)
 	while((video_row = mysql_fetch_row(video_2_result)))
 	{
 		//for each video, get variables
-		int video_id = atoi(video_row[1]);
-		string video_path = video_row[2];
+		int video_id = atoi(video_row[0]);
+		string video_path = video_row[1];
 		string video_name = video_path.substr(video_path.rfind('/')+1);
-		string startDateAndTime = video_row[3];
+		string startDateAndTime = video_row[2];
 		int starttime = getTime(startDateAndTime.substr(startDateAndTime.find(' ')+1));
-		int duration = atoi(video_row[4]);
+		int duration = atoi(video_row[3]);
 
 		imstruct video_info;
 		video_info.name = video_path;

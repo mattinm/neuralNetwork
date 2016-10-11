@@ -65,12 +65,12 @@ add_executable( ConvNetVideoDriverMPI src/ConvNetVideoDriverMPI.cpp src/ConvNetC
 add_executable( ConvNetVideoDriverCL_BOINC src/ConvNetVideoDriverCL_BOINC.cpp src/ConvNetCL.cpp)
 
 #Seam
-# add_executable( ConvNetSeamTrain src/ConvNetSeamTrain.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp )
-# target_link_libraries( ConvNetSeamTrain ${OPENCL_LIBRARY})# ${OpenCV_LIBS} ${MYSQL_LIBRARIES} )
+add_executable( ConvNetSeamTrain_AllInOne src/ConvNetSeamTrain_AllInOne.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp )
+target_link_libraries( ConvNetSeamTrain_AllInOne ${OPENCL_LIBRARY} ${OpenCV_LIBS} ${MYSQL_LIBRARIES} )
 add_executable( SeamTest src/SeamTest.cpp src/ConvNetSeam )
-target_link_libraries(SeamTest ${OpenCV_LIBS})
-add_executable( ConvNetSeamFile src/ConvNetSeamFile.cpp src/ConvNetSeam.cpp)# src/ConvNetCL.cpp)
-target_link_libraries(ConvNetSeamFile ${OpenCV_LIBS} ${MYSQL_LIBRARIES})# ${OPENCL_LIBRARY})
+target_link_libraries(SeamTest ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+# add_executable( ConvNetSeamFile src/ConvNetSeamFile.cpp src/ConvNetSeam.cpp)# src/ConvNetCL.cpp)
+# target_link_libraries(ConvNetSeamFile ${OpenCV_LIBS} ${MYSQL_LIBRARIES})# ${OPENCL_LIBRARY})
 
 
 #Image/Binary
