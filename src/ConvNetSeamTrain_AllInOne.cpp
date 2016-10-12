@@ -316,7 +316,7 @@ int main(int argc, const char **argv)
 		printf(" -train_as_is.              Default\n");
 		printf(" -train_equal_prop\n");
 		printf(" -detail=<int>              0 is in or out of frame (default). 1 is out of frame, on nest, flying\n");
-		printf(" -horizontal                Adds a horizontal flipped version of every image to the training and test sets\n");
+		// printf(" -horizontal                Adds a horizontal flipped version of every image to the training and test sets\n");
 		return 0;
 	}
 	//variable declarations
@@ -360,6 +360,8 @@ int main(int argc, const char **argv)
 			jump = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-train_equal_prop") != string::npos)
 			train_as_is = false;
+		else if(arg.find("-train_as_is") != string::npos)
+			train_as_is = true;
 		else if(arg.find("-detail=") != string::npos)
 			detail = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-testPercent=") != string::npos)
@@ -447,6 +449,8 @@ int main(int argc, const char **argv)
 	MYSQL_RES *video_2_result = mysql_store_result(wildlife_db_conn);
 	printf("Query to video_2 made.\n");
 
+	seamcarve_setDevice(0);
+
 	MYSQL_ROW video_row;
 	int current_time = 0;
 	vector<vector<Mat> > trainingData; // should probably find some way of reserving mem for this
@@ -532,47 +536,52 @@ int main(int argc, const char **argv)
 		{
 			starttime = time(NULL);
 			//seamcarve/scale frame and put in trainingData
-			trainingData.back().resize(trainingData.size() + 1);
-			if(scaleType == DISTORT_DOWN) // straight scale to size. Distort if necessary
-			{
-				resize(frame,trainingData.back().back(),cvSize);
-			}
-			else if(scaleType == RANDOM_CROP)
-			{
-				int si = disI(gen);
-				int sj = disJ(gen);
-				Mat temp(frame,Range(si,si+inputSize),Range(sj,sj+inputSize));
-				trainingData.back().back() = temp;
-			}
-			else if(scaleType == SCALE_DOWN) // seamcarve to square. Scale to size
-			{
-				Mat temp;
-				if(numSeams > 0) //width > height. landscape
-				{
-					//vertical seams, fast
-					seamcarve_vf(numSeams,frame,temp);//bring us to square
-					resize(temp, trainingData.back().back(),cvSize);
-				}
-				else // height > width. portrait
-				{
-					//horizontal seams, fast
-					seamcarve_hf(-numSeams, frame, temp);
-					resize(temp, trainingData.back().back(),cvSize);
-				}
-			}
-			else if(scaleType == CARVE_DOWN_VTH) // seamcarve in both directions down to size. No normal scaling
-				seamcarve_both_vth(vseams, hseams, frame, trainingData.back().back());
-			else if(scaleType == CARVE_DOWN_HTV)
-				seamcarve_both_htv(hseams, vseams, frame, trainingData.back().back());
-			else if(scaleType == CARVE_DOWN_BOTH_RAW)
-				seamcarve_both_raw(vseams, hseams, frame, trainingData.back().back());
-			else if(scaleType == CARVE_DOWN_BOTH_SCALED)
-				seamcarve_both_scaled(vseams, hseams, frame, trainingData.back().back());
+	
 
-			//get true val and put in
 			observations.getEvents(starttime + framenum * .1, curEvents); //assuming 10 frames per second.
 			int trueVal = getTrueVal(curEvents);
-			training_trueVals.back().push_back(trueVal);
+			if(trueVal != -1)
+			{
+				Mat tempMat;
+				if(scaleType == DISTORT_DOWN) // straight scale to size. Distort if necessary
+				{
+					resize(frame,tempMat,cvSize);
+				}
+				else if(scaleType == RANDOM_CROP)
+				{
+					int si = disI(gen);
+					int sj = disJ(gen);
+					Mat temp(frame,Range(si,si+inputSize),Range(sj,sj+inputSize));
+					tempMat = temp;
+				}
+				else if(scaleType == SCALE_DOWN) // seamcarve to square. Scale to size
+				{
+					Mat temp;
+					if(numSeams > 0) //width > height. landscape
+					{
+						//vertical seams, fast
+						seamcarve_vf(numSeams,frame,temp);//bring us to square
+						resize(temp, tempMat,cvSize);
+					}
+					else // height > width. portrait
+					{
+						//horizontal seams, fast
+						seamcarve_hf(-numSeams, frame, temp);
+						resize(temp, tempMat,cvSize);
+					}
+				}
+				else if(scaleType == CARVE_DOWN_VTH) // seamcarve in both directions down to size. No normal scaling
+					seamcarve_both_vth(vseams, hseams, frame, tempMat);
+				else if(scaleType == CARVE_DOWN_HTV)
+					seamcarve_both_htv(hseams, vseams, frame, tempMat);
+				else if(scaleType == CARVE_DOWN_BOTH_RAW)
+					seamcarve_both_raw(vseams, hseams, frame, tempMat);
+				else if(scaleType == CARVE_DOWN_BOTH_SCALED)
+					seamcarve_both_scaled(vseams, hseams, frame, tempMat);
+				
+				training_trueVals.back().push_back(trueVal);
+				trainingData.back().push_back(tempMat);
+			}
 			printf("Video %s: frame %d\n\tVideo so far: %s\n\tFrame: %s", video_name.c_str(), framenum, secondsToString(time(NULL)-videostarttime).c_str(),secondsToString(time(NULL)-starttime).c_str());
 		}
 		video.release();
