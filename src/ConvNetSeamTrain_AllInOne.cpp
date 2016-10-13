@@ -134,6 +134,7 @@ void Observations::addEvent(string type, string starttime, string endtime)
 	if(event.endtime < event.starttime) // possible if the starttime is before midnight and endtime is after
 		event.isOvernight = true;
 	events.push_back(event);
+	printf("event: %s, start %s|%d, end %s|%d\n", event.type.c_str(), starttime.c_str(), event.starttime, endtime.c_str(), event.endtime);
 }
 
 void Observations::getEvents(int tim, vector<Event>& dest)
@@ -276,15 +277,23 @@ bool getNextFrame(VideoCapture& video, Mat& frame, int& framenum, int jump = 1)
 	}
 	else // first frame
 	{
-		bool val = video.read(frame);
+		bool val = video.grab();
 		firstGot = true;
 		if(!val)
 		{
+			printf("first frame val failed on grab\n");
 			firstGot = false;
 			moreFrames = false;
 		}
+		val = video.retrieve(frame);
+		if(!val)
+		{
+			printf("first frame failed on retreive\n");
+			firstGot = false;
+			moreFrames = false;
+		}
+		framenum++;
 	}
-
 	return moreFrames;
 }
 
@@ -336,7 +345,7 @@ int main(int argc, const char **argv)
 	int inputSize; //assumes square input
 	Size cvSize;
 	bool horizontal = false;
-	time_t starttime;
+	time_t starttime, totalStartTime = time(NULL);
 
 	//0a. Parse through command line args
 	for(int i = 1; i < argc; i++)
@@ -422,7 +431,7 @@ int main(int argc, const char **argv)
 	ostringstream query;
 	query << "SELECT id, archive_filename, start_time, duration_s FROM video_2 WHERE";
 	if(expert)
-		query << " expert_finished = 'FINISHED'";
+		query << " expert_finished = 'FINISHED' AND expert_obs_count > 0";
 	else
 		query << " crowd_status = 'VALIDATED'";
 	if(species_id != -1)
@@ -453,6 +462,7 @@ int main(int argc, const char **argv)
 
 	MYSQL_ROW video_row;
 	int current_time = 0;
+	vector<string> archive_video_names;
 	vector<vector<Mat> > trainingData; // should probably find some way of reserving mem for this
 	vector<vector<double> > training_trueVals;
 	unsigned long totalAmountData = 0;
@@ -460,12 +470,18 @@ int main(int argc, const char **argv)
 	while((video_row = mysql_fetch_row(video_2_result)))
 	{
 		//for each video, get variables
-		int video_id = atoi(video_row[1]);
-		string video_path = video_row[2];
+		int video_id = atoi(video_row[0]);
+		string video_path = video_row[1];
 		string video_name = video_path.substr(video_path.rfind('/')+1);
-		string startDateAndTime = video_row[3];
-		int starttime = getTime(startDateAndTime.substr(startDateAndTime.find(' ')+1));
-		int duration = atoi(video_row[4]);
+		string startDateAndTime = video_row[2];
+		int obs_starttime = getTime(startDateAndTime.substr(startDateAndTime.find(' ')+1));
+		int duration = atoi(video_row[3]);
+		string toSaveString = "Id: ";
+		toSaveString += video_row[0];
+		toSaveString += " - ";
+		toSaveString += video_name;
+		archive_video_names.push_back(toSaveString);
+		// cout << video_row[1] << endl << video_row[2] << endl;
 
 		printf("Video #%d, %s. Dur: %d\n", video_id, video_name.c_str(), duration);
 
@@ -477,6 +493,9 @@ int main(int argc, const char **argv)
 		//wget video (in separate thread?)
 		string sys_cmd = "wget -q http://wildlife.und.edu" + video_path;
 		system(sys_cmd.c_str());
+		sys_cmd = "ffmpeg -loglevel \"quiet\" -i " + video_name + " -acodec libfaac -b:a 128k -vcodec mpeg4 -b:v 1200k -flags +aic+mv4 " + video_name + ".mp4";
+		system(sys_cmd.c_str());
+		video_name += ".mp4";
 
 		//get observations from video and put in observations
 		Observations observations;
@@ -505,6 +524,8 @@ int main(int argc, const char **argv)
 			continue;
 		}
 
+		// cout << "fourcc " << video.get(CV_CAP_PROP_FOURCC) << endl;
+
 		int frameWidth = video.get(CV_CAP_PROP_FRAME_WIDTH);
 		int frameHeight = video.get(CV_CAP_PROP_FRAME_HEIGHT);
 
@@ -523,6 +544,8 @@ int main(int argc, const char **argv)
 		//hseams is number of horizontal seams (removing rows) until we get to input size
 		int hseams = video.get(CV_CAP_PROP_FRAME_HEIGHT) - inputSize;
 
+		printf("width %d, height %d, numFrames %lf\n", frameWidth, frameHeight, video.get(CV_CAP_PROP_FRAME_COUNT));
+
 
 
 		Mat frame;
@@ -538,7 +561,7 @@ int main(int argc, const char **argv)
 			//seamcarve/scale frame and put in trainingData
 	
 
-			observations.getEvents(starttime + framenum * .1, curEvents); //assuming 10 frames per second.
+			observations.getEvents(obs_starttime + framenum * .1, curEvents); //assuming 10 frames per second.
 			int trueVal = getTrueVal(curEvents);
 			if(trueVal != -1)
 			{
@@ -578,18 +601,29 @@ int main(int argc, const char **argv)
 					seamcarve_both_raw(vseams, hseams, frame, tempMat);
 				else if(scaleType == CARVE_DOWN_BOTH_SCALED)
 					seamcarve_both_scaled(vseams, hseams, frame, tempMat);
-				
+				else
+				{
+					printf("Unknown scaleType %d\n", scaleType);
+					return 0;
+				}
+				// printf("TrueVal %d Frame %d\n",trueVal, framenum);
 				training_trueVals.back().push_back(trueVal);
 				trainingData.back().push_back(tempMat);
 			}
-			printf("Video %s: frame %d\n\tVideo so far: %s\n\tFrame: %s", video_name.c_str(), framenum, secondsToString(time(NULL)-videostarttime).c_str(),secondsToString(time(NULL)-starttime).c_str());
+			else
+				printf("No observation found for frame %d\n", framenum);
+			// printf("Video %s: frame %d\n\tTime Video so far: %s\n\tTime Frame: %s\n", video_name.c_str(), framenum, secondsToString(time(NULL)-videostarttime).c_str(),secondsToString(time(NULL)-starttime).c_str());
 		}
+		printf("Video %s: Time for video: %s\n", video_name.c_str(), secondsToString(time(NULL)-videostarttime).c_str());
 		video.release();
 			
 		totalAmountData += trainingData.back().size();
 		//rm video
 		sys_cmd = "rm " + video_name;
 		system(sys_cmd.c_str());
+		sys_cmd = "rm " + video_name.substr(0,video_name.rfind('.'));
+		system(sys_cmd.c_str());
+		// printf("%s\n", sys_cmd.c_str());
 	}
 
 	//free video_2_result
@@ -598,6 +632,12 @@ int main(int argc, const char **argv)
 	if(scaleType >= SCALE_DOWN && scaleType <= CARVE_DOWN_BOTH_SCALED)
 		seamcarve_cleanup();
 
+
+	if(totalAmountData == 0)
+	{
+		printf("No data was obtained. Exiting\n");
+		return 0;
+	}
 
 	//2. Train CNN over seamcarved images
 	//initialized up top
@@ -685,4 +725,14 @@ int main(int argc, const char **argv)
 	starttime = time(NULL);
 	net.train(); //this will save using the save name because of net.setSaveName called above
 	printf("Total training time: %s\n", secondsToString(time(NULL)-starttime).c_str());
+	string info_outname = "info_"+outname;
+	ofstream infoFile(info_outname);
+	infoFile << "Videos used:\n";
+	for(int i = 0; i < archive_video_names.size(); i++)
+	{
+		infoFile << archive_video_names[i] << endl;
+	}
+	infoFile.close();
+	printf("Total run time: %s\n", secondsToString(time(NULL) - totalStartTime).c_str());
+
 }
