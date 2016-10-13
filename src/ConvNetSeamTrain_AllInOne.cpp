@@ -663,6 +663,7 @@ int main(int argc, const char **argv)
 	//if percent diff > 5 tell the user?
 	unsigned long minSize = -1; // should be max ulong
 	int minIndex = -1;
+	vector<bool> isTraining(trainingData.size(),true);
 	if(testPercent == 0 || trainingData.size() < 2)
 	{
 		//put it all for training
@@ -673,7 +674,7 @@ int main(int argc, const char **argv)
 	{
 		//for accountability reasons, try to keep training and test videos from separate videos
 		//if we can't get percents right, use smallest video for test
-		vector<bool> isTraining(trainingData.size(),true);
+		
 		testPercent *= .01; //make this a decimal again.
 		double totalTest = 0;
 		bool noTestFound = true;
@@ -691,6 +692,7 @@ int main(int argc, const char **argv)
 			{
 				isTraining[i] = false;
 				totalTest += curPercent;
+				noTestFound = false;
 				break;
 			}
 			else
@@ -730,7 +732,10 @@ int main(int argc, const char **argv)
 	infoFile << "Videos used:\n";
 	for(int i = 0; i < archive_video_names.size(); i++)
 	{
-		infoFile << archive_video_names[i] << endl;
+		infoFile << archive_video_names[i];
+		if(!isTraining[i])
+			infoFile << " TEST_SET";
+		infoFile << endl;
 	}
 	infoFile.close();
 	printf("Total run time: %s\n", secondsToString(time(NULL) - totalStartTime).c_str());
