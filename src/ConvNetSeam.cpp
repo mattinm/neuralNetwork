@@ -19,6 +19,7 @@
 #include <fstream>
 #include <vector>
 #include <math.h>
+#include <random>
 
 using namespace cv;
 using namespace std;
@@ -47,7 +48,7 @@ cl_program __seamcarve_program;
 cl_uint __device_seam = 0;
 
 //OpenCL kernels
-cl_kernel vcolumnCalcCosts, vcalcSeamToRemove, vseamremove;
+cl_kernel vcolumnCalcCosts, vcalcSeamToRemove, vseamremove, vcolumnCalcCostsRev, vcalcSeamToRemoveRev;
 cl_kernel hcolumnCalcCosts, hcalcSeamToRemove, hseamremove;
 
 
@@ -155,6 +156,8 @@ void seamcarve_cleanup_OpenCL()
 {
 	clReleaseKernel(vcolumnCalcCosts);
 	clReleaseKernel(vcalcSeamToRemove);
+	clReleaseKernel(vcolumnCalcCostsRev);
+	clReleaseKernel(vcalcSeamToRemoveRev);
 	clReleaseKernel(vseamremove);
 	clReleaseKernel(hcolumnCalcCosts);
 	clReleaseKernel(hcalcSeamToRemove);
@@ -231,6 +234,9 @@ void __seamcarve_init_OpenCL()
 	vcolumnCalcCosts = clCreateKernel(__seamcarve_program, "vcolumnCalcCosts", &error); CheckError(error);
 	vcalcSeamToRemove = clCreateKernel(__seamcarve_program, "vcalcSeamToRemove", &error); CheckError(error);
 	vseamremove = clCreateKernel(__seamcarve_program, "vseamremove", &error); CheckError(error);
+
+	vcolumnCalcCostsRev = clCreateKernel(__seamcarve_program, "vcolumnCalcCostsRev", &error); CheckError(error);
+	vcalcSeamToRemoveRev = clCreateKernel(__seamcarve_program, "vcalcSeamToRemoveRev", &error); CheckError(error);
 
 	hcolumnCalcCosts = clCreateKernel(__seamcarve_program, "hrowCalcCosts", &error); CheckError(error);
 	hcalcSeamToRemove = clCreateKernel(__seamcarve_program, "hcalcSeamToRemove", &error); CheckError(error);
@@ -730,6 +736,204 @@ bool seamcarve_vf(int numSeams, const Mat& source, Mat& dest)
 		clSetKernelArg(vcalcSeamToRemove, 5, sizeof(unsigned int), &count);
 		globalWorkSize[0] = 1;
 		CheckError(clEnqueueNDRangeKernel(queue, vcalcSeamToRemove, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		//remove one seam
+		clSetKernelArg(vseamremove, 5, sizeof(unsigned int), &count);
+		globalWorkSize[0] = window_height_g;
+		CheckError(clEnqueueNDRangeKernel(queue, vseamremove, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		count++;
+	}
+
+	//pull from cl_mem object
+	CheckError(clEnqueueReadBuffer(queue, image_g, CL_TRUE, 0,
+		sizeof(float) * window_size_g * 3, image, 0, nullptr, nullptr));
+
+	//put in dest mat
+	dest.create(source.rows,source.cols-count, CV_8UC3);
+	// printf("rows: %d, cols: %d\n", source.rows,source.cols-count);
+	//i is row, j is col
+	for(int i = 0; i < dest.rows; i++)
+	{
+		for(int j = 0; j < dest.cols; j++)
+		{
+			Vec3b& pix = dest.at<Vec3b>(i,j);
+			pix[0] = image[POSITION3(j,i,0)];
+			pix[1] = image[POSITION3(j,i,1)];
+			pix[2] = image[POSITION3(j,i,2)];
+		}
+	}
+	clReleaseCommandQueue(queue);
+	return true;
+}
+
+bool seamcarve_vfRandom(int numSeams, const Mat& source, Mat& dest)
+{
+	cl_int error;
+
+	window_width_g = source.cols;
+	window_width = source.cols;
+	unsigned int window_height_g = source.rows;
+	unsigned long window_size_g = source.rows * source.cols;
+	if(owidth_g != window_width_g || oheight_g != window_height_g)
+	{
+		__doMem_OpenCL(window_size_g,window_height_g);
+	}
+
+	if(window_width_g < numSeams)
+		return false;
+
+	cl_command_queue queue = clCreateCommandQueue(__context_seam, __deviceIds_seam[__q_seam], 0, &error);
+	CheckError(error);
+
+	calcGreyscale(source, window_height_g); // this puts the Mat into the image array
+
+	CheckError(clEnqueueWriteBuffer(queue, vals_g, CL_FALSE, 0,
+		sizeof(float) * window_size_g, vals, 0, nullptr, nullptr));
+	CheckError(clEnqueueWriteBuffer(queue, image_g, CL_FALSE, 0,
+		sizeof(float) * window_size_g * 3, image, 0, nullptr, nullptr));
+
+	clSetKernelArg(vseamremove, 0, sizeof(cl_mem), &image_g);
+	clSetKernelArg(vseamremove, 1, sizeof(cl_mem), &vals_g);
+	clSetKernelArg(vseamremove, 2, sizeof(cl_mem), &vseam_g);
+	clSetKernelArg(vseamremove, 3, sizeof(unsigned int), &window_width_g);
+	clSetKernelArg(vseamremove, 4, sizeof(unsigned int), &window_height_g);
+
+	clFinish(queue);
+
+	
+	unsigned int count = 0;
+	size_t globalWorkSize[] = {0,0,0};
+	default_random_engine gen(time(NULL));
+	uniform_int_distribution<int> disR(-100000,100000);
+	time_t lastTime = time(NULL);
+	while(count < numSeams)
+	{
+		if(count % 20 == 0)
+		{
+			default_random_engine gen2(time(NULL) + disR(gen));	
+			gen = gen2;
+			printf("new gen\n");
+		}
+		
+		uniform_int_distribution<int> distr(0,window_width_g - count);
+		vseam[0] = distr(gen);
+		printf("%d\n", vseam[0]);
+		for(int i = 1; i < window_height_g; i++)
+		{
+			// int xmin = vseam[i-1] == 0 ? 0 : -1;
+			// int xmax = vseam[i-1] == window_width_g - count - 1 ? 0 : 1;
+			// uniform_int_distribution<int> dis2(xmin, xmax);
+			vseam[i] = vseam[i-1];// + dis2(gen);
+
+			if(vseam[i] != vseam[0])
+				printf("%d %d\n",i, vseam[i]);
+		}
+		CheckError(clEnqueueWriteBuffer(queue, vseam_g, CL_TRUE, 0,
+			sizeof(int) * window_height_g, vseam, 0, nullptr, nullptr));
+
+		//remove one seam
+		clSetKernelArg(vseamremove, 5, sizeof(unsigned int), &count);
+		globalWorkSize[0] = window_height_g;
+		CheckError(clEnqueueNDRangeKernel(queue, vseamremove, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		count++;
+	}
+
+	//pull from cl_mem object
+	CheckError(clEnqueueReadBuffer(queue, image_g, CL_TRUE, 0,
+		sizeof(float) * window_size_g * 3, image, 0, nullptr, nullptr));
+
+	//put in dest mat
+	dest.create(source.rows,source.cols-count, CV_8UC3);
+	// printf("rows: %d, cols: %d\n", source.rows,source.cols-count);
+	//i is row, j is col
+	for(int i = 0; i < dest.rows; i++)
+	{
+		for(int j = 0; j < dest.cols; j++)
+		{
+			Vec3b& pix = dest.at<Vec3b>(i,j);
+			pix[0] = image[POSITION3(j,i,0)];
+			pix[1] = image[POSITION3(j,i,1)];
+			pix[2] = image[POSITION3(j,i,2)];
+		}
+	}
+	clReleaseCommandQueue(queue);
+	return true;
+}
+
+bool seamcarve_vfRev(int numSeams, const Mat& source, Mat& dest)
+{
+	// printf("seamcarve_vf %d x %d\n",source.rows, source.cols);
+	cl_int error;
+
+	window_width_g = source.cols;
+	window_width = source.cols;
+	unsigned int window_height_g = source.rows;
+	unsigned long window_size_g = source.rows * source.cols;
+	if(owidth_g != window_width_g || oheight_g != window_height_g)
+	{
+		__doMem_OpenCL(window_size_g,window_height_g);
+	}
+
+	if(window_width_g < numSeams)
+		return false;
+
+	cl_command_queue queue = clCreateCommandQueue(__context_seam, __deviceIds_seam[__q_seam], 0, &error);
+	CheckError(error);
+
+	calcGreyscale(source, window_height_g);
+	calcGradient(window_height_g);
+
+	CheckError(clEnqueueWriteBuffer(queue, vals_g, CL_FALSE, 0,
+		sizeof(float) * window_size_g, vals, 0, nullptr, nullptr));
+	CheckError(clEnqueueWriteBuffer(queue, image_g, CL_FALSE, 0,
+		sizeof(float) * window_size_g * 3, image, 0, nullptr, nullptr));
+	clFinish(queue);
+
+	//set some args that never change
+	clSetKernelArg(vcolumnCalcCostsRev, 0, sizeof(cl_mem), &vcosts_g);
+	clSetKernelArg(vcolumnCalcCostsRev, 1, sizeof(cl_mem), &vdirs_g);
+	clSetKernelArg(vcolumnCalcCostsRev, 2, sizeof(cl_mem), &vals_g);
+	clSetKernelArg(vcolumnCalcCostsRev, 3, sizeof(unsigned int), &window_width_g);
+	clSetKernelArg(vcolumnCalcCostsRev, 4, sizeof(unsigned int), &window_height_g);
+
+	clSetKernelArg(vcalcSeamToRemoveRev, 0, sizeof(cl_mem), &vcosts_g);
+	clSetKernelArg(vcalcSeamToRemoveRev, 1, sizeof(cl_mem), &vdirs_g);
+	clSetKernelArg(vcalcSeamToRemoveRev, 2, sizeof(cl_mem), &vseam_g);
+	clSetKernelArg(vcalcSeamToRemoveRev, 3, sizeof(unsigned int), &window_width_g);
+	clSetKernelArg(vcalcSeamToRemoveRev, 4, sizeof(unsigned int), &window_height_g);
+	clSetKernelArg(vcalcSeamToRemoveRev, 6, sizeof(cl_mem), &vmin_g);
+
+	clSetKernelArg(vseamremove, 0, sizeof(cl_mem), &image_g);
+	clSetKernelArg(vseamremove, 1, sizeof(cl_mem), &vals_g);
+	clSetKernelArg(vseamremove, 2, sizeof(cl_mem), &vseam_g);
+	clSetKernelArg(vseamremove, 3, sizeof(unsigned int), &window_width_g);
+	clSetKernelArg(vseamremove, 4, sizeof(unsigned int), &window_height_g);
+
+
+	size_t globalWorkSize[] = {0,0,0};
+	unsigned int count = 0;
+	clFinish(queue); //make sure stuff has copied by now
+	while(count < numSeams)
+	{
+		//calculate columns costs and dirs
+		clSetKernelArg(vcolumnCalcCostsRev, 5, sizeof(unsigned int), &count);
+		globalWorkSize[0] = window_width_g - count;
+		CheckError(clEnqueueNDRangeKernel(queue, vcolumnCalcCostsRev, 1, 
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		//calculate seam to remove
+		clSetKernelArg(vcalcSeamToRemoveRev, 5, sizeof(unsigned int), &count);
+		globalWorkSize[0] = 1;
+		CheckError(clEnqueueNDRangeKernel(queue, vcalcSeamToRemoveRev, 1,
 			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 		clFinish(queue);
 
