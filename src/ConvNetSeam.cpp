@@ -4,15 +4,10 @@
 //#include "ConvNetCL.h"
 
 //OpenCV
-#include "opencv2/imgproc/imgproc.hpp"
-#include "opencv2/highgui/highgui.hpp"
+// #include "opencv2/imgproc/imgproc.hpp"
+// #include "opencv2/highgui/highgui.hpp"
 
-//OpenCL
-#ifdef __APPLE__
- 	#include "OpenCL/opencl.h"
-#else
- 	#include "CL/cl.h"
-#endif
+
 
 //Other
 #include <iostream>
@@ -46,6 +41,8 @@ int __q_seam;
 cl_context __context_seam;
 cl_program __seamcarve_program;
 cl_uint __device_seam = 0;
+cl_device_id __device_id_seam = NULL;
+cl_platform_id __platform_seam = NULL;
 
 //OpenCL kernels
 cl_kernel vcolumnCalcCosts, vcalcSeamToRemove, vseamremove, vcolumnCalcCostsRev, vcalcSeamToRemoveRev;
@@ -188,7 +185,8 @@ void __seamcarve_init_OpenCL()
 	clGetPlatformIDs(0,nullptr, &platformIdCount);
 	platformIds.resize(platformIdCount);
 	clGetPlatformIDs(platformIdCount, platformIds.data(), nullptr);
-
+	if(__platform_seam != NULL)
+		platformIds[0] = __platform_seam;
 	//devices
 	clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
 	__deviceIds_seam.resize(deviceIdCount);
@@ -222,7 +220,16 @@ void __seamcarve_init_OpenCL()
 		__device_seam = q;
 	}
 
+	if(__platform_seam != NULL)
+	{
+		__q_seam = 0;
+		__deviceIds_seam[0] = __device_id_seam;
+	}
+
 	__q_seam = q;
+
+	
+
 
 	//create/compile program
 	string loadedKernel = LoadKernel(kernelPath);
@@ -250,6 +257,14 @@ void __seamcarve_init_OpenCL()
 void seamcarve_setDevice(int deviceNum)
 {
 	__device_seam = deviceNum;
+	seamcarve_cleanup();
+	__seam_opencl_inited = false;
+}
+
+void seamcarve_setDevice(cl_device_id dev, cl_platform_id plat)
+{
+	__device_id_seam = dev;
+	__platform_seam = plat;
 	seamcarve_cleanup();
 	__seam_opencl_inited = false;
 }
@@ -810,7 +825,7 @@ bool seamcarve_vfRandom(int numSeams, const Mat& source, Mat& dest)
 	size_t globalWorkSize[] = {0,0,0};
 	default_random_engine gen(time(NULL));
 	uniform_int_distribution<int> disR(-100000,100000);
-	time_t lastTime = time(NULL);
+	// time_t lastTime = time(NULL);
 	while(count < numSeams)
 	{
 		if(count % 20 == 0)

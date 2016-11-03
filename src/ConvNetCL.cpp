@@ -352,6 +352,7 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 
 void Net::initOpenCL()
 {
+
 	// printf("OpenCL initing\n");
 	cl_int error;
 	//platforms
@@ -653,6 +654,9 @@ bool Net::finalize()
 
 	printf("Finalizing CNN using device %d\n",q);
 
+
+	
+
 	cl_int error;
 
 	if(!__stuffBuilt)
@@ -660,12 +664,15 @@ bool Net::finalize()
 		//build the program
 			//running
 		const char* foptions = "-cl-mad-enable";
-		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context, RUNNING_PROGRAM);
 		const cl_device_id* deviceToBuild = &(__deviceIds[q]);
+		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context, RUNNING_PROGRAM);
 		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, foptions, nullptr, nullptr));
-			//training
+		//training
 		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
+
+		
+		
 		//Create the kernels; check for errors
 			//running
 		reluKernelF = clCreateKernel(CNForward, "relu", &error); CheckError(error);
@@ -675,6 +682,7 @@ bool Net::finalize()
 		zeroPadKernelF = clCreateKernel(CNForward, "zeroPad", &error); CheckError(error);
 		maxPoolKernelF = clCreateKernel(CNForward, "maxPool", &error); CheckError(error);
 		softmaxKernelF = clCreateKernel(CNForward, "softmax_allCL", &error); CheckError(error);
+
 			//training
 		reluKernel = clCreateKernel(CNTraining, "relu", &error); CheckError(error);
 		reluBackKernel = clCreateKernel(CNTraining, "relu_back", &error); CheckError(error);
@@ -696,6 +704,7 @@ bool Net::finalize()
 		vectorESumKernel = clCreateKernel(CNTraining, "vectorESum", &error); CheckError(error);
 		plusEqualsKernel = clCreateKernel(CNTraining, "plusEquals", &error); CheckError(error);
 		divideEqualsKernel = clCreateKernel(CNTraining, "divideEquals", &error); CheckError(error);
+
 		//make the queue
 		queue = clCreateCommandQueue(__context, __deviceIds[q], 0, &error); 
 		CheckError(error);
@@ -3284,6 +3293,33 @@ bool Net::setDevice(unsigned int device)
 	__device = device;
     __isFinalized = false;
 	return true;
+}
+
+void Net::setDevice(cl_device_id device, cl_platform_id platform)
+{
+	bool found = false;
+	for(int i = 0; i < __deviceIds.size(); i++)
+		if(device == __deviceIds[i])
+			__device = i;
+
+	if(!found)
+	{
+		__deviceIds[0] = device;
+		__device = 0;
+	}
+
+		//context
+	const cl_context_properties contextProperties[] = 
+	{
+		CL_CONTEXT_PLATFORM,
+		reinterpret_cast<cl_context_properties>(platform),
+		0,0
+	};
+	cl_int error;
+	clReleaseContext(__context);
+	__context = clCreateContext(contextProperties, 1, &device,
+		nullptr, nullptr, &error);
+	CheckError(error);
 }
 
 void Net::setGPU(bool useGPU)

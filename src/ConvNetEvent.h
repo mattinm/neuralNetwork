@@ -138,6 +138,8 @@ class Observations
 	std::vector<Event> events;
 
 public:
+	Observations();
+	Observations(std::string obs);
 	void addEvent(std::string type, std::string starttime, std::string endtime);
 	void addEvent(std::string type, int starttime, int endtime);
 	void getEvents(std::string tim, std::vector<Event>& dest);
@@ -170,6 +172,29 @@ bool containsEvent(std::vector<Event> events, std::string type)
 			return true;
 	}
 	return false;
+}
+
+Observations::Observations()
+{}
+
+Observations::Observations(std::string obs)
+{
+	std::stringstream ss(obs);
+	std::string line;
+	getline(ss,line);
+	std::stringstream event; //should say EVENT
+	event << line << '\n';
+	while(getline(ss,line))
+	{
+		if(line == "EVENT")
+		{
+			events.push_back(Event(event.str()));
+			event.clear();
+			event << line << '\n';
+		}
+		else
+			event << line << '\n';
+	}
 }
 
 

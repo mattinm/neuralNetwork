@@ -247,6 +247,7 @@ public: 	// functions
 	//OpenCL functions
 	int getDevice() const;
 	bool setDevice(unsigned int device);
+	void setDevice(cl_device_id device, cl_platform_id platform);
 	void setGPU(bool useGPU);
 	void setConstantMem(bool useConstantMem);
     
@@ -301,6 +302,7 @@ private:	// functions
 	void CheckError(cl_int error);
 	std::string LoadKernel(const char* name);
 	cl_program CreateProgram(std::string source, cl_context& context, int programNum = -1);
+
 };
 
 #endif /* defined(____ConvNetCL__) */

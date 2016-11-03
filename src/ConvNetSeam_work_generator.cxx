@@ -36,6 +36,8 @@ typedef unsigned int uint;
 struct Job_params{
 	vector<string> cnns;
 	string video_name;
+	string video_id;
+	int start_time;
 	int speciesID;
 	int stride;
 	int jump;
@@ -177,7 +179,14 @@ int make_job(Job_params& params)
 	// 	extraCNNs += " cnn=";
 	// 	extraCNNs += cnns[i];
 	// }
-	sprintf(command_line, " -cnn=%s %s -video=%s stride=%d jump=%d", short_cnns[0].c_str(), params.scaleType, short_video_name.c_str(), params.stride, params.jump);//, extraCNNs.c_str());
+	sprintf(command_line, " -cnn=%s %s -video=%s -video_id=%s -batchSize=%d -jump=%d -video_start_time=%d", 
+		short_cnns[0].c_str(), 
+		params.scaleType, 
+		short_video_name.c_str(), 
+		params.video_id.c_str(), 
+		params.batchSize, 
+		params.jump,
+		params.start_time);//, extraCNNs.c_str());
 	
 	sprintf(additional_xml, "<credit>%.3lf</credit>", credit);
 
@@ -225,7 +234,7 @@ void usage()
 	printf("-h | --help             Display this usage statement.\n");
 	printf("\nCNN flags:\n");
 	printf("--cnn=<pathToCNN>       A CNN that should be used to run over video. Must be called one or more times.\n");
-	printf("--stride=<int>          How large the stride over the video should be. Defaults to 1.\n");
+	printf("--batchSize=<int>       How many frames that will be seamcarved before running through cnn. Default 10..\n");
 	printf("--jump=<int>            A jump of 10 would run the CNN over every 10th frame. Defaults to 1.\n");
 	printf("One of the following is required regarding how the CNN was trained:\n");
 	printf("  --random_crop\n");
@@ -250,7 +259,7 @@ void main_loop(int argc, char** argv)
 	int number_jobs = 100; //jobs to generate when under the cushion
 
 	vector<string> cnns;
-	int stride = 1;
+	int batchSize = 10;
 	int jump = 1;
 	bool expertFinished = false;
 	int scaleType = -1;
@@ -281,8 +290,8 @@ void main_loop(int argc, char** argv)
 		//program args
 		else if(arg.find("--cnn=") != string::npos)
 			cnns.push_back(arg.substr(arg.find('=')+1));
-		else if(arg.find("--stride=") != string::npos)
-			stride = stoi(arg.substr(arg.find('=')+1));
+		else if(arg.find("--batchSize=") != string::npos)
+			batchSize = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("--jump=") != string::npos)
 			jump = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("--help") != string::npos || arg.find("-h") != string::npos);
@@ -330,18 +339,14 @@ void main_loop(int argc, char** argv)
 	log_messages.printf(MSG_DEBUG,"%ld results are available with a cushion of %d\n", unsent_results, CUSHION);
 
 	ostringstream unclassified_video_query, finished_expert_query;
-	finished_expert_query << "SELECT DISTINCT id, watermarked_filename, duration_s, species_id, location_id, size, md5_hash"
+	finished_expert_query << "SELECT id, archive_filename, duration_s, species_id, location_id, size, md5_hash, start_time"
 		<< " FROM video_2"
-		<< " WHERE processing_status != 'UNWATERMARKED'"
-		<< " AND processing_status != 'WATERMARKING'"
 		<< " AND md5_hash IS NOT NULL"
 		<< " AND size IS NOT NULL"
 		<< " AND expert_finished = 'FINISHED'";
 	
-	unclassified_video_query << "SELECT id, watermarked_filename, duration_s, species_id, location_id, size, md5_hash"
+	unclassified_video_query << "SELECT id, archive_filename, duration_s, species_id, location_id, size, md5_hash, start_time"
 		<< " FROM video_2"
-		<< " WHERE processing_status != 'UNWATERMARKED'"
-		<< " AND processing_status != 'WATERMARKING'"
 		<< " AND md5_hash IS NOT NULL"
 		<< " AND size IS NOT NULL";
 	
@@ -377,17 +382,18 @@ void main_loop(int argc, char** argv)
 	while((video_row = mysql_fetch_row(video_result)))
 	{
 		Job_params params;
-		//int video_id = atoi(video_row[0]);
+		params.video_id = atoi(video_row[0]);
 		params.video_name = video_row[1];
 		params.video_name += ".mp4";
 		params.duration_s = atof(video_row[2]);
 		params.species_id = atoi(video_row[3]);
 		params.jump = jump;
-		params.stride = stride;
+		params.batchSize = batchSize;
 		params.scaleType = scaleType;
 		//int location_id = atoi(video_row[4]);
 		//int filesize = atoi(video_row[5]);
 		string md5_hash = video_row[6];
+		string params.start_time = getTime(video_row[7]);
 		
 		printf("generating work unit\n");
 		int job_id = make_job(params);
