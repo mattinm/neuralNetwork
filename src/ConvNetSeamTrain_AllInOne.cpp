@@ -134,7 +134,7 @@ void Observations::addEvent(string type, string starttime, string endtime)
 	if(event.endtime < event.starttime) // possible if the starttime is before midnight and endtime is after
 		event.isOvernight = true;
 	events.push_back(event);
-	printf("event: %s, start %s|%d, end %s|%d\n", event.type.c_str(), starttime.c_str(), event.starttime, endtime.c_str(), event.endtime);
+	// printf("event: %s, start %s|%d, end %s|%d\n", event.type.c_str(), starttime.c_str(), event.starttime, endtime.c_str(), event.endtime);
 }
 
 void Observations::getEvents(int tim, vector<Event>& dest)
@@ -328,6 +328,8 @@ int main(int argc, const char **argv)
 		// printf(" -horizontal                Adds a horizontal flipped version of every image to the training and test sets\n");
 		return 0;
 	}
+
+	setbuf(stdout,NULL); //so we can see when videos start and end on one line 
 	//variable declarations
 	vector<int> video_ids;
 	bool expert = true;
@@ -345,7 +347,7 @@ int main(int argc, const char **argv)
 	int inputSize; //assumes square input
 	Size cvSize;
 	bool horizontal = false;
-	time_t starttime, totalStartTime = time(NULL);
+	time_t starttime, totalStartTime = time(NULL), totalVideostarttime;
 
 	//0a. Parse through command line args
 	for(int i = 1; i < argc; i++)
@@ -412,6 +414,8 @@ int main(int argc, const char **argv)
 	if(!setupDetailLevel(detail))
 		return 0;
 
+	printf("Preprocessing technique = %d\n", scaleType);
+
 	Net net;
 	net.load(cnn_path.c_str());
 	inputSize = net.getInputWidth();
@@ -467,6 +471,7 @@ int main(int argc, const char **argv)
 	vector<vector<double> > training_trueVals;
 	unsigned long totalAmountData = 0;
 	default_random_engine gen(time(NULL));
+	totalVideostarttime = time(NULL);
 	while((video_row = mysql_fetch_row(video_2_result)))
 	{
 		//for each video, get variables
@@ -483,7 +488,7 @@ int main(int argc, const char **argv)
 		archive_video_names.push_back(toSaveString);
 		// cout << video_row[1] << endl << video_row[2] << endl;
 
-		printf("Video #%d, %s. Dur: %d\n", video_id, video_name.c_str(), duration);
+		printf("Video #%d Dur: %d ", video_id, duration);
 
 		//if we are going to go over max time, continue and see if there is a shorter video
 		if(max_time != -1 && current_time + duration > max_time)
@@ -502,7 +507,7 @@ int main(int argc, const char **argv)
 		ostringstream expert_query;
 		expert_query << "SELECT event_type, start_time, end_time FROM expert_observations"
 			<< " WHERE video_id = " << video_id << ";";
-		printf("Query to expert_observations:\n'%s'\n", expert_query.str().c_str());
+		// printf("Query to expert_observations:\n'%s'\n", expert_query.str().c_str());
 		mysql_query_check(wildlife_db_conn, expert_query.str());
 		MYSQL_RES *obs_result = mysql_store_result(wildlife_db_conn);
 		
@@ -544,7 +549,7 @@ int main(int argc, const char **argv)
 		//hseams is number of horizontal seams (removing rows) until we get to input size
 		int hseams = video.get(CV_CAP_PROP_FRAME_HEIGHT) - inputSize;
 
-		printf("width %d, height %d, numFrames %lf\n", frameWidth, frameHeight, video.get(CV_CAP_PROP_FRAME_COUNT));
+		// printf("width %d, height %d, numFrames %lf\n", frameWidth, frameHeight, video.get(CV_CAP_PROP_FRAME_COUNT));
 
 
 
@@ -558,6 +563,7 @@ int main(int argc, const char **argv)
 		while(getNextFrame(video, frame, framenum, jump))
 		{
 			starttime = time(NULL);
+			int misses = 0;
 			//seamcarve/scale frame and put in trainingData
 	
 
@@ -611,10 +617,15 @@ int main(int argc, const char **argv)
 				trainingData.back().push_back(tempMat);
 			}
 			else
-				printf("No observation found for frame %d\n", framenum);
+			{
+				printf("No observation found for frame %d, video %d\n", framenum, video_id);
+				misses++;
+				if(misses == 30)
+					break;
+			}
 			// printf("Video %s: frame %d\n\tTime Video so far: %s\n\tTime Frame: %s\n", video_name.c_str(), framenum, secondsToString(time(NULL)-videostarttime).c_str(),secondsToString(time(NULL)-starttime).c_str());
 		}
-		printf("Video %s: Time for video: %s\n", video_name.c_str(), secondsToString(time(NULL)-videostarttime).c_str());
+		printf("- Images pulled: %lu - Time to process video: %s\n", trainingData.back().size(), secondsToString(time(NULL)-videostarttime).c_str());
 		video.release();
 			
 		totalAmountData += trainingData.back().size();
@@ -625,6 +636,8 @@ int main(int argc, const char **argv)
 		system(sys_cmd.c_str());
 		// printf("%s\n", sys_cmd.c_str());
 	}
+
+	printf("Total video time: %s\n", secondsToString(time(NULL) - totalVideostarttime).c_str());
 
 	//free video_2_result
 	mysql_free_result(video_2_result);
@@ -668,10 +681,16 @@ int main(int argc, const char **argv)
 	{
 		//put it all for training
 		for(int i = 0; i < trainingData.size(); i++)
+		{
 			net.addTrainingData(trainingData[i],training_trueVals[i]);
+			trainingData[i].resize(0); trainingData[i].shrink_to_fit();
+			training_trueVals[i].resize(0); training_trueVals[i].shrink_to_fit();
+		}
 	}
 	else
 	{
+		printf("Testing data will be used.\n");
+		printf("Total amount data: %lu\n", totalAmountData);
 		//for accountability reasons, try to keep training and test videos from separate videos
 		//if we can't get percents right, use smallest video for test
 		
@@ -680,7 +699,7 @@ int main(int argc, const char **argv)
 		bool noTestFound = true;
 		for(int i = 0; i < trainingData.size(); i++)
 		{
-			double curPercent = trainingData[i].size() / totalAmountData;
+			double curPercent = trainingData[i].size() / (double)totalAmountData;
 			if(curPercent + totalTest < testPercent)
 			{
 				isTraining[i] = false;
@@ -718,16 +737,23 @@ int main(int argc, const char **argv)
 				net.addTrainingData(trainingData[i],training_trueVals[i]);
 			else
 				net.addTestData(trainingData[i],training_trueVals[i]);
+
+			trainingData[i].resize(0); trainingData[i].shrink_to_fit();
+			training_trueVals[i].resize(0); training_trueVals[i].shrink_to_fit();
 		}
 	}
 
 	printf("Training Distribution\n");
 	net.printTrainingDistribution();
+	if(testPercent > 0 && trainingData.size() >= 2)
+		net.printTestDistribution();
 
 	starttime = time(NULL);
 	net.train(); //this will save using the save name because of net.setSaveName called above
 	printf("Total training time: %s\n", secondsToString(time(NULL)-starttime).c_str());
-	string info_outname = "info_"+outname;
+	string short_name = outname.substr(outname.rfind('/')+1);
+	string prefix = outname.substr(0,outname.rfind('/')+1);
+	string info_outname = prefix + "info_"+outname;
 	ofstream infoFile(info_outname);
 	infoFile << "Videos used:\n";
 	for(int i = 0; i < archive_video_names.size(); i++)

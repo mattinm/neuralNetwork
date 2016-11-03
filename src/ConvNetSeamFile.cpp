@@ -848,7 +848,9 @@ int main(int argc, const char **argv)
 	if(scaleType == CARVE_DOWN_vth || scaleType == SCALE_DOWN)
 		seamcarve_cleanup();
 
-	imagesToFile<unsigned char>(trainingData, training_trueVals, outname, 1);
+	// imagesToFile<unsigned char>(trainingData, training_trueVals, outname, 1);
+
+	FileStorage fs(outname, FileStorage::WRITE);
 
 
 	//2. Train CNN over seamcarved images - now in separate file

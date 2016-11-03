@@ -2126,9 +2126,10 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 
 bool Net::addTrainingData(const vector<Mat>& trainingData, const vector<double>& trueVals)
 {
+	printf("add train mat: ");
 	if(trainingData.size() != trueVals.size())
 		return false;
-
+	printf("%lu images\n", trainingData.size());
 	int inputSize = __neuronSizes[0];
 	for(int t = 0; t < trainingData.size(); t++)
 	{
@@ -2207,6 +2208,7 @@ bool Net::addTestData(const vector<imVector>& testData, const vector<double>& tr
 
 bool Net::addTestData(const vector<Mat>& testData, const vector<double>& trueVals)
 {
+	printf("add test mat\n");
 	if(testData.size() != trueVals.size())
 		return false;
 	int oldSize = __testData.size();
