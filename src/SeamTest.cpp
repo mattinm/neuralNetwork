@@ -28,13 +28,22 @@ int main(int argc, char** argv)
 
 	Size cvSize = Size(120,120);
 
-	// Mat seamImage;
-	// printf("Starting seamcarve_vf\n");
-	// if(!seamcarve_vf(vseams,image,seamImage))
-	// 	printf("Seamcarve vf returned false\n");;
-	// imshow("Seamcarved image",seamImage);
-	// printf("vseam row %d col %d\n\n", seamImage.rows, seamImage.cols);
-	// waitKey(1);
+
+	Mat seamImage;
+	printf("Starting seamcarve_vf\n");
+	if(!seamcarve_vf(vseams,image,seamImage))
+		printf("Seamcarve vf returned false\n");;
+	imshow("Seamcarved image",seamImage);
+	printf("vseam row %d col %d\n\n", seamImage.rows, seamImage.cols);
+	waitKey(1);
+
+	Mat revseamImage;
+	printf("Starting seamcarve_vf\n");
+	if(!seamcarve_vfRandom(vseams,image,revseamImage))
+		printf("Seamcarve vf rev returned false\n");;
+	imshow("RevSeamcarved image",revseamImage);
+	printf("vseamrev row %d col %d\n\n", revseamImage.rows, revseamImage.cols);
+	waitKey(1);
 
 	// Mat forimage;
 	// seamcarve_vf(vseams, image, forimage);
@@ -81,28 +90,28 @@ int main(int argc, char** argv)
 
 	
 	////scale down
-	Mat temp, ttemp;
-	if(vseams > 0) //width > height. landscape
-	{
-		//vertical seams, fast
-		seamcarve_vf(image.cols - image.rows,image,ttemp);//bring us to square
-		resize(ttemp, temp,cvSize);
-	}
-	// imshow("Scaled down almost",ttemp);
-	imshow("Scaled down image",temp);
-	printf("scale down row %d col %d\n\n", temp.rows, temp.cols);
+	// Mat temp, ttemp;
+	// if(vseams > 0) //width > height. landscape
+	// {
+	// 	//vertical seams, fast
+	// 	seamcarve_vf(image.cols - image.rows,image,ttemp);//bring us to square
+	// 	resize(ttemp, temp,cvSize);
+	// }
+	// // imshow("Scaled down almost",ttemp);
+	// imshow("Scaled down image",temp);
+	// printf("scale down row %d col %d\n\n", temp.rows, temp.cols);
 
-	Mat vthseamImage;
-	printf("Starting seamcarve_both_vth\n");
-	seamcarve_both_vth(vseams,hseams,image,vthseamImage);
-	printf("vthseam row %d col %d\n\n", vthseamImage.rows, vthseamImage.cols);
-	imshow("VTH",vthseamImage);
+	// Mat vthseamImage;
+	// printf("Starting seamcarve_both_vth\n");
+	// seamcarve_both_vth(vseams,hseams,image,vthseamImage);
+	// printf("vthseam row %d col %d\n\n", vthseamImage.rows, vthseamImage.cols);
+	// imshow("VTH",vthseamImage);
 
-	Mat htvseamImage;
-	printf("Starting seamcarve_both_htv\n");
-	seamcarve_both_htv(hseams,vseams,image,htvseamImage);
-	printf("hthseam row %d col %d\n\n", htvseamImage.rows, htvseamImage.cols);
-	imshow("HTV",htvseamImage);
+	// Mat htvseamImage;
+	// printf("Starting seamcarve_both_htv\n");
+	// seamcarve_both_htv(hseams,vseams,image,htvseamImage);
+	// printf("hthseam row %d col %d\n\n", htvseamImage.rows, htvseamImage.cols);
+	// imshow("HTV",htvseamImage);
 
 	// // if(countNonZero(htvseamImage != vthseamImage) == 0)
 	// // {
@@ -115,22 +124,22 @@ int main(int argc, char** argv)
 
 	// // int len = 2;
 	// // vector<Mat> tests(len);
-	 Mat rawseamImage;
+	//  Mat rawseamImage;
 
-	printf("Starting seamcarve_both_raw\n");
-	// printf("Starting carving\n");
-	// int starttime = time(NULL);
-	// for(int i = 0; i < len; i++)
-		seamcarve_both_raw(vseams,hseams,image,rawseamImage);//tests[i]);
-	// printf("Time for %d carves: %lu sec\n", len, time(NULL)-starttime);
-	printf("rawseam row %d col %d\n\n", rawseamImage.rows, rawseamImage.cols);
-	imshow("RawSeam",rawseamImage);
+	// printf("Starting seamcarve_both_raw\n");
+	// // printf("Starting carving\n");
+	// // int starttime = time(NULL);
+	// // for(int i = 0; i < len; i++)
+	// 	seamcarve_both_raw(vseams,hseams,image,rawseamImage);//tests[i]);
+	// // printf("Time for %d carves: %lu sec\n", len, time(NULL)-starttime);
+	// printf("rawseam row %d col %d\n\n", rawseamImage.rows, rawseamImage.cols);
+	// imshow("RawSeam",rawseamImage);
 
-	Mat scaledseamImage;
-	printf("Starting seamcarve_both_scaled\n");
-	seamcarve_both_scaled(vseams,hseams,image,scaledseamImage);
-	printf("scaledseam row %d col %d\n", scaledseamImage.rows, scaledseamImage.cols);
-	imshow("scaledSeam",scaledseamImage);
+	// Mat scaledseamImage;
+	// printf("Starting seamcarve_both_scaled\n");
+	// seamcarve_both_scaled(vseams,hseams,image,scaledseamImage);
+	// printf("scaledseam row %d col %d\n", scaledseamImage.rows, scaledseamImage.cols);
+	// imshow("scaledSeam",scaledseamImage);
 
 	
 

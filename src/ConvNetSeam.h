@@ -7,8 +7,10 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-bool seamcarve_vf    (int numSeams, const cv::Mat& source, cv::Mat& dest);
-bool seamcarve_vf_cpu(int numSeams, const cv::Mat& source, cv::Mat& dest);
+bool seamcarve_vf      (int numSeams, const cv::Mat& source, cv::Mat& dest);
+bool seamcarve_vf_cpu  (int numSeams, const cv::Mat& source, cv::Mat& dest);
+bool seamcarve_vfRev   (int numSeams, const cv::Mat& source, cv::Mat& dest);
+bool seamcarve_vfRandom(int numSeams, const cv::Mat& source, cv::Mat& dest);
 
 bool seamcarve_hf    (int numSeams, const cv::Mat& source, cv::Mat& dest);
 bool seamcarve_hf_cpu(int numSeams, const cv::Mat& source, cv::Mat& dest);
