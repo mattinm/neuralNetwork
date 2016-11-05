@@ -232,7 +232,11 @@ void __seamcarve_init_OpenCL()
 
 
 	//create/compile program
-	string loadedKernel = LoadKernel(kernelPath);
+	// #ifndef _BOINC_APP_
+		string loadedKernel = LoadKernel(kernelPath);
+	// #else
+	// 	string loadedKernel = LoadKernel("Seamcarve_kernels.cl");
+	// #endif
 	__seamcarve_program = CreateProgram(loadedKernel, __context_seam, 0);
 	const cl_device_id* deviceToBuild = &__deviceIds_seam[q];
 	CheckError(clBuildProgram(__seamcarve_program, 1, deviceToBuild, nullptr, nullptr, nullptr));

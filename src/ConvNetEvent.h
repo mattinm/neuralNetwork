@@ -40,20 +40,23 @@ std::string getTime(int tim) //in seconds. Formats to hh::mm::ss. Military time
 	int minutes = tim % 60;
 	int hours = tim / 60;
 
+	// printf("%2d:%2d:%2d\n", hours,minutes,seconds);
+
 	char s[3], m[3], h[3];
 	if(seconds < 10)
 		sprintf(s, "0%d",seconds);
 	else
 		sprintf(s, "%d", seconds);
 	if(minutes < 10)
-		sprintf(s, "0%d",minutes);
+		sprintf(m, "0%d",minutes);
 	else
-		sprintf(s, "%d", minutes);
+		sprintf(m, "%d", minutes);
 	if(hours < 10)
-		sprintf(s, "0%d",hours);
+		sprintf(h, "0%d",hours);
 	else
-		sprintf(s, "%d", hours);
+		sprintf(h, "%d", hours);
 	s[2] = '\0'; m[2] = '\0'; h[2] = '\0';
+	// printf("%s:%s:%s\n", h,m,s);
 	std::string out = h;
 	out += ":";
 	out += m;
@@ -78,12 +81,20 @@ struct Event
 	Event(const Event& other);
 	Event();
 	std::string toString() const;
+	bool equals(const Event& other);
 };
 
 Event::Event()
 {
 	starttime = -1;
 	endtime = -1;
+}
+
+bool Event::equals(const Event &other)
+{
+	if(type == other.type && starttime == other.starttime && endtime == other.endtime)
+		return true;
+	return false;
 }
 
 Event::Event(std::string type, int starttime, int endtime)
@@ -146,6 +157,8 @@ public:
 	void getEvents(int tim, std::vector<Event>& dest);
 	void getAllEvents(std::vector<Event>& dest);
 	std::string toString() const;
+	void load(std::string obs);
+	bool equals(const Observations& other);
 };
 
 std::string secondsToString(time_t seconds)
@@ -179,6 +192,38 @@ Observations::Observations()
 
 Observations::Observations(std::string obs)
 {
+	this->load(obs);
+}
+
+bool Observations::equals(const Observations& other)
+{
+	if(events.size() != other.events.size())
+		return false;
+
+	std::vector<Event> e1 = events;
+	std::vector<Event> e2 = other.events;
+
+	while(e1.size() > 0)
+	{
+		bool found = false;
+		for(int i = 0; i < e2.size(); i++)
+		{
+			if(e1[0].equals(e2[i]))
+			{
+				e1.erase(e1.begin());
+				e2.erase(e2.begin()+i);
+				found = true;
+				break;
+			}
+		}
+		if(!found)
+			return false;
+	}
+	return true;
+}
+
+void Observations::load(std::string obs)
+{
 	std::stringstream ss(obs);
 	std::string line;
 	getline(ss,line);
@@ -196,7 +241,6 @@ Observations::Observations(std::string obs)
 			event << line << '\n';
 	}
 }
-
 
 //Class Level functions (and getTime)
 void Observations::addEvent(std::string type, int starttime, int endtime)

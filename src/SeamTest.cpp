@@ -3,6 +3,7 @@
 #include "ConvNetSeam.h"
 #include <random>
 #include <time.h>
+#include "ConvNetEvent.h"
 
 //OpenCV
 #include "opencv2/imgproc/imgproc.hpp"
@@ -14,36 +15,50 @@ using namespace cv;
 
 int main(int argc, char** argv)
 {
-	time_t starttime;
+
+	Event e("parent behavior", 65, 120);
+
+	printf("%s %d %d %s %s\n", e.type.c_str(), e.starttime, e.endtime, e.starttime_string.c_str(), e.endtime_string.c_str());
+
+
+
+
+
+
+
+
+
+
+	// time_t starttime;
 	// namedWindow("Original image",WINDOW_AUTOSIZE);
 	// namedWindow("Seamcarved image",WINDOW_AUTOSIZE);
 	// namedWindow("Horizontal seamcarved image",WINDOW_AUTOSIZE);
-	const Mat image = imread(argv[1],CV_LOAD_IMAGE_COLOR);
-	int vseams = image.cols - atoi(argv[2]);
-	int hseams = image.rows - atoi(argv[3]);
-	imshow("Original image",image);
+	// const Mat image = imread(argv[1],CV_LOAD_IMAGE_COLOR);
+	// int vseams = image.cols - atoi(argv[2]);
+	// int hseams = image.rows - atoi(argv[3]);
+	// imshow("Original image",image);
 	// waitKey(1);
 
-	seamcarve_setDevice(0);
+	// seamcarve_setDevice(0);
 
-	Size cvSize = Size(120,120);
+	// Size cvSize = Size(120,120);
 
 
-	Mat seamImage;
-	printf("Starting seamcarve_vf\n");
-	if(!seamcarve_vf(vseams,image,seamImage))
-		printf("Seamcarve vf returned false\n");;
-	imshow("Seamcarved image",seamImage);
-	printf("vseam row %d col %d\n\n", seamImage.rows, seamImage.cols);
-	waitKey(1);
+	// Mat seamImage;
+	// printf("Starting seamcarve_vf\n");
+	// if(!seamcarve_vf(vseams,image,seamImage))
+	// 	printf("Seamcarve vf returned false\n");;
+	// imshow("Seamcarved image",seamImage);
+	// printf("vseam row %d col %d\n\n", seamImage.rows, seamImage.cols);
+	// waitKey(1);
 
-	Mat revseamImage;
-	printf("Starting seamcarve_vf\n");
-	if(!seamcarve_vfRandom(vseams,image,revseamImage))
-		printf("Seamcarve vf rev returned false\n");;
-	imshow("RevSeamcarved image",revseamImage);
-	printf("vseamrev row %d col %d\n\n", revseamImage.rows, revseamImage.cols);
-	waitKey(1);
+	// Mat revseamImage;
+	// printf("Starting seamcarve_vf\n");
+	// if(!seamcarve_vfRandom(vseams,image,revseamImage))
+	// 	printf("Seamcarve vf rev returned false\n");;
+	// imshow("RevSeamcarved image",revseamImage);
+	// printf("vseamrev row %d col %d\n\n", revseamImage.rows, revseamImage.cols);
+	// waitKey(1);
 
 	// Mat forimage;
 	// seamcarve_vf(vseams, image, forimage);
@@ -143,8 +158,8 @@ int main(int argc, char** argv)
 
 	
 
-	waitKey(0);
-	seamcarve_cleanup();
+	// waitKey(0);
+	// seamcarve_cleanup();
 
 	//getchar();
 }

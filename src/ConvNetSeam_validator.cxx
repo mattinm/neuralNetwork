@@ -26,7 +26,8 @@ using namespace std;
 struct cnn_output
 {
 	string cnn;
-	string video_path;
+	string video_id;
+	Observations obs;
 };
 
 static inline std::string &ltrim(std::string &s)
@@ -91,7 +92,18 @@ int init_result(RESULT& result, void*& data)
 	ifstream infile(fi.path);
 
 	cnn_output *res = new cnn_output();
-	string linetemp, itemtemp;
+	string line;
+	getline(infile,line);
+	res->cnn = line;
+	getline(infile,line);
+	res->video_id = line;
+	stringstream ss;
+	while(getline(infile,line))
+	{
+		ss << line << '\n';
+	}
+	res->obs.load(ss.str());
+
 
 	
 	data = (void*)res;
@@ -102,45 +114,14 @@ int init_result(RESULT& result, void*& data)
 
 int compare_results(RESULT &r1, void *data1, RESULT const& r2, void *data2, bool& match)
 {
-	float threshold = 0.015;
+
 	cnn_output *res1 = (cnn_output*)data1;
 	cnn_output *res2 = (cnn_output*)data2;
 
-	log_messages.printf(MSG_DEBUG,"Check number of classes.\n");
-	if(res1->names.size() != res2->names.size())
-	{
+	if(res1->obs.equals(res2->obs))
+		match = true;
+	else
 		match = false;
-		log_messages.printf(MSG_CRITICAL,"ERROR, number of classes is different. %lu vs %lu\n",res1->names.size(),res2->names.size());
-		return 0;
-	}
-
-	log_messages.printf(MSG_DEBUG, "Check number of frames run.\n");
-	if(res1->outputNums.size() != res2->outputNums.size())
-	{
-		match = false;
-		log_messages.printf(MSG_CRITICAL, "ERROR, number of frames run is different. %lu vs %lu\n", res1->outputNums.size(), res2->outputNums.size());
-		return 0;
-	}
-	//check all numbers for match within threshold
-	for(unsigned int i = 0; i < res1->outputNums.size();i++)
-	{
-		unsigned int endj = res1->outputNums[i].size();
-		for(unsigned int j = 0; j < endj; j++)
-		{
-			double val1 = res1->outputNums[i][j];
-			double val2 = res2->outputNums[i][j];
-
-			double diff = abs(val1 - val2);
-			if(diff > threshold)
-			{
-				match = false;
-				log_messages.printf(MSG_CRITICAL, "ERROR, calculated values differ by more than threshold. %lf vs %lf\n",val1, val2);
-				return 0;
-			}
-		}
-	}
-	match = true;
-	log_messages.printf(MSG_DEBUG,"Everything seems to match.\n");
 	return 0;
 }
 

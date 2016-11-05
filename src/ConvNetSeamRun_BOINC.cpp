@@ -382,6 +382,12 @@ int main(int argc, const char** argv)
 
 		}
 
+		// for(int i = 0; i < currentFramenums.size(); i++)
+		// {
+		// 	printf("%d ", currentFramenums[i]);
+		// }
+		// printf("\n");
+
 		//run them through CNN and store results
 		net.setData(currentFrames);
 		net.run();
@@ -405,8 +411,8 @@ int main(int argc, const char** argv)
 			i++;
 		int endFrame = doneFrames[i-1].framenum;
 
-		int curStartTime = video_start_time + startFrame * fps;
-		int curEndTime   = video_start_time + endFrame * fps;
+		int curStartTime = video_start_time + startFrame / fps;
+		int curEndTime   = video_start_time + endFrame / fps;
 
 		obs.addEvent(net.getClassForTrueVal(curClassIndex), curStartTime, curEndTime);
 	}

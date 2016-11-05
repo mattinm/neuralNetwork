@@ -43,6 +43,8 @@ struct Job_params{
 	int jump;
 	double duration_s;
 	int scaleType;
+	string md5_hash;
+	int filesize;
 };
 
 const char* app_name = "ConvNet_Video";
@@ -129,6 +131,9 @@ void init_wildlife_database()
 int make_job(Job_params& params)
 {
 
+	//FIND OUT HOW TO SEND KERNELS!!!!
+
+
 	DB_WORKUNIT wu;
 	char name[256], path[256];
 	char command_line[1024];
@@ -171,6 +176,20 @@ int make_job(Job_params& params)
 	wu.max_total_results = REPLICATION_FACTOR * 8;
 	wu.max_success_results = REPLICATION_FACTOR * 4;
 
+	//application needs 3 kernels (ConvNet needs both training and running all the time. and the last is for seamcarving)
+	int n_files = 3;
+	string running_kernel = "../kernels/ConvNetForward_kernel.cl";
+	string training_kernel = "../kernels/ConvNetTraining_kernel.cl";
+	string seamcarve_kernel = "../kernels/Seamcarve_kernels.cl";
+
+	copy_file_to_download_dir(running_kernel);
+	copy_file_to_download_dir(training_kernel);
+	copy_file_to_download_dir(seamcarve_kernel);
+
+	infiles.push_back(running_kernel.substr(running_kernel.rfind('/')+1));
+	infiles.push_back(training_kernel.substr(training_kernel.rfind('/')+1));
+	infiles.push_back(seamcarve_kernel.substr(seamcarve_kernel.rfind('/')+1));
+
 	//Register job with BOINC
 	sprintf(path, "templates/%s", out_template_file);
 
@@ -190,13 +209,57 @@ int make_job(Job_params& params)
 	
 	sprintf(additional_xml, "<credit>%.3lf</credit>", credit);
 
+
+	ostringstream input_template_stream;
+	input_template_stream << "<input_template>" << endl
+		<< "<file_info>" << endl
+		<< "	<number>0</number>" <<endl
+		<< "</file_info>" << endl
+		<< "<file_info>" << endl
+		<< "	<number>1</number>" <<endl
+		<< "</file_info>" << endl		<< "<file_info>" << endl
+		<< "	<number>2</number>" <<endl
+		<< "</file_info>" << endl
+		<< "<file_info>" << endl
+		<< "	<number>4</number>" <<endl
+		<< "	<url>http://wildlife.und.edu" << params.video_name.substr(0,params.video_name.rfind('/')+1) << "</url>" <<endl;
+		<< "	<nbytes>" << params.filesize << "</nbytes>" << endl
+		<< "	<md5_cksum>" << params.md5_hash << "</md5_cksum>" << endl
+		<< "</file_info>" << endl
+		<< "<workunit>" << endl
+		<< "	<file_ref>" << endl
+		<< "		<file_number>0</file_number>" << endl
+		<< "		<open_name>../kernels/ConvNetForward_kernel.cl</open_name>" << endl
+		<< "	</file_ref>" << endl
+		<< "	<file_ref>" << endl
+		<< "		<file_number>1</file_number>" << endl
+		<< "		<open_name>../kernels/ConvNetTraining_kernel.cl</open_name>" << endl
+		<< "	</file_ref>" << endl
+		<< "	<file_ref>" << endl
+		<< "		<file_number>2</file_number>" << endl
+		<< "		<open_name>../kernels/Seamcarve_kernels.cl</open_name>" << endl
+		<< "	</file_ref>" << endl
+		<< "	<file_ref>" << endl
+		<< "		<file_number>3</file_number>" << endl
+		<< "		<open_name>" << short_video_name <<"</open_name>" << endl
+		<< "	</file_ref>" << endl
+		<< "    <rsc_memory_bound>" << wu.rsc_memory_bound << "</rsc_memory_bound>" << endl
+        << "    <delay_bound>" << wu.delay_bound << "</delay_bound>" << endl
+        << "    <max_error_results>5</max_error_results>" << endl
+        << "    <min_quorum>2</min_quorum>" << endl
+        << "    <target_nresults>2</target_nresults>" << endl
+        << "    <max_total_results>7</max_total_results>" << endl
+        << "    <max_success_results>2</max_success_results>" << endl
+		<< "</workunit>" << endl;
+
+
 	return create_work(
 		wu,
-		in_template,
+		input_template_stream,
 		path,
 		config.project_path(path),
 		infiles.data(),
-		0,
+		n_files,
 		config,
 		command_line,
 		additional_xml
@@ -370,6 +433,9 @@ void main_loop(int argc, char** argv)
 		unclassified_video_query << " LIMIT " << number_jobs;
 	}
 
+	finished_expert_query << ';';
+	unclassified_video_query << ';';
+
 	if(expertFinished)
 		mysql_query_check(wildlife_db_conn, finished_expert_query.str());
 	else
@@ -391,9 +457,9 @@ void main_loop(int argc, char** argv)
 		params.batchSize = batchSize;
 		params.scaleType = scaleType;
 		//int location_id = atoi(video_row[4]);
-		//int filesize = atoi(video_row[5]);
-		string md5_hash = video_row[6];
-		string params.start_time = getTime(video_row[7]);
+		params.filesize = atoi(video_row[5]);
+		params.md5_hash = video_row[6];
+		params.start_time = getTime(video_row[7]);
 		
 		printf("generating work unit\n");
 		int job_id = make_job(params);
