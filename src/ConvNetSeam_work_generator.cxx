@@ -177,7 +177,7 @@ int make_job(Job_params& params)
 	wu.max_success_results = REPLICATION_FACTOR * 4;
 
 	//application needs 3 kernels (ConvNet needs both training and running all the time. and the last is for seamcarving)
-	int n_files = 3;
+	int n_files = 5; //3 kernels, 1 video, 1 cnn
 	string running_kernel = "../kernels/ConvNetForward_kernel.cl";
 	string training_kernel = "../kernels/ConvNetTraining_kernel.cl";
 	string seamcarve_kernel = "../kernels/Seamcarve_kernels.cl";
@@ -189,6 +189,10 @@ int make_job(Job_params& params)
 	infiles.push_back(running_kernel.substr(running_kernel.rfind('/')+1));
 	infiles.push_back(training_kernel.substr(training_kernel.rfind('/')+1));
 	infiles.push_back(seamcarve_kernel.substr(seamcarve_kernel.rfind('/')+1));
+
+	//bring in cnn
+	copy_file_to_download_dir(params.cnn[0]);
+	infiles.push_back(short_cnns[0]);
 
 	//Register job with BOINC
 	sprintf(path, "templates/%s", out_template_file);
@@ -221,6 +225,9 @@ int make_job(Job_params& params)
 		<< "	<number>2</number>" <<endl
 		<< "</file_info>" << endl
 		<< "<file_info>" << endl
+		<< "	<number>3</number>" <<endl
+		<< "</file_info>" << endl
+		<< "<file_info>" << endl
 		<< "	<number>4</number>" <<endl
 		<< "	<url>http://wildlife.und.edu" << params.video_name.substr(0,params.video_name.rfind('/')+1) << "</url>" <<endl;
 		<< "	<nbytes>" << params.filesize << "</nbytes>" << endl
@@ -241,6 +248,10 @@ int make_job(Job_params& params)
 		<< "	</file_ref>" << endl
 		<< "	<file_ref>" << endl
 		<< "		<file_number>3</file_number>" << endl
+		<< "		<open_name>" << short_cnns[0] <<"</open_name>" << endl
+		<< "	</file_ref>" << endl
+		<< "	<file_ref>" << endl
+		<< "		<file_number>4</file_number>" << endl
 		<< "		<open_name>" << short_video_name <<"</open_name>" << endl
 		<< "	</file_ref>" << endl
 		<< "    <rsc_memory_bound>" << wu.rsc_memory_bound << "</rsc_memory_bound>" << endl
@@ -448,6 +459,7 @@ void main_loop(int argc, char** argv)
 	while((video_row = mysql_fetch_row(video_result)))
 	{
 		Job_params params;
+		params.cnn = cnns;
 		params.video_id = atoi(video_row[0]);
 		params.video_name = video_row[1];
 		params.video_name += ".mp4";
