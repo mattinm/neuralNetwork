@@ -70,8 +70,8 @@ ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 
 IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
 	add_executable(ConvNetSeam_work_generator
-		ConvNetSeam_work_generator
-		ConvNetCL_light
+		src/ConvNetSeam_work_generator
+		src/ConvNetCL_light
 		)
 	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
 
@@ -79,15 +79,15 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
 		${BOINC_INCLUDE_DIR}/sched/validator
 		${BOINC_INCLUDE_DIR}/sched/validate_util
 		${BOINC_INCLUDE_DIR}/sched/validate_util2
-		ConvNetSeam_validator
+		src/ConvNetSeam_validator
 		)
 	target_link_libraries(ConvNetSeam_validator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
 
 	add_executable(ConvNetSeam_assimilator
 		${BOINC_INCLUDE_DIR}/sched/assimilator
 		${BOINC_INCLUDE_DIR}/sched/validate_util
-		ConvNetSeam_validator
-		ConvNetSeam_assimilator
+		src/ConvNetSeam_validator
+		src/ConvNetSeam_assimilator
 		)
 	target_link_libraries(ConvNetSeam_assimilator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
 ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND)

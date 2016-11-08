@@ -1,4 +1,4 @@
-
+#include <algorithm>
 #include "ConvNetCL.h"
 #include <iostream>
 #include <iomanip>
