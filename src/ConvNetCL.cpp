@@ -194,7 +194,7 @@ Net::~Net()
 
 Net& Net::operator=(const Net& other)
 {
-	printf("EQUALS ------------------\n");
+	//printf("EQUALS ------------------\n");
 	if(this != &other)
 	{
 		//clean up any currently used OpenCL stuff besides the context
@@ -269,7 +269,7 @@ Net& Net::operator=(const Net& other)
 
 		initOpenCL();
 	}
-	printf("END EQUALS --- \n");
+	//printf("END EQUALS --- \n");
 	return *this;
 }
 
@@ -781,6 +781,20 @@ bool Net::finalize()
 
 	__isFinalized = true;
 	return true;
+}
+
+void Net::releaseCLMem()
+{
+	for(int i = 0; i < clWeights.size(); i++)
+	{
+		clReleaseMemObject(clWeights[i]);
+		clReleaseMemObject(clBiases[i]);
+	}
+	clWeights.resize(0);
+	clBiases.resize(0);
+
+	clReleaseMemObject(*neurons);
+	clReleaseMemObject(*prevNeurons);
 }
 
 bool Net::set_learningRate(double rate)
@@ -1840,6 +1854,630 @@ void Net::train(int epochs)
 	//clean up anything we may have messed with in order to use run.
 	__confidences.resize(__data.size());
 	__isTraining = false;
+}
+
+//If you use DETrain, only the input size matters
+void Net::DETrain(int generations, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
+{
+	printf("DE training\n");
+
+	//We'll need some stuff to hold our training data
+	vector<vector<double>* > trainingData(0);
+	vector<double> trueVals(0);
+
+	getTrainingData(trainingData, trueVals);
+	int curTrainDataIndex = 0;
+
+	//preprocess the data, training and test
+ 	if(__preprocessIndividual)
+ 	{
+	 	if(!__trainingDataPreprocessed)
+	 		//preprocessTrainingDataCollective();
+	        preprocessTrainingDataIndividual();
+	    if(__testData.size() != 0 && !__testDataPreprocessed)
+	    	preprocessTestDataIndividual();
+	}
+	else // __preprocessCollective
+	{
+		if(!__trainingDataPreprocessed)
+			preprocessTrainingDataCollective();
+		if(!__testDataPreprocessed)
+			preprocessTestDataCollective();
+	}
+
+	//We'll have a vector of nets to hold the population
+	vector<Net*> nets(population);
+	vector<double> netfit(population, -1);
+
+	//set up all the nets
+	setupRandomNets(nets);
+	for(int i = 0; i < nets.size(); i++)
+	{
+		nets[i]->setDevice(__device);
+		nets[i]->setTrainingType(TRAIN_AS_IS);
+		nets[i]->__dataPreprocessed = true;
+		if(!__preprocessIndividual) //this means preprocess collective
+		{
+			//store the mean and stddev for when we choose the best
+			nets[i]->preprocessCollectively();
+			nets[i]->__mean = __mean;
+			nets[i]->__stddev = __stddev;
+		}
+	}
+
+	vector<vector<double> > curTrainData(1);
+	double curTrueVal;
+	vector<vector<double> > curConfid;
+	vector<Net*> helperParents(3); //[0] is target, [1,2] are parameter
+	int curGen = 0;
+	while(curGen < generations)
+	{
+		if(curTrainDataIndex == trainingData.size())
+		{
+			getTrainingData(trainingData, trueVals);
+			curTrainDataIndex = 0;
+		}
+
+		//run nets over a piece of train data (get fitness)
+		curTrainData[0] = *(trainingData[curTrainDataIndex]);
+		curTrueVal = trueVals[curTrainDataIndex];
+		curTrainDataIndex++;
+		for(int i = 0; i < nets.size(); i++)
+		{
+			nets[i]->finalize(); //allocate memory
+			nets[i]->__data = curTrainData;
+			nets[i]->run();
+			nets[i]->getConfidences(curConfid);
+			netfit[i] = getFitness(curConfid[0], curTrueVal);
+		}
+
+		//get indivs for mutation
+		for(int i = 0; i < nets.size(); i++)
+		{
+			//get target and parameter vectors
+			int target = getTargetVector(__targetSelectionMethod,netfit,i);
+			getHelperVectors(nets, target, i, helperParents); //fills helperParents
+
+			//make donor vector. will be same structure as target
+			Net* donor = makeDonor(helperParents,mutationScale);
+
+			//apply crossover to get trial vector of same structure as original
+			Net* trial = crossover(nets[i],donor, crossMethod, crossProb);
+
+			//apply selection
+			trial->finalize(); //allocate memory
+			trial->__data = curTrainData;
+			trial->run();
+			trial->getConfidences(curConfid);
+			double trialfit = getFitness(curConfid[0], curTrueVal);
+			if(trialfit < netfit[i]) //trial is better
+			{
+				delete nets[i];
+				nets[i] = trial;
+				//no need to copy the fitness b/c won't matter next time anyway
+			}
+
+			//only set up layerNeeds and velocities as needed for backprop cause
+			//all the nets are different sizes
+		}
+	}
+
+}
+
+void Net::setupRandomNets(vector<Net*>& nets)
+{
+	vector<MaxPoolLayer*> maxs;
+	for(int i = 0; i < __layers.size(); i++)
+		if(__layers[i]->layerType == MAX_POOL_LAYER)
+			maxs.push_back((MaxPoolLayer*)__layers[i]);
+	uniform_real_distribution<double> dis(0.0, 1.0);
+	default_random_engine gen;
+	uniform_int_distribution<int> filsize_dis(0,4); //need *2 + 1. filterSizes are 1-9
+
+	for(int i = 0; i < nets.size(); i++)
+	{
+		nets[i] = new Net(__neuronDims[0][0],__neuronDims[0][1],__neuronDims[0][2]);
+		//make a bunch of conv layers then the maxpool
+		for(int j = 0; j < maxs.size(); j++)
+		{
+			double prob = .7;
+			while(dis(gen) < prob)
+			{
+				//keep less filters in shallower layers b/c faster
+				uniform_int_distribution<int> numFils_dis(1,32 * (i+1)); 
+				int numfils = numFils_dis(gen);
+
+				//the next two numbers are set so the width/height aren't changed
+				int pad = filsize_dis(gen);
+				int filsize = pad * 2 + 1;
+				
+				nets[i]->addConvLayer(numfils, 1, filsize, pad); // always has stride of 1
+				prob *= .8;
+			}
+			nets[i]->addMaxPoolLayer(maxs[j]->poolSize, maxs[j]->stride);
+		}
+		double prob = .5;
+		uniform_int_distribution<int> numFils_dis(1,1024);
+		while(dis(gen) < prob)
+		{
+			nets[i]->addFullyConnectedLayer(numFils_dis(gen));
+		}
+		nets[i]->addFullyConnectedLayer(__neuronDims.back()[2]);
+	}
+}
+
+double Net::getFitness(vector<double>& prediction, double trueVal)
+{
+	double sum = 0;
+	for(int i = 0; i < prediction.size(); i++)
+	{
+		double diff;
+		if(i == trueVal)
+			diff = 1 - prediction[i]; //should be 1, is prediction[i]
+		else
+			diff = prediction[i]; //should be 0, is prediction[i]
+		sum += diff;
+	}
+	return sum;
+}
+
+bool Net::setDETargetSelectionMethod(int method)
+{
+	if(method == DE_RAND || method == DE_BEST)
+	{
+		__targetSelectionMethod = method;
+		return true;
+	}
+	return false;
+}
+
+int Net::getTargetVector(int method, vector<double>& fits, int curNet)
+{
+	if(method == DE_BEST)
+	{
+		int bestIndex = (curNet == 0) ? 1 : 0; //don't want to count curNet in the running
+		double bestFit = fits[bestIndex];
+		for(int i = 0; i < fits.size(); i++)
+			if(i != curNet && fits[i] < bestFit)
+			{
+				bestFit = fits[i];
+				bestIndex = i;
+			}
+		return bestIndex;
+	}
+	else if(method == DE_RAND)
+	{
+		uniform_int_distribution<int> dis(0,fits.size() - 2);
+		default_random_engine gen;
+		int index = dis(gen);
+		return (index >= curNet) ? index + 1 : index;
+	}
+	else
+	{
+		printf("Unknown method number %d\n", method);
+		return -1;
+	}
+}
+
+void Net::getHelperVectors(vector<Net*>& nets, int target, int curNet, vector<Net*>& helpers)
+{
+	if(helpers.size() != 3)
+		helpers.resize(3);
+	if(nets.size() < 4)
+	{
+		printf("Should have at least 4 individuals for donor vector\n");
+		helpers[0] = nets[target];
+		helpers[1] = nets[0];
+		helpers[2] = nets[0];
+		return;
+	}
+	helpers[0] = nets[target];
+	uniform_int_distribution<int> dis(0,nets.size()-1);
+	default_random_engine gen;
+	int index1;
+	do
+	{
+		index1 = dis(gen);
+	} while(index1 == target || index1 == curNet);
+	int index2;
+	do
+	{
+		index2 = dis(gen);
+	} while(index2 == target || index2 == curNet || index2 == index1);
+
+	helpers[0] = nets[target];
+	helpers[1] = nets[index1];
+	helpers[2] = nets[index2];
+
+}
+
+int Net::mapConvLayer(Net* orig, int layerNum, Net* dest)
+{
+	//find relative location in original net
+	int maxsHit = 0, convsHit = 0;
+	for(int i = 1; i <= layerNum; i++)
+	{
+		if(orig->__layers[i]->layerType == CONV_LAYER)
+			convsHit++;
+		else if(orig->__layers[i]->layerType == MAX_POOL_LAYER)
+		{
+			maxsHit++;
+			convsHit = 0;
+		}
+	}
+
+	//find corresponding location in new net
+	int i = 1;
+	int dmaxsHit = 0, dconvsHit = 0;
+	while(dmaxsHit < maxsHit)
+	{
+		if(dest->__layers[i]->layerType == MAX_POOL_LAYER)
+			dmaxsHit++;
+ 		i++;
+	}
+	while(dconvsHit < convsHit)
+	{
+		if(i >= dest->__layers.size())
+		{
+			return -1;
+		}
+		if(dest->__layers[i]->layerType == CONV_LAYER)
+			dconvsHit++;
+		i++;
+	}
+	i--;
+	return i;
+}
+
+//helpers = {target, param1, param2}
+Net* Net::makeDonor(vector<Net*> helpers, double scaleFactor)
+{
+	Net* donor = new Net(*(helpers[0])); // copy construct target to donor
+
+	//u = target + scaleFactor * (x2 - x3)
+	int maxsHit = 0;
+	int convsHit = 0;
+	for(int i = 1; i < donor->__layers.size(); i++) //start at 1 b/c 0 is input
+	{
+		if(donor->__layers[i]->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)donor->__layers[i];
+			ConvLayer *helperConvs[2];
+			int helperDepths[2];
+
+			int filsize = conv->filterSize;
+			int prevDepth = donor->__neuronDims[i-1][2]; // = conv->numWeights/(conv->filsize^2 * numFilters)
+
+			//get corresponding conv layers from others. NULL means doesn't exist
+			// for(int h = 0; h < helperConvs.size(); h++)
+			// {
+			// 	int hconvsHit = 0;
+			// 	int hmaxsHit = 0;
+			// 	int hl;
+			// 	bool doesntExist = false;
+			// 	for(hl = 1; hl < helpers[h]->__layers.size(); hl++)
+			// 	{
+			// 		if(hmaxsHit == maxsHit)
+			// 			break;
+			// 		else if(helpers[h]->__layers[hl]->layerType == MAX_POOL_LAYER)
+			// 			hmaxsHit++;
+			// 	}
+			// 	for( ; hl < helpers[h]->__layers.size(); hl++)
+			// 	{
+			// 		if(hconvsHit == convsHit)
+			// 			break;
+			// 		else if(helpers[h]->__layers[hl]->layerType == CONV_LAYER)
+			// 			hconvsHit++;
+			// 		else if(helpers[h]->__layers[hl]->layerType == MAX_POOL_LAYER)
+			// 		{
+			// 			//this means the layer doesn't exist
+			// 			doesntExist = true;
+			// 			break;
+			// 		}
+			// 	}
+			// 	if(doesntExist)
+			// 		helperConvs[h] = NULL;
+			// 	else
+			// 	{
+			// 		helperConvs[h] = (ConvLayer*)(helpers[h]->__layers[hl]);
+			// 		helperDepths[h] = helpers[h]->__neuronDims[h-2][2];
+			// 	}	
+			// }
+
+			int index1 = mapConvLayer(donor, i, helpers[1]);
+			int index2 = mapConvLayer(donor, i, helpers[2]);
+
+			if(index1 != -1)
+			{
+				helperConvs[0] = (ConvLayer*)(helpers[1]->__layers[index1]);
+				helperDepths[0] = helpers[1]->__neuronDims[index1-1][2];
+			}
+			else
+				helperConvs[0] = NULL;
+
+			if(index2 != -1)
+			{
+				helperConvs[1] = (ConvLayer*)(helpers[2]->__layers[index2]);
+				helperDepths[1] = helpers[2]->__neuronDims[index2-1][2];
+			}
+			else
+				helperConvs[1] = NULL;
+			//go through all filters
+			for(int f = 0; f < conv->numBiases; f++)
+			{
+				//go through all of the weights in a 3 dim filter
+				for(int a = 0; a < filsize; a++)
+					for(int b = 0; b < filsize; b++)
+						for(int c = 0; c < prevDepth; c++)
+						{
+							int mypos[] = {a,b,c};
+							int otherNums[2];
+							for(int o = 0; o < 2; o++)
+							{
+								if(helperConvs[o] == NULL)
+									otherNums[o] = 0;
+								else
+								{
+									int pos[3];
+									mapPosIndexes(conv, mypos, helperConvs[o], pos);
+									otherNums[o] = helperConvs[o]->weights[POSITION(f % helperConvs[o]->numBiases,pos[0],pos[1],pos[2],helperConvs[o]->filterSize,helperDepths[o])];
+								}
+
+								conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]
+									+= scaleFactor * (otherNums[0] - otherNums[1]);
+							}
+							
+						}
+			}
+
+			convsHit++;
+		}
+		else if(donor->__layers[i]->layerType == MAX_POOL_LAYER)
+		{
+			maxsHit++; // lets us know where we are in the net, relatively
+			convsHit = 0;
+		}
+	}
+
+	return donor;
+}
+
+inline int Net::POSITION(int filter, int x, int y, int z, int filsize, int prevDepth)
+{
+	return filter * filsize * filsize * prevDepth + x * filsize * prevDepth + y * prevDepth + z;
+}
+
+void Net::mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, int* destpos)
+{
+	int origdepth = origConv->numWeights / (origConv->numBiases * origConv->filterSize * origConv->filterSize);
+	int destdepth = destConv->numWeights / (destConv->numBiases * destConv->filterSize * destConv->filterSize);
+	destpos[2] = origdepth % destdepth;
+	if(destConv->filterSize == 1) // don't have a lot of options here
+	{
+		destpos[0] = 0; 
+		destpos[1] = 0; 
+	}
+	else if(destConv->filterSize == origConv->filterSize) // best case. always case in fc layers, thankfully
+	{
+		destpos[0] = origpos[0];
+		destpos[1] = origpos[1];
+	}
+	// else if(origConv->filterSize == 1) //map to middle point.
+	// {
+	// 	destpos[0] = destConv->filterSize / 2;
+	// 	destpos[1] = destpos[0];
+	// }
+	else if(destConv->filterSize > origConv->filterSize) // dest bigger than me. should work if I am 1
+	{
+		// if the dest is bigger than me, I map to the middle of it
+		int onesideDiff = destConv->filterSize - origConv->filterSize;
+		destpos[0] = onesideDiff + origpos[0];
+		destpos[1] = onesideDiff + origpos[1];
+	}
+	else // I am bigger than dest
+	{
+		//if I bigger than dest, grab random index from dest in same geospatial region
+		int mycornersize = origConv->filterSize / 3; //5->1, 7->2, 9->3
+		int geoRegion[2];
+		if(origpos[0] < mycornersize)
+			geoRegion[0] = 0;
+		else if(origpos[0] >= origConv->filterSize - mycornersize)
+			geoRegion[0] = 2;
+		else 
+			geoRegion[0] = 1;
+		if(origpos[1] < mycornersize)
+			geoRegion[1] = 0;
+		else if(origpos[1] >= origConv->filterSize - mycornersize)
+			geoRegion[1] = 2;
+		else 
+			geoRegion[1] = 1;
+
+		int theircornersize = destConv->filterSize / 3;
+		int geoIndexes[2][2];
+		for(int g = 0; g < 2; g++)
+		{
+			if(geoRegion[g] == 0) //top or left
+			{
+				geoIndexes[g][0] = 0;
+				geoIndexes[g][1] = theircornersize - 1;
+			}
+			else if(geoRegion[g] == 1) //middle
+			{
+				geoIndexes[g][0] = theircornersize;
+				geoIndexes[g][1] = destConv->filterSize - theircornersize - 1;
+			}
+			else //bottom or right
+			{
+				geoIndexes[g][0] = destConv->filterSize - theircornersize;
+				geoIndexes[g][1] = destConv->filterSize - 1; 
+			}
+		}
+		uniform_int_distribution<int> xdis(geoIndexes[0][0], geoIndexes[0][1]);
+		uniform_int_distribution<int> ydis(geoIndexes[1][0], geoIndexes[1][1]);
+		default_random_engine gen;
+
+		destpos[0] = xdis(gen);
+		destpos[1] = ydis(gen);
+	}
+
+}
+
+Net* Net::crossover(Net* parent, Net* donor, int method, double prob)
+{
+	Net* trial = new Net(*parent);
+	uniform_real_distribution<double> dis(0.0,1.0);
+	default_random_engine gen;
+	int donorPos[3];
+	if(method == DE_BINOMIAL_CROSSOVER)
+	{
+		for(int i = 0; i < trial->__layers.size(); i++)
+		{
+			if(trial->__layers[i]->layerType == CONV_LAYER)
+			{
+				ConvLayer* theirconv;
+				int theirprevDepth;
+				int theirconvIndex = mapConvLayer(trial,i,donor);
+				if(theirconvIndex != -1)
+				{
+					theirconv = (ConvLayer*)donor->__layers[theirconvIndex];
+					theirprevDepth = donor->__neuronDims[theirconvIndex-1][2];
+				}
+
+				ConvLayer* myconv = (ConvLayer*)trial->__layers[i];				
+				int filsize = myconv->filterSize;
+				int prevdepth = trial->__neuronDims[i-1][2];
+				int numfils = myconv->numBiases;
+
+							
+				for(int f = 0; f < numfils; f++)
+				{
+					for(int a = 0; a < filsize; a++)
+						for(int b = 0; b < filsize; b++)
+							for(int c = 0; c < prevdepth; c++)
+							{
+								if(dis(gen) < prob)
+								{
+									if(theirconvIndex != -1)
+									{
+										int mypos[] = {a,b,c};
+										mapPosIndexes(myconv, mypos, theirconv, donorPos);
+										myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)]
+											 = theirconv->weights[POSITION(f % theirconv->numBiases,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)];
+									}
+									else
+									{
+										myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)] = 0;
+									}
+								}
+							}
+				}
+			}
+		}
+
+	}
+	else if(method == DE_EXPONENTIAL_CROSSOVER)
+	{
+		default_random_engine gen;
+		//need a random start point
+		int numConvLayers = 0;
+		for(int i = 1; i < trial->__layers.size(); i++)
+			if(trial->__layers[i]->layerType == CONV_LAYER)
+				numConvLayers++;
+
+		uniform_int_distribution<int> convStart_dis(1,numConvLayers);
+		int convStart = convStart_dis(gen);
+		int istart = -1;
+
+		int curConvLayer = 0;
+		for(int i = 1; i < trial->__layers.size(); i++)
+		{
+			if(trial->__layers[i]->layerType == CONV_LAYER)
+				curConvLayer++;
+			if(curConvLayer == convStart)
+			{
+				istart = i;
+				break;
+			}
+		}
+		if(istart == -1)
+		{
+			printf("Break in DE_EXPONENTIAL_CROSSOVER. exiting.\n");
+			exit(-1);
+		}
+
+		bool changedOne = false;
+
+		int i = istart;
+		do
+		{
+			if(trial->__layers[i]->layerType == CONV_LAYER)
+			{
+				ConvLayer* myconv = (ConvLayer*)trial->__layers[i];				
+				int filsize = myconv->filterSize;
+				int prevdepth = trial->__neuronDims[i-1][2];
+				int numFilters = myconv->numBiases;
+
+				ConvLayer* theirconv;
+				int theirprevDepth;
+				int theirconvIndex = mapConvLayer(trial,i,donor);
+				if(theirconvIndex != -1)
+				{
+					theirconv = (ConvLayer*)donor->__layers[theirconvIndex];
+					theirprevDepth = donor->__neuronDims[theirconvIndex-1][2];
+				}
+
+				int fstart = 0, astart = 0, bstart = 0, cstart = 0;
+
+				if(i == istart)
+				{
+					uniform_int_distribution<int> f_dis(0,numFilters-1);
+					uniform_int_distribution<int> ab_dis(0,filsize-1);
+					uniform_int_distribution<int> c_dis(0,prevdepth-1);
+
+					fstart = f_dis(gen); 
+					astart = ab_dis(gen); 
+					bstart = ab_dis(gen);
+					cstart = c_dis(gen);
+				}
+
+				for(int f = fstart; f < numFilters; f++)
+				{
+					for(int a = astart; a < filsize; a++)
+					{
+						for(int b = bstart; b < filsize; b++)
+						{
+							for(int c = cstart; c < prevdepth; c++)
+							{
+								if(dis(gen) < prob || !changedOne)
+								{
+									changedOne = true;
+									if(theirconvIndex != -1)
+									{
+										int mypos[] = {a,b,c};
+										mapPosIndexes(myconv, mypos, theirconv, donorPos);
+										myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)]
+											 = theirconv->weights[POSITION(f % theirconv->numBiases,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)];
+									}
+									else
+									{
+										myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)] = 0;
+									}
+								}
+								else
+									break;
+							}
+						}
+					}
+				}
+			}
+			i = (i + 1) % trial->__layers.size();
+
+
+		}while(i != istart);
+
+	}
+
+	return trial;
 }
 
 void Net::setupLayerNeeds(vector<cl_mem>& layerNeeds)

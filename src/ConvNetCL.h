@@ -43,6 +43,13 @@
 #define TRAINING_PROGRAM 0
 #define RUNNING_PROGRAM 1
 
+//defines for DE
+#define DE_RAND 0
+#define DE_BEST 1
+
+#define DE_BINOMIAL_CROSSOVER 0
+#define DE_EXPONENTIAL_CROSSOVER 1
+
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 class Net{
@@ -163,7 +170,11 @@ private: 	// members
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
 	std::vector<cl_mem> clBiases;
-	cl_mem n, p, *neurons, *prevNeurons, denom;
+	cl_mem n, p, *neurons, *prevNeurons, denom;	
+
+
+	//DE
+	int __targetSelectionMethod = DE_RAND;
 
 public: 	// functions
 	//Constructors and Destructors
@@ -242,6 +253,8 @@ public: 	// functions
 	//training
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
+	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
+	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
 
 	//OpenCL functions
@@ -297,6 +310,18 @@ private:	// functions
 	void loadWeightsFromHolder(WeightHolder& holder);
 	std::string tolower(std::string str);
 	bool stringToDims(std::string str, int* dims);
+
+	//de train
+	void setupRandomNets(std::vector<Net*>& nets);
+	void releaseCLMem();
+	double getFitness(std::vector<double>& prediction, double trueVal);
+	int getTargetVector(int method, std::vector<double>& fits, int curNet);
+	void getHelperVectors(std::vector<Net*>& nets, int target, int curNet, std::vector<Net*>& helpers);
+	Net* makeDonor(std::vector<Net*> helpers, double scaleFactor);
+	inline int POSITION(int filter, int x, int y, int z, int filsize, int prevdepth);
+	Net* crossover(Net* parent, Net* donor, int method, double prob);
+	int mapConvLayer(Net* orig, int layerNum, Net* dest);
+	void mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, int* destpos);
 
 	//OpenCL functions
 	void CheckError(cl_int error);
