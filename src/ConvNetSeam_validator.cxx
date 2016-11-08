@@ -68,11 +68,11 @@ int init_result(RESULT& result, void*& data)
 	}
 	catch(string error_message)
 	{
-		log_messages.printf(MSG_DEBUG,"ConvNet_Video_validation get_error_from_result([RESULT#%lu %s]) failed with error: %s\n",result.id, result.name, error_message.c_str());
+		log_messages.printf(MSG_DEBUG,"ConvNetSeam_validator get_error_from_result([RESULT#%lu %s]) failed with error: %s\n",result.id, result.name, error_message.c_str());
 	}
 	catch(const exception &ex)
 	{
-		log_messages.printf(MSG_CRITICAL,"ConvNet_Video_validation get_error_from_result([RESULT#%lu %s]) failed with error: %s\n",result.id, result.name, ex.what());
+		log_messages.printf(MSG_CRITICAL,"ConvNetSeam_validator get_error_from_result([RESULT#%lu %s]) failed with error: %s\n",result.id, result.name, ex.what());
 		exit(0);
 		return 1;
 	}
@@ -82,7 +82,7 @@ int init_result(RESULT& result, void*& data)
 	//OUTPUT_FILE_INFO &fi = files[0];
 	if(retval)
 	{
-		log_messages.printf(MSG_CRITICAL, "ConvNet_Video_validation: Failed to get output file path: %lu %s\n",result.id, result.name);
+		log_messages.printf(MSG_CRITICAL, "ConvNetSeam_validator: Failed to get output file path: %lu %s\n",result.id, result.name);
 		exit(0);
 		return retval;
 	}
