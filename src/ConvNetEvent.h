@@ -179,7 +179,7 @@ std::string secondsToString(time_t seconds)
 
 bool containsEvent(std::vector<Event> events, std::string type)
 {
-	for(int i = 0; i < events.size(); i++)
+	for(unsigned int i = 0; i < events.size(); i++)
 	{
 		if(events[i].type == type)
 			return true;
@@ -206,7 +206,7 @@ bool Observations::equals(const Observations& other)
 	while(e1.size() > 0)
 	{
 		bool found = false;
-		for(int i = 0; i < e2.size(); i++)
+		for(unsigned int i = 0; i < e2.size(); i++)
 		{
 			if(e1[0].equals(e2[i]))
 			{
@@ -260,7 +260,7 @@ void Observations::getEvents(int tim, std::vector<Event>& dest)
 	dest.clear();
 	//seconds in a day = 3600 * 24 = 86400
 	tim %= 86400; //make sure we are within a valid time for a day
-	for(int i = 0; i < events.size(); i++)
+	for(unsigned int i = 0; i < events.size(); i++)
 	{
 		//check if time is within event time. if so add to dest
 		if(events[i].isOvernight) 
@@ -284,7 +284,7 @@ void Observations::getEvents(std::string tim, std::vector<Event>& dest)
 void Observations::getAllEvents(std::vector<Event>& dest)
 {
 	dest.resize(0);
-	for(int i = 0; i < events.size(); i++)
+	for(unsigned int i = 0; i < events.size(); i++)
 		dest.push_back(events[i]);
 }
 
