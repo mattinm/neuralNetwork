@@ -32,6 +32,7 @@ curFrame, framenum, classIndex are ints
 #include "boinc_api.h"
 #include "mfile.h"
 #include "proc_control.h"
+#include "boinc_opencl.h"
 #endif
 
 using namespace std;
@@ -142,7 +143,7 @@ bool getNextFrame(VideoCapture& video, Mat& frame, int& framenum, int jump = 1)
 	return moreFrames;
 }
 
-int main(int argc, const char** argv)
+int main(int argc, char** argv)
 {
 	if(argc == 1)
 	{
@@ -223,6 +224,7 @@ int main(int argc, const char** argv)
 	}
 
 	#ifdef _BOINC_APP_
+	int retval;
 	cl_device_id cldevice;
 	cl_platform_id platform;
 	boinc_init_diagnostics(BOINC_DIAG_MEMORYLEAKCHECKENABLED);

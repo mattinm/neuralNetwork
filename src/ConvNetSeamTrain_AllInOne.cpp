@@ -345,7 +345,7 @@ int main(int argc, const char **argv)
 	double testPercent = 0;
 	int scaleType = SCALE_DOWN;
 	int inputSize; //assumes square input
-	Size cvSize;
+	cv::Size cvSize;
 	bool horizontal = false;
 	time_t starttime, totalStartTime = time(NULL), totalVideostarttime;
 
@@ -419,7 +419,7 @@ int main(int argc, const char **argv)
 	Net net;
 	net.load(cnn_path.c_str());
 	inputSize = net.getInputWidth();
-	cvSize = Size(inputSize,inputSize);
+	cvSize = cv::Size(inputSize,inputSize);
 
 	if(max_time != -1)//turn hours to seconds
 		max_time *= 3600;
