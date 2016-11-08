@@ -16,19 +16,27 @@ find_package( OpenCV )
 find_package( BOINC )
 find_package( OpenCL )
 find_package( MySQL )
-#find_library( OPENCL_LIBRARY OpenCL.framework )
-
 
 #set include directories
-include_directories( ${OpenCV_INCLUDE_DIRS} 
-	${OpenCL_INCLUDE_DIRS} 
-	${BOINC_INCLUDE_DIRS} 
-	${CMAKE_SOURCE_DIR}/src
-	${MYSQL_INCLUDE_DIR}
-	${BOINC_INCLUDE_DIR}/boinc 
-)
+include_directories( ${CMAKE_SOURCE_DIR}/src )
+IF(OpenCV_FOUND)
+	include_directories(${OpenCV_INCLUDE_DIRS})
+ENDIF(OpenCV_FOUND)
 
+IF(OpenCL_FOUND)
+	include_directories(${OpenCL_INCLUDE_DIRS})
+ENDIF(OpenCL_FOUND)
 
+IF(BOINC_APP_FOUND OR BOINC_SERVER_FOUND)
+	include_directories(
+		${BOINC_INCLUDE_DIR}/boinc
+		${BOINC_INCLUDE_DIR}
+		)
+ENDIF(BOINC_APP_FOUND OR BOINC_SERVER_FOUND)
+
+IF(MYSQL_FOUND)
+	include_directories(${MYSQL_INCLUDE_DIR})
+ENDIF(MYSQL_FOUND)
 
 IF(OpenCV_FOUND AND OpenCL_FOUND)
 	add_executable( ConvNetTrainerCL src/ConvNetTrainerCL.cpp src/ConvNetCL.cpp )
