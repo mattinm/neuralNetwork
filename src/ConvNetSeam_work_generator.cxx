@@ -23,6 +23,7 @@ This is the work generator for Running ConvNetVideoDriverCL_BOINC.
 //Custom
 #include "ConvNetEvent.h"
 #include "ConvNetCL_light.h"
+#include "file_io.hxx"
 
 #define REPLICATION_FACTOR 1
 //CUSHION - maintain this many unsent results
@@ -79,29 +80,28 @@ double estfpops(Job_params& params)
 	double numImages = params.duration_s * 10 / params.jump; //assume 10 fps
 	
 	//per image through net
-	Net net(params.cnns[0]);
+	Net net(params.cnns[0].c_str());
 	double perImageCNN = net.estfpops(); // this to preprocess and run
 	sum += perImageCNN * numImages; // for all cnn stuff
 
 	//per image seamcarve
 	int cnnInputSize = net.getInputWidth();
 	double perImageSeam;
+	int fpopPerPix = 10;
 	int numSeamsToSquare = 224;
 	int numSeamsToSize = 704 - cnnInputSize + 480 - cnnInputSize;
-	if(scaleType == RANDOM_CROP)
+	if(params.scaleType == RANDOM_CROP)
 		perImageSeam = 1000; //??? who knows
-	else if(scaleType == DISTORT_DOWN)
+	else if(params.scaleType == DISTORT_DOWN)
 		perImageSeam = 3000;
-	else if(scaleType == SCALE_DOWN)
+	else if(params.scaleType == SCALE_DOWN)
 	{
 		perImageSeam = 3000; //for the opencv resizing
 		//calc costs, dir, seam, per each pixel (not really true)
-		fpopPerPix = 10;
 		perImageSeam += fpopPerPix * 704*480 * numSeamsToSquare;
 	}
 	else if(CARVE_DOWN_VTH <= params.scaleType&&params.scaleType <= CARVE_DOWN_BOTH_SCALED)
 	{
-		fpopPerPix = 10;
 		perImageSeam += fpopPerPix * 704*480 * numSeamsToSize;
 	}
 	sum += perImageSeam * numImages;
@@ -155,7 +155,7 @@ int make_job(Job_params& params)
 	double credit = fpops_est / (2.5 * 10e10);
 
 	//make a unique name for the job using the speciesID, CNN name, and the video name
-	sprintf(name, "S%d_%lu%s_%s",params.speciesID,cnns.size(),params.cnns[0].c_str(),params.video_name.c_str());
+	sprintf(name, "S%d_%s_%s",params.speciesID,params.cnns[0].c_str(),params.video_name.c_str());
 
 	//Create the input file
 	retval = config.download_path(name, path);
