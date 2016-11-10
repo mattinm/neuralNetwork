@@ -53,24 +53,24 @@ IF(OpenCV_FOUND AND OpenCL_FOUND)
 	add_executable( ConvNetVideoDriverParallelCL_multiNet src/ConvNetVideoDriverParallelCL_multiNet.cpp src/ConvNetCL.cpp)
 
 
-	target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
-	target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
-	target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
-	target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+	target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARY})
+	target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARY})
+	target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARY})
+	target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OpenCL_LIBRARY})
 
 	add_executable( SeamTest src/SeamTest.cpp src/ConvNetSeam )
-	target_link_libraries(SeamTest ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+	target_link_libraries(SeamTest ${OpenCV_LIBS} ${OpenCL_LIBRARY})
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND)
 
 IF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 	add_executable( ConvNetVideoDriverCL_BOINC src/ConvNetVideoDriverCL_BOINC.cpp src/ConvNetCL.cpp)
 	add_executable( ConvNetFullImageDriverCL_BOINC src/ConvNetFullImageDriverCL_BOINC.cpp src/ConvNetCL.cpp)
 
-	target_link_libraries( ConvNetFullImageDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_APP_LIBRARIES} ${BOINC_SERVER_LIBRARIES})
-	target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OPENCL_LIBRARY} ${BOINC_APP_LIBRARIES})
+	target_link_libraries( ConvNetFullImageDriverCL_BOINC ${OpenCV_LIBS} ${OpenCL_LIBRARY} ${BOINC_APP_LIBRARIES} ${BOINC_SERVER_LIBRARIES})
+	target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OpenCL_LIBRARY} ${BOINC_APP_LIBRARIES})
 
 	add_executable( ConvNetSeamRun_BOINC src/ConvNetSeamRun_BOINC.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp src/ConvNetEvent)
-target_link_libraries(ConvNetSeamRun_BOINC ${OPENCL_LIBRARY} ${OpenCV_LIBS} ${BOINC_APP_LIBRARIES})
+target_link_libraries(ConvNetSeamRun_BOINC ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${BOINC_APP_LIBRARIES})
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 
 IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
@@ -101,7 +101,7 @@ ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
 
 IF(OpenCV_FOUND AND OpenCL_FOUND AND MYSQL_FOUND)
 	add_executable( ConvNetSeamTrain_AllInOne src/ConvNetSeamTrain_AllInOne.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp )
-	target_link_libraries( ConvNetSeamTrain_AllInOne ${OPENCL_LIBRARY} ${OpenCV_LIBS} ${MYSQL_LIBRARIES} )
+	target_link_libraries( ConvNetSeamTrain_AllInOne ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${MYSQL_LIBRARIES} )
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND MYSQL_FOUND)
 
 #Image/Binary
@@ -119,14 +119,14 @@ ENDIF(OpenCV_FOUND)
 IF(OpenCL_FOUND)
 	add_executable( ConvNetTrainerCL src/ConvNetTrainerCL.cpp src/ConvNetCL.cpp )
 	add_executable( ConvNetContinuanceCL src/ConvNetContinuanceCL.cpp src/ConvNetCL.cpp )
-	target_link_libraries( ConvNetTrainerCL ${OPENCL_LIBRARY} )
-	target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
+	target_link_libraries( ConvNetTrainerCL ${OpenCL_LIBRARY} )
+	target_link_libraries( ConvNetContinuanceCL ${OpenCL_LIBRARY} )
 
 	add_executable( kernelBuilder src/kernelBuilder.cpp )
-	target_link_libraries( kernelBuilder ${OPENCL_LIBRARY} )
+	target_link_libraries( kernelBuilder ${OpenCL_LIBRARY} )
 
 	add_executable( MNIST_test src/MNIST_test.cpp src/ConvNetCL)
-	target_link_libraries( MNIST_test ${OPENCL_LIBRARY} )
+	target_link_libraries( MNIST_test ${OpenCL_LIBRARY} )
 ENDIF(OpenCL_FOUND)
 
 
