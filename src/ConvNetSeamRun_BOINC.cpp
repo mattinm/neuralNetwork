@@ -153,6 +153,7 @@ int main(int argc, char** argv)
 		printf(" -video=<videoName>             Sets video to run CNN over\n");
 		printf(" -video_start_time=<int>        The start of the video from the DB in seconds.\n");
 		printf(" -video_id=<int>                The unique id for the video.\n");
+		printf(" -cnn_config_id=<int>           The unique id for the cnn_config\n");
 		printf(" One of the following describing how CNN was trained:\n");
 		printf("   -carveDown_both_scaled\n");
 		printf("   -carveDown_both_raw\n");
@@ -177,6 +178,7 @@ int main(int argc, char** argv)
 	int fps = 10;
 	int video_start_time = -1;
 	int video_id = -1;
+	int cnn_config_id = -1;
 
 	//get cmd line args
 	for(int i = 1; i < argc; i++)
@@ -188,6 +190,8 @@ int main(int argc, char** argv)
 			video_path = arg.substr(arg.find('=')+1);
 		else if(arg.find("-video_id=") != string::npos)
 			video_id = stoi(arg.substr(arg.find('=')+1));
+		else if(arg.find("-cnn_config_id=") != string::npos)
+			cnn_config_id = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("-video_start_time=") != string::npos)
 			video_start_time = stoi(arg.substr(arg.find('=')+1));
 		else if(arg == "-carveDown_both_scaled")
@@ -217,7 +221,7 @@ int main(int argc, char** argv)
 		}
 	}
 
-	if(cnn == ".." || video_path == ".." || video_id == -1 || video_start_time == -1 || scaleType == -674)
+	if(cnn == ".." || video_path == ".." || video_id == -1 || video_start_time == -1 || scaleType == -674 || cnn_config_id == -1)
 	{
 		printf("You must have all the required args.\n");
 		return 0;
@@ -442,7 +446,7 @@ int main(int argc, char** argv)
 	*/
 
 	ofstream outfile("results.txt");
-	outfile << cnn << endl;
+	outfile << cnn_config_id << endl;
 	outfile << video_id << endl;
 	outfile << obs.toString();
 	outfile.close();

@@ -25,8 +25,8 @@ using namespace std;
 
 struct cnn_output
 {
-	string cnn;
-	string video_id;
+	string cnn_config_id;
+	string video_id; 
 	Observations obs;
 };
 
@@ -94,7 +94,7 @@ int init_result(RESULT& result, void*& data)
 	cnn_output *res = new cnn_output();
 	string line;
 	getline(infile,line);
-	res->cnn = line;
+	res->cnn_config_id = line;
 	getline(infile,line);
 	res->video_id = line;
 	stringstream ss;

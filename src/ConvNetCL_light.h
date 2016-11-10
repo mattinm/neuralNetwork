@@ -122,15 +122,15 @@ private: 	// members
 		std::vector<std::vector<double> > *__dataPointer;
 		std::vector<std::vector<double> > __confidences; // image<list of confidences for each class<confidence> > 
 
-	int fpop_mult = 1;
+	int fpop_mult = 8;
 	int fpop_add = 1;
-	int fpop_compare = 1;
-	int fpop_andor = 1;
-	int fpop_array = 1;
-	int fpop_assign = 1;
+	int fpop_compare = 0;
+	int fpop_andor = 0;
+	int fpop_array = 0;
+	int fpop_assign = 0;
 	int fpop_pluseq = fpop_add + fpop_assign;
 	int fpop_timeseq = fpop_mult + fpop_assign;
-	int fpop_exp = 1;
+	int fpop_exp = 20;
 
 public: 	// functions
 	//Constructors and Destructors

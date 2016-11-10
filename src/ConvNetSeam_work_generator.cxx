@@ -36,6 +36,7 @@ typedef unsigned int uint;
 
 struct Job_params{
 	vector<string> cnns;
+	int cnn_config_id;
 	string video_name;
 	string video_id;
 	int start_time;
@@ -152,7 +153,7 @@ int make_job(Job_params& params)
 
 	double fpops_est = estfpops(params);
 
-	double credit = fpops_est / (2.5 * 10e10);
+	// double credit = fpops_est / (2.5 * 10e10);
 
 	//make a unique name for the job using the speciesID, CNN name, and the video name
 	sprintf(name, "S%d_%s_%s",params.speciesID,params.cnns[0].c_str(),params.video_name.c_str());
@@ -211,7 +212,7 @@ int make_job(Job_params& params)
 		params.jump,
 		params.start_time);//, extraCNNs.c_str());
 	
-	sprintf(additional_xml, "<credit>%.3lf</credit>", credit);
+	// sprintf(additional_xml, "<credit>%.3lf</credit>", credit);
 
 
 	ostringstream input_template_stream;
@@ -307,7 +308,8 @@ void usage()
 	printf("-v | --version          Shows version information.\n");
 	printf("-h | --help             Display this usage statement.\n");
 	printf("\nCNN flags:\n");
-	printf("--cnn=<pathToCNN>       A CNN that should be used to run over video. Must be called one or more times.\n");
+	// printf("--cnn=<pathToCNN>       A CNN that should be used to run over video. Must be called one or more times.\n");
+	printf("--cnn_config_id=<int>   From DB.\n");
 	printf("--batchSize=<int>       How many frames that will be seamcarved before running through cnn. Default 10..\n");
 	printf("--jump=<int>            A jump of 10 would run the CNN over every 10th frame. Defaults to 1.\n");
 	printf("One of the following is required regarding how the CNN was trained:\n");
@@ -332,7 +334,8 @@ void main_loop(int argc, char** argv)
 	int locationId = -1;
 	int number_jobs = 100; //jobs to generate when under the cushion
 
-	vector<string> cnns;
+	vector<string> cnns(1);
+	int cnn_config_id = -1;
 	int batchSize = 10;
 	int jump = 1;
 	bool expertFinished = false;
@@ -362,8 +365,10 @@ void main_loop(int argc, char** argv)
 			printf("%s\n",SVN_VERSION);
 		}
 		//program args
-		else if(arg.find("--cnn=") != string::npos)
-			cnns.push_back(arg.substr(arg.find('=')+1));
+		// else if(arg.find("--cnn=") != string::npos)
+		// 	cnns.push_back(arg.substr(arg.find('=')+1));
+		else if(arg.find("--cnn_config_id=")!= string::npos)
+			cnn_config_id = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("--batchSize=") != string::npos)
 			batchSize = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("--jump=") != string::npos)
@@ -400,9 +405,22 @@ void main_loop(int argc, char** argv)
 		return 0;
 	}
 
+	if(cnn_config_id == -1)
+	{
+		printf("You need a cnn_config_id\n");
+		return 0;
+	}
+
 	init_wildlife_database();	
 	
 	check_stop_daemons();
+
+	ostringstream get_cnn_name_query;
+	get_cnn_name_query << "SELECT location FROM cnn_config INNER JOIN cnn ON cnn.id = cnn_config.cnn_id WHERE cnn_config.id = " << cnn_config_id << ";";
+	mysql_query_check(wildlife_db_conn, get_cnn_name_query.str());
+	MYSQL_RES* cnn_result = mysql_store_result(wildlife_db_conn);
+	MYSQL_ROW cnn_row = mysql_fetch_row(cnn_result);
+	cnns[0] = cnn_row[0];
 
 	retval = count_unsent_results(unsent_results, app.id);
 	if(retval)
@@ -460,6 +478,7 @@ void main_loop(int argc, char** argv)
 	{
 		Job_params params;
 		params.cnn = cnns;
+		params.cnn_config_id = cnn_config_id;
 		params.video_id = atoi(video_row[0]);
 		params.video_name = video_row[1];
 		params.video_name += ".mp4";
