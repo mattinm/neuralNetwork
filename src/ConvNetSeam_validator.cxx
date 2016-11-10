@@ -28,6 +28,7 @@ struct cnn_output
 	string cnn_config_id;
 	string video_id; 
 	Observations obs;
+	string raw_location;
 };
 
 static inline std::string &ltrim(std::string &s)
@@ -50,7 +51,7 @@ static inline std::string &trim(std::string &s)
 int init_result(RESULT& result, void*& data)
 {
 	//vector<OUTPUT_FILE_INFO> files;
-	OUTPUT_FILE_INFO fi;
+	vector<string> filepaths;
 	try
 	{
 		string eventString = parse_xml<string>(result.stderr_out, "error");
@@ -77,9 +78,7 @@ int init_result(RESULT& result, void*& data)
 		return 1;
 	}
 
-	int retval = get_output_file_path(result, fi.path);
-	//int retval = get_output_file_infos(result, files);
-	//OUTPUT_FILE_INFO &fi = files[0];
+	int retval = get_output_file_paths(result, filepaths);
 	if(retval)
 	{
 		log_messages.printf(MSG_CRITICAL, "ConvNetSeam_validator: Failed to get output file path: %lu %s\n",result.id, result.name);
@@ -87,9 +86,9 @@ int init_result(RESULT& result, void*& data)
 		return retval;
 	}
 
-	log_messages.printf(MSG_DEBUG,"Result file path: '%s'\n", fi.path.c_str());
+	log_messages.printf(MSG_DEBUG,"Result file path 0: '%s'\n", filepaths[0].c_str());
 
-	ifstream infile(fi.path);
+	ifstream infile(filepaths[0]);
 
 	cnn_output *res = new cnn_output();
 	string line;
@@ -104,7 +103,7 @@ int init_result(RESULT& result, void*& data)
 	}
 	res->obs.load(ss.str());
 
-
+	res->raw_location = filepaths[1];
 	
 	data = (void*)res;
 

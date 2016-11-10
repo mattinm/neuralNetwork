@@ -106,6 +106,7 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 	{
 		cnn_output *data;
 		init_result(canonical_result,(void*)data);
+		
 
 		ostringstream event_query;
 		event_query << "SELECT id, event FROM event_type;";

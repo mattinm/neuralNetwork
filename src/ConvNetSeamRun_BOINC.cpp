@@ -41,18 +41,21 @@ using namespace cv;
 struct DoneFrame{
 	int framenum;
 	int classIndex;
+	vector<double> confidences;
 
-	DoneFrame(int framenum, int classIndex);
+	DoneFrame(int framenum, int classIndex, vector<double>& confidences);
 };
 
-DoneFrame::DoneFrame(int framenum, int classIndex)
+DoneFrame::DoneFrame(int framenum, int classIndex, vector<double>& confidences)
 {
 	this->framenum = framenum;
 	this->classIndex = classIndex;
+	this->confidences = confidences;
 }
 
 vector<DoneFrame> doneFrames;
 int curFrame = 0;
+int numClasses;
 
 //BOINC FUNCTIONS
 std::string getBoincFilename(std::string filename) throw(std::runtime_error) {
@@ -68,12 +71,19 @@ std::string getBoincFilename(std::string filename) throw(std::runtime_error) {
 
 void writeCheckpoint() throw(std::runtime_error)
 {
+	if(doneFrames.size() == 0)
+		return;
 	string resolved_checkpoint_name = getBoincFilename("checkpoint.txt");
 	ofstream check(resolved_checkpoint_name.c_str(), ios::trunc);
 	check << curFrame << endl;
+	check << doneFrames.size() << endl;
+	check << doneFrames[0].confidences.size() << endl;
 	for(size_t i = 0; i < doneFrames.size(); i++)
 	{
-		check << doneFrames[i].framenum << " " << doneFrames[i].classIndex << endl;
+		check << doneFrames[i].framenum << " " << doneFrames[i].classIndex;
+		for(int j = 0; j < doneFrames[i].confidences.size(); j++)
+			check << " " << doneFrames[i].confidences[j];
+		check << endl;
 	}
 	check.close();
 
@@ -83,18 +93,28 @@ bool readCheckpoint()
 {
 	string line, resolved_checkpoint_name = getBoincFilename("checkpoint.txt");
 	int framenum, classIndex;
+	
 	ifstream check(resolved_checkpoint_name.c_str());
 	if(!check.is_open())
 		return false;
 	//the first line is our current frame
 	getline(check, line);
 	curFrame = stoi(line);
+	//the second line is the length of the vector
+	getline(check, line);
+	doneFrames.resize(stoi(line));
+	//the third line is the number of classes
+	getline(check, line);
+	int numClasses = stoi(line);
+	vector<double> curConf(numClasses);
 	//the rest of the lines are frame numbers and calculated class indexes
 	while(getline(check, line))
 	{
 		stringstream ss(line);
 		ss >> framenum >> classIndex;
-		doneFrames.push_back(DoneFrame(framenum, classIndex));
+		for(int i = 0; i < numClasses; i++)
+			ss >> curConf[i];
+		doneFrames.push_back(DoneFrame(framenum, classIndex,curConf));
 	}
 	check.close();
 	return true;
@@ -306,6 +326,7 @@ int main(int argc, char** argv)
 
 	bool cont = true;
 	vector<int> calcClasses;
+	vector<vector<double> > curConfidences;
 	Mat frame;
 
 	int frameWidth = video.get(CV_CAP_PROP_FRAME_WIDTH);
@@ -398,9 +419,10 @@ int main(int argc, char** argv)
 		net.setData(currentFrames);
 		net.run();
 		net.getCalculatedClasses(calcClasses);
+		net.getConfidences(curConfidences);
 
 		for(int i = 0; i < currentFramenums.size(); i++)
-			doneFrames.push_back(DoneFrame(currentFramenums[i],calcClasses[i]));
+			doneFrames.push_back(DoneFrame(currentFramenums[i],calcClasses[i], curConfidences[i]));
 
 	}
 
@@ -445,11 +467,27 @@ int main(int argc, char** argv)
 	where EVENT is from Event::toString 
 	*/
 
-	ofstream outfile("results.txt");
+	//list of calculated events with no smoothing / signal processing / etc.
+	ofstream outfile(getBoincFilename("results.txt"));
 	outfile << cnn_config_id << endl;
 	outfile << video_id << endl;
 	outfile << obs.toString();
 	outfile.close();
+
+	//same format as checkpoint file
+	ofstream rawout(getBoincFilename("raw_results.txt"));
+	rawout << curFrame << endl;
+	rawout << doneFrames.size() << endl;
+	rawout << doneFrames[0].confidences.size() << endl;
+	for(size_t i = 0; i < doneFrames.size(); i++)
+	{
+		rawout << doneFrames[i].framenum << " " << doneFrames[i].classIndex;
+		for(int j = 0; j < doneFrames[i].confidences.size(); j++)
+			rawout << " " << doneFrames[i].confidences[j];
+		rawout << endl;
+	}
+	rawout.close();
+
 
 	#ifdef _BOINC_APP_
 	boinc_finish(0);
