@@ -129,9 +129,13 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt\n");
+		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt deviceNum(optional)\n");
 		return 0;
 	}
+	int device = 0;
+	if(argc == 4)
+		device = atoi(argv[3]);
+
 	ifstream training_label_in("train-labels.idx1-ubyte");
 	ifstream training_data_in("train-images.idx3-ubyte");
 	ifstream test_label_in("t10k-labels.idx1-ubyte");
@@ -172,7 +176,7 @@ int main(int argc, char** argv)
 	net.preprocessCollectively();
 	net.setSaveName(argv[2]);
 	net.setTrainingType(TRAIN_AS_IS);
-	net.setDevice(0);
+	net.setDevice(device);
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;
