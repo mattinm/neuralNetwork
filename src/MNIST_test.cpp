@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <fstream>
 #include <vector>
+#include <iostream>
+
+using namespace std;
 
 typedef vector<vector<vector<double> > > imVector;
 
@@ -41,6 +44,14 @@ int readInt(ifstream& in)
 	int num;
 	in.read((char*)&num,sizeof(int));
 	return num;
+}
+
+int readBigEndianInt(ifstream& in)
+{
+	int out = 0;
+	for(int i=3; i >= 0; i--)
+		out |= (readUChar(in) << 8*(i));
+	return out;
 }
 unsigned int readUInt(ifstream& in)
 {
@@ -114,27 +125,82 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, short x,
 	return (double)readUChar(trueval_in);
 }
 
-int main(void)
+int main(int argc, char** argv)
 {
+	if(argc < 3)
+	{
+		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt\n");
+		return 0;
+	}
 	ifstream training_label_in("train-labels.idx1-ubyte");
 	ifstream training_data_in("train-images.idx3-ubyte");
 	ifstream test_label_in("t10k-labels.idx1-ubyte");
 	ifstream test_data_in("t10k-images.idx3-ubyte");
 
-	vector<imVector> training_data, test_data;
-	vector<double> training_true, test_true;
+	readInt(training_label_in); //magic number
+	int numTraining = readBigEndianInt(training_label_in); //number of items
 
-	training_label_in.readInt(); //magic number
-	int numTraining = training_label_in.readInt(); //number of items
-
-	test_label_in.readInt(); //magic number
-	int numTest = test_label_in.readInt();
+	readInt(test_label_in); //magic number
+	int numTest = readBigEndianInt(test_label_in);
 
 	for(int i =0; i < 4; i++)
 	{
-		training_data_in.readInt();
-		test_data_in.readInt();
+		readInt(training_data_in);
+		readInt(test_data_in);
 	}
 
 	printf("numTrain %d numTest %d\n", numTraining, numTest);
+
+	vector<imVector> training_data(numTraining), test_data(numTest);
+	vector<double> training_true(numTraining), test_true(numTest);
+
+	for(int i = 0; i < numTraining; i++)
+	{
+		training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i],28,28,1,1);
+	}
+	for(int i = 0; i < numTest; i++)
+	{
+		test_true[i] = getNextImage(test_data_in, test_label_in, test_data[i],28,28,1,1);
+	}
+
+	training_label_in.close();
+	training_data_in.close();
+	test_label_in.close();
+	test_data_in.close();
+
+	Net net(argv[1]);
+	net.preprocessCollectively();
+	net.setSaveName(argv[2]);
+	net.setTrainingType(TRAIN_AS_IS);
+	net.setDevice(0);
+	if(!net.finalize())
+	{
+		cout << net.getErrorLog() << endl;
+		cout << "Something went wrong making the net. Exiting." << endl;
+		return 0;
+	}
+	net.addTrainingData(training_data,training_true);
+
+	net.train();
+
+	net.addData(test_data);
+
+	net.run();
+
+	vector<int> predictions;
+
+	net.getCalculatedClasses(predictions);
+
+	int numCorrect = 0;
+
+	for(int i = 0; i < predictions.size(); i++)
+	{
+		if(predictions[i] == test_true[i])
+			numCorrect++;
+	}
+
+	printf("Results on test data: %lf%%\n", 100.0 * numCorrect/predictions.size());
+
+
+	return 0;
 }

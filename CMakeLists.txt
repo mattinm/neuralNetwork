@@ -47,15 +47,12 @@ IF(MYSQL_FOUND)
 ENDIF(MYSQL_FOUND)
 
 IF(OpenCV_FOUND AND OpenCL_FOUND)
-	add_executable( ConvNetTrainerCL src/ConvNetTrainerCL.cpp src/ConvNetCL.cpp )
-	add_executable( ConvNetContinuanceCL src/ConvNetContinuanceCL.cpp src/ConvNetCL.cpp )
 	add_executable( ConvNetFullImageDriverCL src/ConvNetFullImageDriverCL.cpp src/ConvNetCL.cpp)
 	add_executable( ConvNetFullImageDriverParallelCL src/ConvNetFullImageDriverParallelCL.cpp src/ConvNetCL.cpp)
 	add_executable( ConvNetVideoDriverParallelCL src/ConvNetVideoDriverParallelCL.cpp src/ConvNetCL.cpp)
 	add_executable( ConvNetVideoDriverParallelCL_multiNet src/ConvNetVideoDriverParallelCL_multiNet.cpp src/ConvNetCL.cpp)
 
-	target_link_libraries( ConvNetTrainerCL ${OPENCL_LIBRARY} )
-	target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
+
 	target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 	target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 	target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
@@ -120,8 +117,16 @@ ENDIF(OpenCV_FOUND)
 
 #Misc
 IF(OpenCL_FOUND)
+	add_executable( ConvNetTrainerCL src/ConvNetTrainerCL.cpp src/ConvNetCL.cpp )
+	add_executable( ConvNetContinuanceCL src/ConvNetContinuanceCL.cpp src/ConvNetCL.cpp )
+	target_link_libraries( ConvNetTrainerCL ${OPENCL_LIBRARY} )
+	target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
+
 	add_executable( kernelBuilder src/kernelBuilder.cpp )
 	target_link_libraries( kernelBuilder ${OPENCL_LIBRARY} )
+
+	add_executable( MNIST_test src/MNIST_test.cpp src/ConvNetCL)
+	target_link_libraries( MNIST_test ${OPENCL_LIBRARY} )
 ENDIF(OpenCL_FOUND)
 
 
