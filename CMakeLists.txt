@@ -17,8 +17,20 @@ find_package( BOINC )
 find_package( OpenCL )
 find_package( MySQL )
 
+FIND_LIBRARY(UNDVC_COMMON_LIBRARY
+	NAMES undvc_common
+	PATHS ../undvc_common/build
+
+	PATH_SUFFIXES lib
+)
+FIND_PATH(UNDVC_COMMON_INCLUDE_DIR file_io.hxx
+	../undvc_common #add additional paths here if undvc_common in different directory
+	${PROJECT_SOURCE_DIR}/../undvc_common
+)
+
 #set include directories
-include_directories( ${CMAKE_SOURCE_DIR}/src )
+include_directories( ${UNDVC_COMMON_INCLUDE_DIR} )
+include_directories( ${PROJECT_SOURCE_DIR}/src )
 IF(OpenCV_FOUND)
 	include_directories(${OpenCV_INCLUDE_DIRS})
 ENDIF(OpenCV_FOUND)
@@ -30,6 +42,10 @@ ENDIF(OpenCL_FOUND)
 IF(BOINC_APP_FOUND OR BOINC_SERVER_FOUND)
 	include_directories(
 		${BOINC_INCLUDE_DIR}/boinc
+		${BOINC_INCLUDE_DIR}/api
+		${BOINC_INCLUDE_DIR}/lib
+		${BOINC_INCLUDE_DIR}/sched
+		${BOINC_INCLUDE_DIR}/tools
 		${BOINC_INCLUDE_DIR}
 		)
 	add_definitions(-D_BOINC_)
@@ -45,6 +61,9 @@ ENDIF(BOINC_SERVER_FOUND)
 IF(MYSQL_FOUND)
 	include_directories(${MYSQL_INCLUDE_DIR})
 ENDIF(MYSQL_FOUND)
+
+add_library(UNDVC_COMMON_LIBRARY STATIC IMPORTED GLOBAL ../undvc_common/build/libundvc_common.a)
+#set_target_properties(UNDVC_COMMON_LIBRARY PROPERTIES IMPORTED_LOCATION ../undvc_common/build/)
 
 IF(OpenCV_FOUND AND OpenCL_FOUND)
 	add_executable( ConvNetFullImageDriverCL src/ConvNetFullImageDriverCL.cpp src/ConvNetCL.cpp)
@@ -78,7 +97,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
 		src/ConvNetSeam_work_generator
 		src/ConvNetCL_light
 		)
-	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
+	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_LIBRARIES} ${BOINC_APP_LIBRARIES})
 
 	add_executable(ConvNetSeam_validator
 		${BOINC_INCLUDE_DIR}/sched/validator
