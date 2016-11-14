@@ -40,13 +40,14 @@ struct Job_params{
 	string video_name;
 	string video_id;
 	int start_time;
-	int speciesID;
+	int species_id;
 	int stride;
 	int jump;
 	double duration_s;
 	int scaleType;
 	string md5_hash;
 	int filesize;
+	int batchSize;
 };
 
 const char* app_name = "ConvNet_Video";
@@ -87,7 +88,7 @@ double estfpops(Job_params& params)
 
 	//per image seamcarve
 	int cnnInputSize = net.getInputWidth();
-	double perImageSeam;
+	double perImageSeam= 2000;
 	int fpopPerPix = 10;
 	int numSeamsToSquare = 224;
 	int numSeamsToSize = 704 - cnnInputSize + 480 - cnnInputSize;
@@ -155,8 +156,8 @@ int make_job(Job_params& params)
 
 	// double credit = fpops_est / (2.5 * 10e10);
 
-	//make a unique name for the job using the speciesID, CNN name, and the video name
-	sprintf(name, "S%d_%s_%s",params.speciesID,params.cnns[0].c_str(),params.video_name.c_str());
+	//make a unique name for the job using the species_id, CNN name, and the video name
+	sprintf(name, "S%d_%s_%s",params.species_id,params.cnns[0].c_str(),params.video_name.c_str());
 
 	//Create the input file
 	retval = config.download_path(name, path);
@@ -187,13 +188,13 @@ int make_job(Job_params& params)
 	copy_file_to_download_dir(training_kernel);
 	copy_file_to_download_dir(seamcarve_kernel);
 
-	infiles.push_back(running_kernel.substr(running_kernel.rfind('/')+1));
-	infiles.push_back(training_kernel.substr(training_kernel.rfind('/')+1));
-	infiles.push_back(seamcarve_kernel.substr(seamcarve_kernel.rfind('/')+1));
+	infiles.push_back(running_kernel.substr(running_kernel.rfind('/')+1).c_str());
+	infiles.push_back(training_kernel.substr(training_kernel.rfind('/')+1).c_str());
+	infiles.push_back(seamcarve_kernel.substr(seamcarve_kernel.rfind('/')+1).c_str());
 
 	//bring in cnn
-	copy_file_to_download_dir(params.cnn[0]);
-	infiles.push_back(short_cnns[0]);
+	copy_file_to_download_dir(params.cnns[0].c_str());
+	infiles.push_back(short_cnns[0].c_str());
 
 	//Register job with BOINC
 	sprintf(path, "templates/%s", out_template_file);
@@ -222,7 +223,8 @@ int make_job(Job_params& params)
 		<< "</file_info>" << endl
 		<< "<file_info>" << endl
 		<< "	<number>1</number>" <<endl
-		<< "</file_info>" << endl		<< "<file_info>" << endl
+		<< "</file_info>" << endl
+		<< "<file_info>" << endl
 		<< "	<number>2</number>" <<endl
 		<< "</file_info>" << endl
 		<< "<file_info>" << endl
@@ -230,7 +232,7 @@ int make_job(Job_params& params)
 		<< "</file_info>" << endl
 		<< "<file_info>" << endl
 		<< "	<number>4</number>" <<endl
-		<< "	<url>http://wildlife.und.edu" << params.video_name.substr(0,params.video_name.rfind('/')+1) << "</url>" <<endl;
+		<< "	<url>http://wildlife.und.edu" << params.video_name.substr(0,params.video_name.rfind('/')+1) << "</url>" <<endl
 		<< "	<nbytes>" << params.filesize << "</nbytes>" << endl
 		<< "	<md5_cksum>" << params.md5_hash << "</md5_cksum>" << endl
 		<< "</file_info>" << endl
@@ -267,7 +269,7 @@ int make_job(Job_params& params)
 
 	return create_work(
 		wu,
-		input_template_stream,
+		input_template_stream.str().c_str(),
 		path,
 		config.project_path(path),
 		infiles.data(),
@@ -373,7 +375,7 @@ void main_loop(int argc, char** argv)
 			batchSize = stoi(arg.substr(arg.find('=')+1));
 		else if(arg.find("--jump=") != string::npos)
 			jump = stoi(arg.substr(arg.find('=')+1));
-		else if(arg.find("--help") != string::npos || arg.find("-h") != string::npos);
+		else if(arg.find("--help") != string::npos || arg.find("-h") != string::npos)
 		{
 			usage();
 			exit(0);
@@ -395,20 +397,20 @@ void main_loop(int argc, char** argv)
 		else
 		{
 			printf("Unknown arg: \"%s\"\n", argv[i]);
-			return 0;
+			return;
 		}
 	}
 
 	if(scaleType == -1)
 	{
 		printf("You must choose a scale type describing how the images were preprocessed when training the CNN.\n");
-		return 0;
+		return;
 	}
 
 	if(cnn_config_id == -1)
 	{
 		printf("You need a cnn_config_id\n");
-		return 0;
+		return;
 	}
 
 	init_wildlife_database();	
@@ -477,7 +479,7 @@ void main_loop(int argc, char** argv)
 	while((video_row = mysql_fetch_row(video_result)))
 	{
 		Job_params params;
-		params.cnn = cnns;
+		params.cnns = cnns;
 		params.cnn_config_id = cnn_config_id;
 		params.video_id = atoi(video_row[0]);
 		params.video_name = video_row[1];
