@@ -129,12 +129,15 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt deviceNum(optional)\n");
+		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt deviceNum -DE(optional)\n");
 		return 0;
 	}
 	int device = 0;
+	bool useDE = false;
 	if(argc == 4)
 		device = atoi(argv[3]);
+	if(string(argv[4]) == "-DE")
+		useDE = true;
 
 	ifstream training_label_in("train-labels.idx1-ubyte");
 	ifstream training_data_in("train-images.idx3-ubyte");
@@ -185,7 +188,10 @@ int main(int argc, char** argv)
 	}
 	net.addTrainingData(training_data,training_true);
 
-	net.train();
+	if(useDE)
+		net.DETrain(100);
+	else
+		net.train();
 
 	net.addData(test_data);
 
