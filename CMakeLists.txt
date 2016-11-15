@@ -23,13 +23,9 @@ FIND_LIBRARY(UNDVC_COMMON_LIBRARY
 
 	PATH_SUFFIXES lib
 )
-FIND_PATH(UNDVC_COMMON_INCLUDE_DIR file_io.hxx
-	../undvc_common #add additional paths here if undvc_common in different directory
-	${PROJECT_SOURCE_DIR}/../undvc_common
-)
+
 
 #set include directories
-include_directories( ${UNDVC_COMMON_INCLUDE_DIR} )
 include_directories( ${PROJECT_SOURCE_DIR}/src )
 IF(OpenCV_FOUND)
 	include_directories(${OpenCV_INCLUDE_DIRS})
@@ -93,6 +89,12 @@ target_link_libraries(ConvNetSeamRun_BOINC ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${BO
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 
 IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
+	FIND_PATH(UNDVC_COMMON_INCLUDE_DIR file_io.hxx
+		../undvc_common #add additional paths here if undvc_common in different directory
+		${PROJECT_SOURCE_DIR}/../undvc_common
+	)
+	include_directories( ${UNDVC_COMMON_INCLUDE_DIR} )
+
 	add_executable(ConvNetSeam_work_generator
 		src/ConvNetSeam_work_generator
 		src/ConvNetCL_light

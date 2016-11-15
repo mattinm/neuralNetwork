@@ -8,6 +8,7 @@
 #include <random>
 #include <unordered_map>
 #include <sstream>
+#include <mach/mach.h>
 
 // 	includes brought in from ConvNetCL.h
 //
@@ -134,17 +135,17 @@ Net::Net(int inputWidth, int inputHeight, int inputDepth)
 
 Net::~Net()
 {
+	// cout << "in ~Net" << endl;
 	Layer *point;
 	for(int i=0; i< __layers.size(); i++)
 	{
-		point = __layers.back();
+		point = __layers[i];
 		if(point->layerType == CONV_LAYER)
 		{
 			ConvLayer* conv = (ConvLayer*)point;
 			delete conv->weights;
 			delete conv->biases;
 		}
-		__layers.pop_back();
 		delete point;
 	}
 
@@ -157,6 +158,8 @@ Net::~Net()
 		clReleaseCommandQueue(queue);
 		clReleaseMemObject(*neurons);
 		clReleaseMemObject(*prevNeurons);
+		// delete neurons;
+		// delete prevNeurons;
 		for(int w = 0; w < clWeights.size(); w++)
 		{
 			clReleaseMemObject(clWeights[w]);
@@ -164,6 +167,7 @@ Net::~Net()
 		}
 		//running
 		clReleaseKernel(convKernelF);
+		clReleaseKernel(convKernelFC);
 		clReleaseKernel(zeroPadKernelF);
 		clReleaseKernel(maxPoolKernelF);
 		clReleaseKernel(reluKernelF);
@@ -172,24 +176,47 @@ Net::~Net()
 		clReleaseProgram(CNForward);
 
 		//training
-		clReleaseKernel(convKernel);
-		clReleaseKernel(zeroPadKernel);
-		clReleaseKernel(maxPoolKernel);
 		clReleaseKernel(reluKernel);
+		clReleaseKernel(reluBackKernel);
 		clReleaseKernel(leakyReluKernel);
-		clReleaseKernel(softmaxKernel);
+		clReleaseKernel(leakyReluBackKernel);
+		clReleaseKernel(convKernel);
 		clReleaseKernel(convBackNeuronsKernel);
 		clReleaseKernel(convBackBiasesKernel);
 		clReleaseKernel(convBackWeightsKernel);
+		clReleaseKernel(convBackWeightsMomentKernel);
+		clReleaseKernel(zeroPadKernel);
 		clReleaseKernel(zeroPadBackKernel);
+		clReleaseKernel(maxPoolKernel);
 		clReleaseKernel(maxPoolBackKernel);
-		clReleaseKernel(reluBackKernel);
-		clReleaseKernel(leakyReluBackKernel);
+		clReleaseKernel(softmaxKernel);
 		clReleaseKernel(softmaxBackKernel);
+		clReleaseKernel(copyArrayKernel);
+		clReleaseKernel(maxSubtractionKernel);
+		clReleaseKernel(vectorESumKernel);
+		clReleaseKernel(plusEqualsKernel);
+		clReleaseKernel(divideEqualsKernel);
+		// clReleaseKernel(convKernel);
+		// clReleaseKernel(zeroPadKernel);
+		// clReleaseKernel(maxPoolKernel);
+		// clReleaseKernel(reluKernel);
+		// clReleaseKernel(leakyReluKernel);
+		// clReleaseKernel(softmaxKernel);
+		// clReleaseKernel(convBackNeuronsKernel);
+		// clReleaseKernel(convBackBiasesKernel);
+		// clReleaseKernel(convBackWeightsKernel);
+		// clReleaseKernel(zeroPadBackKernel);
+		// clReleaseKernel(maxPoolBackKernel);
+		// clReleaseKernel(reluBackKernel);
+		// clReleaseKernel(leakyReluBackKernel);
+		// clReleaseKernel(softmaxBackKernel);
+
 		clReleaseProgram(CNTraining);
+		// clReleaseCommandQueue(queue);
 	}
 
 	clReleaseContext(__context);
+	// cout << "end ~Net" << endl;
 }
 
 Net& Net::operator=(const Net& other)
@@ -613,6 +640,9 @@ string Net::getErrorLog() const
 
 bool Net::finalize()
 {
+	if(__isFinalized)
+		return true;
+
 	__errorLog = "";
 	bool returnVal = true;
 
@@ -1896,6 +1926,7 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 		nets[i]->setDevice(__device);
 		nets[i]->setTrainingType(TRAIN_AS_IS);
 		nets[i]->__dataPreprocessed = true;
+		nets[i]->__isTraining = true;
 		if(!__preprocessIndividual) //this means preprocess collective
 		{
 			//store the mean and stddev for when we choose the best
@@ -1903,37 +1934,89 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 			nets[i]->__mean = __mean;
 			nets[i]->__stddev = __stddev;
 		}
+		nets[i]->finalize();
 	}
 
 	vector<vector<double> > curTrainData(1);
 	double curTrueVal;
 	vector<vector<double> > curConfid;
 	vector<Net*> helperParents(3); //[0] is target, [1,2] are parameter
+	vector<int> calcedClasses;
 	int curGen = 0;
+	vector<vector<double> > fullEpochData(trainingData.size());
 	while(curGen < generations)
 	{
 		if(curTrainDataIndex == trainingData.size())
 		{
+			//end of an epoch
+			for(int f = 0; f < fullEpochData.size(); f++)
+			{
+				fullEpochData[f] = *(trainingData[f]);
+			}
+
+			//run all indivs over train set w/out updating weights to see how their doing
+			double maxAcc = 0.0;
+			for(int i = 0; i < nets.size(); i++)
+			{
+				int numRight = 0;
+				// nets[i]->finalize(); //allocate memory
+				nets[i]->__dataPointer = &fullEpochData;
+				nets[i]->run();
+				nets[i]->getCalculatedClasses(calcedClasses);
+				for(int j = 0; i < calcedClasses.size(); j++)
+					if(calcedClasses[j] == trueVals[j])
+						numRight++;
+				double accuracy = 100.0 * numRight/calcedClasses.size();
+				if(accuracy > maxAcc)
+					maxAcc = accuracy;
+			}
+
+			//get new training data
 			getTrainingData(trainingData, trueVals);
 			curTrainDataIndex = 0;
 		}
 
+// struct task_basic_info t_info;
+// mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
+
+// if (KERN_SUCCESS != task_info(mach_task_self(),
+//                               TASK_BASIC_INFO, (task_info_t)&t_info, 
+//                               &t_info_count))
+// {
+//     return;
+// }
+// cout << "Mem before getFitness " << t_info.virtual_size << endl;
+
 		//run nets over a piece of train data (get fitness)
 		curTrainData[0] = *(trainingData[curTrainDataIndex]);
+		printf("Training Data %d of %lu. Gen %d\n", curTrainDataIndex, trainingData.size(),curGen);
 		curTrueVal = trueVals[curTrainDataIndex];
 		curTrainDataIndex++;
 		for(int i = 0; i < nets.size(); i++)
 		{
-			nets[i]->finalize(); //allocate memory
-			nets[i]->__data = curTrainData;
+			// printf("get fitness net #%d\n", i);
+			// nets[i]->finalize(); //allocate memory
+			nets[i]->__dataPointer = &curTrainData;
 			nets[i]->run();
 			nets[i]->getConfidences(curConfid);
 			netfit[i] = getFitness(curConfid[0], curTrueVal);
 		}
 
+
+
+
 		//get indivs for mutation
 		for(int i = 0; i < nets.size(); i++)
 		{
+
+// if (KERN_SUCCESS != task_info(mach_task_self(),
+//                   TASK_BASIC_INFO, (task_info_t)&t_info, 
+//                   &t_info_count))
+// {
+//     return;
+// }
+// cout << "Mem before mutation " << t_info.virtual_size << endl;
+			// printf("mutate net #%d\n", i);
 			//get target and parameter vectors
 			int target = getTargetVector(__targetSelectionMethod,netfit,i);
 			getHelperVectors(nets, target, i, helperParents); //fills helperParents
@@ -1941,24 +2024,93 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 			//make donor vector. will be same structure as target
 			Net* donor = makeDonor(helperParents,mutationScale);
 
+
+// if (KERN_SUCCESS != task_info(mach_task_self(),
+//                               TASK_BASIC_INFO, (task_info_t)&t_info, 
+//                               &t_info_count))
+// {
+//     return;
+// }
+// cout << "Mem before crossover " << t_info.virtual_size << endl;
+
+			// printf("crossover net #%d\n", i);
 			//apply crossover to get trial vector of same structure as original
 			Net* trial = crossover(nets[i],donor, crossMethod, crossProb);
 
+			// printf("selection net #%d\n", i);
 			//apply selection
+			trial->setDevice(__device);
+			trial->setTrainingType(TRAIN_AS_IS);
+			trial->__dataPreprocessed = true;
+			trial->__isTraining = true;
+			if(!__preprocessIndividual) //this means preprocess collective
+			{
+				//store the mean and stddev for when we choose the best
+				trial->preprocessCollectively();
+				trial->__mean = __mean;
+				trial->__stddev = __stddev;
+			}
 			trial->finalize(); //allocate memory
-			trial->__data = curTrainData;
+			trial->__dataPointer = &curTrainData;
 			trial->run();
 			trial->getConfidences(curConfid);
 			double trialfit = getFitness(curConfid[0], curTrueVal);
+
+// cout << "starting delete" << endl;
 			if(trialfit < netfit[i]) //trial is better
 			{
+				// cout << "delete net" << endl;
 				delete nets[i];
 				nets[i] = trial;
 				//no need to copy the fitness b/c won't matter next time anyway
 			}
+			else 
+			{
+				// cout << "delete trial" << endl;
+				delete trial;
+			}
+			// cout << "delete donor" << endl;
+			delete donor;
+
+
+// if (KERN_SUCCESS != task_info(mach_task_self(),
+//                               TASK_BASIC_INFO, (task_info_t)&t_info, 
+//                               &t_info_count))
+// {
+//     return;
+// }
+// cout << "Mem after deletes " << t_info.virtual_size << endl;
 
 			//only set up layerNeeds and velocities as needed for backprop cause
 			//all the nets are different sizes
+		}
+	}
+
+	//run all indivs over train set w/out updating weights to see how their doing
+	double maxAcc = 0.0;
+	int maxIndex = 0;
+	setTrainingType(TRAIN_AS_IS); // so we get whole thing to test on
+	getTrainingData(trainingData, trueVals);
+	fullEpochData.resize(trainingData.size());
+	for(int f = 0; f < fullEpochData.size(); f++)
+	{
+		fullEpochData[f] = *(trainingData[f]);
+	}
+	for(int i = 0; i < nets.size(); i++)
+	{
+		int numRight = 0;
+		nets[i]->finalize(); //allocate memory
+		nets[i]->__dataPointer = &fullEpochData;
+		nets[i]->run();
+		nets[i]->getCalculatedClasses(calcedClasses);
+		for(int j = 0; i < calcedClasses.size(); j++)
+			if(calcedClasses[j] == trueVals[j])
+				numRight++;
+		double accuracy = 100.0 * numRight/calcedClasses.size();
+		if(accuracy > maxAcc)
+		{
+			maxAcc = accuracy;
+			maxIndex = i;
 		}
 	}
 
@@ -2512,7 +2664,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 	{
 		if(trainingData.size() != 0) // this means we've run this function at least once
 		{
-			//shuffleTrainingData(trainingData, trueVals);
+			shuffleTrainingData(trainingData, trueVals);
 			return;
 		}
 		//if it's our first time through
@@ -2798,6 +2950,9 @@ bool Net::addTrainingData(const vector<Mat>& trainingData, const vector<double>&
 
 void Net::clearTrainingData()
 {
+	for(int i = 0; i < __trainingData.size(); i++)
+		for(int j = 0; j < __trainingData[i].size(); j++)
+			delete __trainingData[i][j];
 	__trainingData.resize(0);
 	__trueVals.resize(0);
 }

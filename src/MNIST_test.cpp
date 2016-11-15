@@ -134,9 +134,9 @@ int main(int argc, char** argv)
 	}
 	int device = 0;
 	bool useDE = false;
-	if(argc == 4)
+	if(argc >= 4)
 		device = atoi(argv[3]);
-	if(string(argv[4]) == "-DE")
+	if(argc >= 5 && string(argv[4]) == "-DE")
 		useDE = true;
 
 	ifstream training_label_in("train-labels.idx1-ubyte");
@@ -179,7 +179,7 @@ int main(int argc, char** argv)
 	net.preprocessCollectively();
 	net.setSaveName(argv[2]);
 	net.setTrainingType(TRAIN_AS_IS);
-	net.setDevice(device);
+	cout << boolalpha << net.setDevice(device) << endl;
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;
