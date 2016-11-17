@@ -11,7 +11,7 @@ This is the work generator for Running ConvNetVideoDriverCL_BOINC.
 #include "svn_version.h"
 #include "sched/sched_config.h"
 #include "sched/sched_util.h"
-#include "lib/sched_msgs.h"
+#include "sched_msgs.h"
 #include "lib/str_util.h"
 
 //General
@@ -44,7 +44,7 @@ struct Job_params{
 	int stride;
 	int jump;
 	double duration_s;
-	int scaleType;
+	string scaleType;
 	string md5_hash;
 	int filesize;
 	int batchSize;
@@ -92,17 +92,17 @@ double estfpops(Job_params& params)
 	int fpopPerPix = 10;
 	int numSeamsToSquare = 224;
 	int numSeamsToSize = 704 - cnnInputSize + 480 - cnnInputSize;
-	if(params.scaleType == RANDOM_CROP)
+	if(params.scaleType == "-random_crop")
 		perImageSeam = 1000; //??? who knows
-	else if(params.scaleType == DISTORT_DOWN)
+	else if(params.scaleType == "-distortDown")
 		perImageSeam = 3000;
-	else if(params.scaleType == SCALE_DOWN)
+	else if(params.scaleType == "-scaleDown")
 	{
 		perImageSeam = 3000; //for the opencv resizing
 		//calc costs, dir, seam, per each pixel (not really true)
 		perImageSeam += fpopPerPix * 704*480 * numSeamsToSquare;
 	}
-	else if(CARVE_DOWN_VTH <= params.scaleType&&params.scaleType <= CARVE_DOWN_BOTH_SCALED)
+	else
 	{
 		perImageSeam += fpopPerPix * 704*480 * numSeamsToSize;
 	}
@@ -206,7 +206,7 @@ int make_job(Job_params& params)
 	// }
 	sprintf(command_line, " -cnn=%s %s -video=%s -video_id=%s -batchSize=%d -jump=%d -video_start_time=%d", 
 		short_cnns[0].c_str(), 
-		params.scaleType, 
+		params.scaleType.c_str(), 
 		short_video_name.c_str(), 
 		params.video_id.c_str(), 
 		params.batchSize, 
@@ -327,7 +327,7 @@ void usage()
 
 void main_loop(int argc, char** argv)
 {	
-	long unsent_results;
+	int unsent_results;
 	int retval;
 	long total_generated = 0;
 	long total_errors = 0;
@@ -341,7 +341,7 @@ void main_loop(int argc, char** argv)
 	int batchSize = 10;
 	int jump = 1;
 	bool expertFinished = false;
-	int scaleType = -1;
+	string scaleType = "-1";
 
 	for(int i = 0; i < argc; i++)
 	{
@@ -381,19 +381,19 @@ void main_loop(int argc, char** argv)
 			exit(0);
 		}
 		else if(arg.find("--random_crop") != string::npos)
-			scaleType = RANDOM_CROP;
+			scaleType = "-random_crop";
 		else if(arg.find("--distortDown") != string::npos)
-			scaleType = DISTORT_DOWN;
+			scaleType = "-distortDown";
 		else if(arg.find("--scaleDown") != string::npos)
-			scaleType = SCALE_DOWN;
+			scaleType = "-scaleDown";
 		else if(arg.find("--carveDown_vth") != string::npos)
-			scaleType = CARVE_DOWN_VTH;
+			scaleType = "-carveDown_vth";
 		else if(arg.find("--carveDown_htv") != string::npos)
-			scaleType = CARVE_DOWN_HTV;
+			scaleType = "-carveDown_htv";
 		else if(arg.find("--carveDown_both_raw") != string::npos)
-			scaleType = CARVE_DOWN_BOTH_RAW;
+			scaleType = "-carveDown_both_raw";
 		else if(arg.find("--carveDown_both_scaled") != string::npos)
-			scaleType = CARVE_DOWN_BOTH_SCALED;
+			scaleType = "-carveDown_both_scaled";
 		else
 		{
 			printf("Unknown arg: \"%s\"\n", argv[i]);
@@ -401,7 +401,7 @@ void main_loop(int argc, char** argv)
 		}
 	}
 
-	if(scaleType == -1)
+	if(scaleType == "-1")
 	{
 		printf("You must choose a scale type describing how the images were preprocessed when training the CNN.\n");
 		return;
@@ -430,7 +430,7 @@ void main_loop(int argc, char** argv)
 		log_messages.printf(MSG_CRITICAL,"count_unsent_jobs() failed: %s\n", boincerror(retval));
 		exit(retval);
 	}
-	log_messages.printf(MSG_DEBUG,"%ld results are available with a cushion of %d\n", unsent_results, CUSHION);
+	log_messages.printf(MSG_DEBUG,"%d results are available with a cushion of %d\n", unsent_results, CUSHION);
 
 	ostringstream unclassified_video_query, finished_expert_query;
 	finished_expert_query << "SELECT id, archive_filename, duration_s, species_id, location_id, size, md5_hash, start_time"
