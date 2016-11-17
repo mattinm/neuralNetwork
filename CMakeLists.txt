@@ -16,6 +16,7 @@ find_package( OpenCV )
 find_package( BOINC )
 find_package( OpenCL )
 find_package( MySQL )
+find_package( OpenSSL )
 
 FIND_LIBRARY(UNDVC_COMMON_LIBRARY
 	NAMES undvc_common
@@ -88,7 +89,7 @@ IF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 target_link_libraries(ConvNetSeamRun_BOINC ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${BOINC_APP_LIBRARIES})
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 
-IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
+IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 	FIND_PATH(UNDVC_COMMON_INCLUDE_DIR file_io.hxx
 		../undvc_common #add additional paths here if undvc_common in different directory
 		${PROJECT_SOURCE_DIR}/../undvc_common
@@ -99,7 +100,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
 		src/ConvNetSeam_work_generator
 		src/ConvNetCL_light
 		)
-	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_LIBRARIES} ${BOINC_APP_LIBRARIES})
+	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_LIBRARIES} ${BOINC_APP_LIBRARIES} ${OPENSSL_LIBRARIES})
 
 	add_executable(ConvNetSeam_validator
 		${BOINC_INCLUDE_DIR}/sched/validator
@@ -116,7 +117,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
 		src/ConvNetSeam_assimilator
 		)
 	target_link_libraries(ConvNetSeam_assimilator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
-ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND)
+ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 
 
 
