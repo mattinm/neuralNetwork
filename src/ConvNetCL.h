@@ -313,6 +313,7 @@ private:	// functions
 
 	//de train
 	void setupRandomNets(std::vector<Net*>& nets);
+	void setupEquivalentNets(std::vector<Net*>& nets);
 	void releaseCLMem();
 	double getFitness(std::vector<double>& prediction, double trueVal);
 	int getTargetVector(int method, std::vector<double>& fits, int curNet);

@@ -1790,103 +1790,112 @@ void Net::train(int epochs)
 			////////////////////////////
 			softmaxBackprop(trueVals[r]);
 			backprop(layerNeeds, velocities);
-	 	}// end for loop for training data (meaning the epoch has finished)
-	 	
-	 	endtime = time(NULL);
-	 	//beginning of this line is at the top of the epoch loop
-	 	double accuracy = 100.0 * numCorrect/trueVals.size();
-	 	printf("Accuracy on training data: %d out of %lu. %lf%% %s\n", numCorrect, trueVals.size(), accuracy,secondsToString(endtime-starttime).c_str());
-	 	if(__testData.size() != 0)
-	 	{
-	 		starttime = time(NULL);
-	 		printf("\tTest Set. ");
-	 		run(); //this will update __confidences
-	 		curError = 0;
-	 		int testCorrect = 0;
-	 		for(int c = 0; c < __confidences.size(); c++)
-	 		{
-	 			for(int im = 0; im < __confidences[c].size(); im++)
-	 				curError += __confidences[c][im];
-		 		if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
-		 			testCorrect++;
-		 	}
-		 	endtime = time(NULL);
-	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
-	 		printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,secondsToString(endtime-starttime).c_str());
-
-	 		if(testAccuracy > holder.testAccuracy)
-	 		{
-	 			pullCLWeights();
-	 			if(__saveNet)
-	 				save(__saveName.c_str());
-	 			storeWeightsInHolder(holder);
-	 			holder.testAccuracy = testAccuracy;
-	 			holder.trainAccuracy = accuracy;
-	 			timesStale = 0;
-	 		}
-	 		else
-	 		{
-	 			timesStale++;
-	 			if(timesStale == 3)
-	 			{
-	 				loadWeightsFromHolder(holder);
-	 				__learningRate *= .5;
-					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
-	 			}
-	 			else if(timesStale == 5)
-	 			{
-	 				__learningRate *= .5;
-	 				printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
-	 			}
-	 			else if(timesStale == 7)
-	 			{
-	 				printf("We don't seem to be learning anymore. Exiting.\n");
-	 				break;
-	 			}
-	 		}
-	 		prevError = curError;
-	 	}
-	 	else // no test data. get the one with the best training data
-	 	{
-	 		if(accuracy > holder.trainAccuracy)
-	 		{
-	 			pullCLWeights();
-	 			if(__saveNet)
-	 				save(__saveName.c_str());
-	 			storeWeightsInHolder(holder);
-	 			holder.trainAccuracy = accuracy;
-	 			timesStale = 0;
-	 		}
-	 		else
-	 		{
-	 			timesStale++;
-	 			if(timesStale == 3)
-	 			{
-	 				loadWeightsFromHolder(holder);
-	 				__learningRate *= .5;
-					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
-	 			}
-	 			else if(timesStale == 5)
- 				{
-	 				__learningRate *= .5;
-					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
-	 			}
-	 			else if(timesStale == 7)
-	 			{
-	 				printf("We don't seem to be learning anymore. Exiting.\n");
-	 				break;
-	 			}
-	 		}
-	 	}
-	}// end of all epochs
+	 	}// end for loop for training data (meaning the epoch has finished) 	
+ 	 	endtime = time(NULL);
+ 	 	//beginning of this line is at the top of the epoch loop
+ 	 	double accuracy = 100.0 * numCorrect/trueVals.size();
+ 	 	printf("Accuracy on training data: %d out of %lu. %lf%% %s\n", numCorrect, trueVals.size(), accuracy,secondsToString(endtime-starttime).c_str());
+ 	 	if(__testData.size() != 0)
+ 	 	{
+ 	 		starttime = time(NULL);
+ 	 		printf("\tTest Set. ");
+ 	 		run(); //this will update __confidences
+ 	 		curError = 0;
+ 	 		int testCorrect = 0;
+ 	 		for(int c = 0; c < __confidences.size(); c++)
+ 	 		{
+ 	 			for(int im = 0; im < __confidences[c].size(); im++)
+ 	 				curError += __confidences[c][im];
+ 		 		if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
+ 		 			testCorrect++;
+ 		 	}
+ 		 	endtime = time(NULL);
+ 	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
+ 	 		printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,secondsToString(endtime-starttime).c_str());
+ 
+ 	 		if(testAccuracy > holder.testAccuracy)
+ 	 		{
+ 	 			pullCLWeights();
+ 	 			if(__saveNet)
+ 	 				save(__saveName.c_str());
+ 	 			storeWeightsInHolder(holder);
+ 	 			holder.testAccuracy = testAccuracy;
+ 	 			holder.trainAccuracy = accuracy;
+ 	 			timesStale = 0;
+ 	 		}
+ 	 		else
+ 	 		{
+ 	 			timesStale++;
+ 	 			if(timesStale == 3)
+ 	 			{
+ 	 				loadWeightsFromHolder(holder);
+ 	 				__learningRate *= .5;
+ 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+ 	 			}
+ 	 			else if(timesStale == 5)
+ 	 			{
+ 	 				__learningRate *= .5;
+ 	 				printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+ 	 			}
+ 	 			else if(timesStale == 7)
+ 	 			{
+ 	 				printf("We don't seem to be learning anymore. Exiting.\n");
+ 	 				break;
+ 	 			}
+ 	 		}
+ 	 		prevError = curError;
+ 	 	}
+ 	 	else // no test data. get the one with the best training data
+ 	 	{
+ 	 		if(accuracy > holder.trainAccuracy)
+ 	 		{
+ 	 			pullCLWeights();
+ 	 			if(__saveNet)
+ 	 			{
+ 	 				save(__saveName.c_str());
+ 	 				storeWeightsInHolder(holder);
+ 	 			}
+ 	 			holder.trainAccuracy = accuracy;
+ 	 			timesStale = 0;
+ 	 		}
+ 	 		else
+ 	 		{
+ 	 			timesStale++;
+ 	 			if(timesStale == 3)
+ 	 			{
+ 	 				loadWeightsFromHolder(holder);
+ 	 				__learningRate *= .5;
+ 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+ 	 			}
+ 	 			else if(timesStale == 5)
+  				{
+ 	 				__learningRate *= .5;
+ 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+ 	 			}
+ 	 			else if(timesStale == 7)
+ 	 			{
+ 	 				printf("We don't seem to be learning anymore. Exiting.\n");
+ 	 				break;
+ 	 			}
+ 	 		}
+ 	 	}
+ 	}
+ 	// end} of all epochs
 	//get best weights and they should already be saved to the disk if we are saving them
-	loadWeightsFromHolder(holder);
+ 	if(__saveNet)
+		loadWeightsFromHolder(holder);
 	//clean up anything we may have messed with in order to use run.
+	// vector<cl_mem> layerNeeds(0);
+	// vector<cl_mem> velocities(0);
+	for(size_t i = 0; i < layerNeeds.size(); i++)
+		clReleaseMemObject(layerNeeds[i]);
+	for(size_t i = 0; i < velocities.size(); i++)
+		clReleaseMemObject(velocities[i]);
 	__confidences.resize(__data.size());
 	__isTraining = false;
 }
 
-//If you use DETrain, only the input size matters
+//If you use DETrain, only the input size and location of maxpools matter
 void Net::DETrain(int generations, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
 	printf("DE training\n");
@@ -1994,29 +2003,15 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 		curTrainDataIndex++;
 		for(int i = 0; i < nets.size(); i++)
 		{
-			// printf("get fitness net #%d\n", i);
-			// nets[i]->finalize(); //allocate memory
 			nets[i]->__dataPointer = &curTrainData;
 			nets[i]->run();
 			nets[i]->getConfidences(curConfid);
 			netfit[i] = getFitness(curConfid[0], curTrueVal);
 		}
 
-
-
-
 		//get indivs for mutation
 		for(int i = 0; i < nets.size(); i++)
 		{
-
-// if (KERN_SUCCESS != task_info(mach_task_self(),
-//                   TASK_BASIC_INFO, (task_info_t)&t_info, 
-//                   &t_info_count))
-// {
-//     return;
-// }
-// cout << "Mem before mutation " << t_info.virtual_size << endl;
-			// printf("mutate net #%d\n", i);
 			//get target and parameter vectors
 			int target = getTargetVector(__targetSelectionMethod,netfit,i);
 			getHelperVectors(nets, target, i, helperParents); //fills helperParents
@@ -2024,20 +2019,9 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 			//make donor vector. will be same structure as target
 			Net* donor = makeDonor(helperParents,mutationScale);
 
-
-// if (KERN_SUCCESS != task_info(mach_task_self(),
-//                               TASK_BASIC_INFO, (task_info_t)&t_info, 
-//                               &t_info_count))
-// {
-//     return;
-// }
-// cout << "Mem before crossover " << t_info.virtual_size << endl;
-
-			// printf("crossover net #%d\n", i);
 			//apply crossover to get trial vector of same structure as original
 			Net* trial = crossover(nets[i],donor, crossMethod, crossProb);
 
-			// printf("selection net #%d\n", i);
 			//apply selection
 			trial->setDevice(__device);
 			trial->setTrainingType(TRAIN_AS_IS);
@@ -2056,30 +2040,24 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 			trial->getConfidences(curConfid);
 			double trialfit = getFitness(curConfid[0], curTrueVal);
 
-// cout << "starting delete" << endl;
-			if(trialfit < netfit[i]) //trial is better
+			if(trialfit < netfit[i]) //trial is better. backprop it over training data
 			{
-				// cout << "delete net" << endl;
 				delete nets[i];
 				nets[i] = trial;
+				nets[i]->__trainingData.resize(1);
+				nets[i]->__trainingData[0].resize(1);
+				nets[i]->__trainingData[0][0] = trainingData[curTrainDataIndex];
+				nets[i]->__trueVals.clear();
+				nets[i]->__trueVals.push_back(trueVals[curTrainDataIndex]);
+				nets[i]->train(1);
+				nets[i]->__trainingData.clear(); //don't want to delete the pointer
 				//no need to copy the fitness b/c won't matter next time anyway
 			}
 			else 
 			{
-				// cout << "delete trial" << endl;
 				delete trial;
 			}
-			// cout << "delete donor" << endl;
 			delete donor;
-
-
-// if (KERN_SUCCESS != task_info(mach_task_self(),
-//                               TASK_BASIC_INFO, (task_info_t)&t_info, 
-//                               &t_info_count))
-// {
-//     return;
-// }
-// cout << "Mem after deletes " << t_info.virtual_size << endl;
 
 			//only set up layerNeeds and velocities as needed for backprop cause
 			//all the nets are different sizes
@@ -2114,6 +2092,22 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 		}
 	}
 
+}
+
+void Net::setupEquivalentNets(vector<Net*>& nets)
+{
+	for(int i = 0; i < nets.size(); i++)
+	{
+		*nets[i] = *this;
+		for(int l = 1; l < nets[i]->__layers.size();l++)
+		{
+			if(nets[i]->__layers[l]->layerType == CONV_LAYER)
+			{
+				ConvLayer* conv = (ConvLayer*)nets[i]->__layers[l];
+				initRandomWeights(conv,nets[i]->__neuronDims[l-1][2]);
+			}
+		}
+	}
 }
 
 void Net::setupRandomNets(vector<Net*>& nets)
