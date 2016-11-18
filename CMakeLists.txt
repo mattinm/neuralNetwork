@@ -53,6 +53,7 @@ IF(BOINC_SERVER_FOUND)
 		${BOINC_INCLUDE_DIR}/db
 		../undvc_common
 	)
+	link_directories(/home/tdesell/boost_1_53_0/stage/lib)
 ENDIF(BOINC_SERVER_FOUND)
 
 IF(MYSQL_FOUND)
@@ -100,7 +101,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 		src/ConvNetSeam_work_generator
 		src/ConvNetCL_light
 		)
-	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_LIBRARIES} ${BOINC_APP_LIBRARIES} ${OPENSSL_LIBRARIES})
+	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_LIBRARIES} ${BOINC_APP_LIBRARIES} ${OPENSSL_LIBRARIES} boost_system boost_filesystem)
 
 	add_executable(ConvNetSeam_validator
 		${BOINC_INCLUDE_DIR}/sched/validator
@@ -108,7 +109,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 		${BOINC_INCLUDE_DIR}/sched/validate_util2
 		src/ConvNetSeam_validator
 		)
-	target_link_libraries(ConvNetSeam_validator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
+	target_link_libraries(ConvNetSeam_validator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} boost_system boost_filesystem)
 
 	add_executable(ConvNetSeam_assimilator
 		${BOINC_INCLUDE_DIR}/sched/assimilator
