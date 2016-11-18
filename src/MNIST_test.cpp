@@ -189,7 +189,7 @@ int main(int argc, char** argv)
 	net.addTrainingData(training_data,training_true);
 
 	if(useDE)
-		net.DETrain(100);
+		net.DETrain_sameSize(100);
 	else
 		net.train();
 
