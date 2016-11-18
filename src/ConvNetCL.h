@@ -254,6 +254,7 @@ public: 	// functions
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
 	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
+	void DETrain_sameSize(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
 
@@ -271,6 +272,7 @@ public: 	// functions
 private:	// functions
 	//functions for operator=
 	void copyLayers(const Net& other);
+	void destroy();
 
 	//inits
 	void initOpenCL();
@@ -286,6 +288,7 @@ private:	// functions
 	//functions dealing with data
 	int getTrueValIndex(double trueVal);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
+	int getMaxElementIndex(const std::vector<int>& vect) const;
 	void preprocessDataIndividual();
 	void preprocessDataCollective();
 	void preprocessTestDataIndividual();
@@ -298,18 +301,23 @@ private:	// functions
 	void getTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals);
 	void initVelocities(std::vector<cl_mem>& velocities);
 	void pullCLWeights();
+	void pushCLWeights(std::vector<Layer*>& layers, std::vector<cl_mem>& clWeights, std::vector<cl_mem>& clBiases, cl_command_queue& queue, cl_bool block);
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
 	std::string secondsToString(time_t seconds);
 	void trainSetup(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void feedForward(std::vector<cl_mem>& layerNeeds);
+	void feedForward(cl_mem* prevNeurons, cl_mem* neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
+ 		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom);
 	void softmaxForward();
+	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom);
 	void softmaxBackprop(int curTrueVal);
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void storeWeightsInHolder(WeightHolder& holder);
 	void loadWeightsFromHolder(WeightHolder& holder);
 	std::string tolower(std::string str);
 	bool stringToDims(std::string str, int* dims);
+
 
 	//de train
 	void setupRandomNets(std::vector<Net*>& nets);
@@ -323,6 +331,7 @@ private:	// functions
 	Net* crossover(Net* parent, Net* donor, int method, double prob);
 	int mapConvLayer(Net* orig, int layerNum, Net* dest);
 	void mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, int* destpos);
+	// void DE_mutation_crossover_selection(int netNum, );
 
 	//OpenCL functions
 	void CheckError(cl_int error);
