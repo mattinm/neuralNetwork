@@ -97,7 +97,8 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 
 	if(wu.error_mask > 0)
 	{
-		log_messages.printf(MSG_CRITICAL,"\n", "[RESULT#%d %s] assimilate_handler: WORKUNIT ERRORED OUT\n", canonical_result.id, canonical_result.name);
+		log_messages.printf(MSG_CRITICAL, "[RESULT#%d %s] assimilate_handler: WORKUNIT ERRORED OUT\n", canonical_result.id, canonical_result.name);
+		return -1;
 	}
 	else if(wu.canonical_resultid == 0)
 	{
@@ -107,9 +108,11 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 	else //this means we have a good canonical result
 	{
 		cnn_output *data;
-		init_result(canonical_result,(void*)data);
+		void* vptr;
+		init_result(canonical_result, vptr);
+		data = (cnn_output*)vptr;
 
-		ostringstream event_query;
+		/*ostringstream event_query;
 		event_query << "SELECT id, event FROM event_type;";
 
 		mysql_query_check(wildlife_db_conn, event_query.str());
@@ -122,10 +125,10 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 		{
 			types.push_back(db_event(event_row[0],event_row[1]));
 		}
-		
+		*/
 		vector<Event> events;
 		data->obs.getAllEvents(events);
-		for(int i = 0; i < events.size(); i++)
+		for(unsigned int i = 0; i < events.size(); i++)
 		{
 			// string event_type_id;
 			// for(int j = 0; j < types.size(); j++)
@@ -134,10 +137,11 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 			// 		event_type_id = types[j].id;
 			// 		break;
 			// 	}
-			// ostringstream query;
+			ostringstream query;
 			query << "INSERT INTO cnn_observations (cnn_config_id, video_id, start_time, end_time, event_type_id) "
 				<< "VALUES (" << data->cnn_config_id << ", " << data->video_id << ", '" << events[i].starttime_string << "', '" << events[i].endtime_string << "', " << events[i].type << ");";
 		}
+		return 0; //success
 	}
 }
 
