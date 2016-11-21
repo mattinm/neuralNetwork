@@ -116,7 +116,6 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 	add_executable(ConvNetSeam_assimilator
 		${BOINC_INCLUDE_DIR}/sched/assimilator
 		${BOINC_INCLUDE_DIR}/sched/validate_util
-		src/ConvNetSeam_validator
 		src/ConvNetSeam_assimilator
 		src/ConvNetEvent
 		)

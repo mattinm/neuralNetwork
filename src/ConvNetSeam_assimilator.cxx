@@ -23,8 +23,6 @@
 #include "parse_xml.hxx"
 #include "file_io.hxx"
 
-#include "ConvNetSeam_validator.cxx"
-
 #define mysql_query_check(conn,query) __mysql_check(conn, query, __FILE__, __LINE__)
 
 
@@ -90,6 +88,69 @@ void init_wildlife_database()
 	}
 }
 
+int init_result(RESULT& result, void*& data)
+{
+	//vector<OUTPUT_FILE_INFO> files;
+	vector<string> filepaths;
+	try
+	{
+		string eventString = parse_xml<string>(result.stderr_out, "error");
+		stringstream ss(eventString);
+
+		string temp;
+		getline(ss, temp, '\n');
+		while(getline(ss, temp, '\n'))
+		{
+			trim(temp);
+			log_messages.printf(MSG_DEBUG, "Error: '%s'\n", temp.c_str());
+		}
+		exit(0);
+		return 1;
+	}
+	catch(string error_message)
+	{
+		log_messages.printf(MSG_DEBUG,"ConvNetSeam_validator get_error_from_result([RESULT#%d %s]) failed with error: %s\n",result.id, result.name, error_message.c_str());
+	}
+	catch(const exception &ex)
+	{
+		log_messages.printf(MSG_CRITICAL,"ConvNetSeam_validator get_error_from_result([RESULT#%d %s]) failed with error: %s\n",result.id, result.name, ex.what());
+		exit(0);
+		return 1;
+	}
+
+	int retval = get_output_file_paths(result, filepaths);
+	if(retval)
+	{
+		log_messages.printf(MSG_CRITICAL, "ConvNetSeam_validator: Failed to get output file path: %d %s\n",result.id, result.name);
+		exit(0);
+		return retval;
+	}
+
+	log_messages.printf(MSG_DEBUG,"Result file path 0: '%s'\n", filepaths[0].c_str());
+
+	ifstream infile(filepaths[0]);
+
+	cnn_output *res = new cnn_output();
+	string line;
+	getline(infile,line);
+	res->cnn_config_id = line;
+	getline(infile,line);
+	res->video_id = line;
+	stringstream ss;
+	while(getline(infile,line))
+	{
+		ss << line << '\n';
+	}
+	res->obs.load(ss.str());
+
+	res->raw_location = filepaths[1];
+	
+	data = (void*)res;
+
+	log_messages.printf(MSG_DEBUG,"Successful init result.\n");
+	return 0;
+}
+
 int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canonical_result)
 {
 	if(wildlife_db_conn == NULL)
@@ -109,7 +170,11 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 	{
 		cnn_output *data;
 		void* vptr;
-		init_result(canonical_result, vptr);
+		if(init_result(canonical_result, vptr) != 0)
+		{
+			printf("init_result failed in assimilate_handler\n");
+			retunr -2;
+		}
 		data = (cnn_output*)vptr;
 
 		/*ostringstream event_query;
