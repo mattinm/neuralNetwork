@@ -75,7 +75,7 @@ IF(OpenCV_FOUND AND OpenCL_FOUND)
 	target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARY})
 	target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OpenCL_LIBRARY})
 
-	add_executable( SeamTest src/SeamTest.cpp src/ConvNetSeam )
+	add_executable( SeamTest src/SeamTest.cpp src/ConvNetSeam src/ConvNetEvent)
 	target_link_libraries(SeamTest ${OpenCV_LIBS} ${OpenCL_LIBRARY})
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND)
 
@@ -87,7 +87,7 @@ IF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 	target_link_libraries( ConvNetVideoDriverCL_BOINC ${OpenCV_LIBS} ${OpenCL_LIBRARY} ${BOINC_APP_LIBRARIES})
 
 	add_executable( ConvNetSeamRun_BOINC src/ConvNetSeamRun_BOINC.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp src/ConvNetEvent)
-target_link_libraries(ConvNetSeamRun_BOINC ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${BOINC_APP_LIBRARIES})
+	target_link_libraries(ConvNetSeamRun_BOINC ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${BOINC_APP_LIBRARIES})
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 
 IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
@@ -100,6 +100,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 	add_executable(ConvNetSeam_work_generator
 		src/ConvNetSeam_work_generator
 		src/ConvNetCL_light
+		src/ConvNetEvent
 		)
 	target_link_libraries(ConvNetSeam_work_generator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_LIBRARIES} ${BOINC_APP_LIBRARIES} ${OPENSSL_LIBRARIES} boost_system boost_filesystem)
 
@@ -108,6 +109,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 		${BOINC_INCLUDE_DIR}/sched/validate_util
 		${BOINC_INCLUDE_DIR}/sched/validate_util2
 		src/ConvNetSeam_validator
+		src/ConvNetEvent
 		)
 	target_link_libraries(ConvNetSeam_validator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} boost_system boost_filesystem)
 
@@ -116,6 +118,7 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 		${BOINC_INCLUDE_DIR}/sched/validate_util
 		src/ConvNetSeam_validator
 		src/ConvNetSeam_assimilator
+		src/ConvNetEvent
 		)
 	target_link_libraries(ConvNetSeam_assimilator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
 ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
@@ -123,7 +126,7 @@ ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 
 
 IF(OpenCV_FOUND AND OpenCL_FOUND AND MYSQL_FOUND)
-	add_executable( ConvNetSeamTrain_AllInOne src/ConvNetSeamTrain_AllInOne.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp )
+	add_executable( ConvNetSeamTrain_AllInOne src/ConvNetSeamTrain_AllInOne.cpp src/ConvNetSeam.cpp src/ConvNetCL.cpp src/ConvNetEvent)
 	target_link_libraries( ConvNetSeamTrain_AllInOne ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${MYSQL_LIBRARIES} )
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND MYSQL_FOUND)
 
