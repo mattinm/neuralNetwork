@@ -196,7 +196,7 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 		if(init_result(canonical_result, vptr) != 0)
 		{
 			printf("init_result failed in assimilate_handler\n");
-			retunr -2;
+			return -2;
 		}
 		data = (cnn_output*)vptr;
 
