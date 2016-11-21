@@ -7,8 +7,13 @@
 #include "sched/sched_config.h"
 #include "sched/sched_util.h"
 #include "sched_msgs.h"
+#include "validate_util.h"
+#include "validate_util2.h"
 #include "lib/str_util.h"
+#include "md5_file.h"
 #include "stdint.h"
+#include "config.h"
+
 
 #include <iostream>
 #include <fstream>
@@ -44,12 +49,30 @@ db_event::db_event(string _id, string _type)
 	type = _type;
 }
 
-// struct cnn_output
-// {
-// 	string cnn_config_id;
-// 	string video_id;
-// 	Observations obs;
-// };
+struct cnn_output
+{
+	string cnn_config_id;
+	string video_id; 
+	Observations obs;
+	string raw_location;
+};
+
+static inline std::string &ltrim(std::string &s)
+{
+	s.erase(s.begin(), std::find_if(s.begin(), s.end(), std::not1(std::ptr_fun<int, int>(std::isspace))));
+	return s;
+}
+
+static inline std::string &rtrim(std::string &s)
+{
+	s.erase(std::find_if(s.rbegin(), s.rend(), std::not1(std::ptr_fun<int, int>(std::isspace))).base(), s.end());
+	return s;
+}
+
+static inline std::string &trim(std::string &s)
+{
+	return ltrim(rtrim(s));
+}
 
 //Global variables
 MYSQL *wildlife_db_conn = NULL;
