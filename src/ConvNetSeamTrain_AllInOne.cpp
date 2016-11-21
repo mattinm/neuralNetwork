@@ -54,26 +54,7 @@ int detailLevel = CLASSES_ON_OFF_OUT;
 vector<string> class_names;
 // vector<int> class_true_vals;
 unordered_map<int,int> class_true_vals;
-
-//class definitions
-// struct Event
-// {
-// 	string type;
-// 	int starttime;
-// 	int endtime;
-// 	bool isOvernight = false; //this means the starttime is before midnight and endtime is after
-// };
-
-// class Observations
-// {
-// 	vector<Event> events;
-
-// public:
-// 	void addEvent(string type, string starttime, string endtime);
-// 	void getEvents(string tim, vector<Event>& dest);
-// 	void getEvents(int tim, vector<Event>& dest);
-// 	void getAllEvents(vector<Event>& dest);
-// };
+vector<int> class_true_vals_vector;
 
 //Global variables
 MYSQL *wildlife_db_conn = NULL;
@@ -90,88 +71,6 @@ void __mysql_check(MYSQL *conn, string query, const char* file, const int line)
 		exit(1);
 	}
 }
-
-string secondsToString(time_t seconds)
-{
-	time_t secs = seconds%60;
-	time_t mins = (seconds%3600)/60;
-	time_t hours = seconds/3600;
-	char out[100];
-	if(hours > 0)
-		sprintf(out,"%ld hours, %ld mins, %ld secs",hours,mins,secs);
-	else if(mins > 0)
-		sprintf(out,"%ld mins, %ld secs",mins,secs);
-	else
-		sprintf(out,"%ld secs",secs);
-	string outString = out;
-	return outString;
-}
-
-// int getTime(string tim) // must be in format hh::mm::ss. Military time
-// {
-// 	int t = 0;
-// 	t += stoi(tim.substr(tim.rfind(':')+1)); // seconds
-// 	t += 60 * stoi(tim.substr(tim.find(':')+1, 2)); //minutes
-// 	t += 3600 * stoi(tim.substr(0,2)); //hours
-// 	return t;
-// }
-
-// bool containsEvent(vector<Event> events, string type)
-// {
-// 	for(int i = 0; i < events.size(); i++)
-// 	{
-// 		if(events[i].type == type)
-// 			return true;
-// 	}
-// 	return false;
-// }
-
-
-//Class Level functions (and getTime)
-// void Observations::addEvent(string type, string starttime, string endtime)
-// {
-// 	Event event;
-// 	event.type = type;
-// 	event.starttime = getTime(starttime);
-// 	event.endtime = getTime(endtime);
-// 	if(event.endtime < event.starttime) // possible if the starttime is before midnight and endtime is after
-// 		event.isOvernight = true;
-// 	events.push_back(event);
-// 	// printf("event: %s, start %s|%d, end %s|%d\n", event.type.c_str(), starttime.c_str(), event.starttime, endtime.c_str(), event.endtime);
-// }
-
-// void Observations::getEvents(int tim, vector<Event>& dest)
-// {
-// 	dest.resize(0);
-// 	//seconds in a day = 3600 * 24 = 86400
-// 	tim %= 86400; //make sure we are within a valid time for a day
-// 	for(int i = 0; i < events.size(); i++)
-// 	{
-// 		//check if time is within event time. if so add to dest
-// 		if(events[i].isOvernight) 
-// 		{
-// 			if(events[i].starttime <= tim || tim  <= events[i].endtime)
-// 				dest.push_back(events[i]);
-// 		}
-// 		else
-// 		{
-// 			if(events[i].starttime <= tim && tim  <= events[i].endtime)
-// 				dest.push_back(events[i]);
-// 		}
-// 	}
-// }
-
-// void Observations::getEvents(string tim, vector<Event>& dest)
-// {
-// 	getEvents(getTime(tim),dest);
-// }
-
-// void Observations::getAllEvents(vector<Event>& dest)
-// {
-// 	dest.resize(0);
-// 	for(int i = 0; i < events.size(); i++)
-// 		dest.push_back(events[i]);
-// }
 
 //Other Functions
 void init_wildlife_database()
@@ -193,83 +92,51 @@ void init_wildlife_database()
 	}
 }
 
-bool setupDetailLevel(int detail)
+void setupDetailLevel(int detail)
 {
 	vector<int> classIds;
 	getClasses(detail,classIds);
 	char buf[50];
 	for(int i = 0; i < classIds.size(); i++)
 	{
-		sprintf(buf,"%d",classIds[i])
+		sprintf(buf,"%d",classIds[i]);
 		class_names.push_back(string(buf));
 		// class_true_vals.push_back(i);
 		class_true_vals[classIds[i]] = i;
+		class_true_vals_vector.push_back(i);
 	}
 }
 
-/*bool setupDetailLevel(int detail)
+int mapToTrueVal(vector<Event>& obs)
 {
-	if(0 <= detail && detail <= 1)
+	//erase any non-relevant obs
+	for(int i = 0; i < obs.size(); i++)
 	{
-		detailLevel = detail;
-		if(detailLevel == 0)
+		bool found = false;
+		for(int j = 0; j < class_names.size(); j++)
+			if(obs[i].type == class_names[j])
+			{
+				found = true;
+				break;
+			}
+		if(!found)
 		{
-			class_names.push_back("parent behavior - not in frame");
-			class_true_vals.push_back(0);
-
-			class_names.push_back("parent behavior - in frame");
-			class_true_vals.push_back(1);
+			obs.erase(obs.begin()+i);
+			i--;
 		}
-		else if(detailLevel == 1)
-		{
-			class_names.push_back("parent behavior - not in frame");
-			class_true_vals.push_back(0);
-
-			class_names.push_back("parent behavior - on nest");
-			class_true_vals.push_back(1);
-
-			class_names.push_back("parent behavior - flying");
-			class_true_vals.push_back(2);
-
-			class_names.push_back("parent behavior - walking");
-			class_true_vals.push_back(3);
-		}
-		return true;
 	}
-	else
+
+	//if more than 1 relevant observation is there, that's interesting
+	if(obs.size() > 1)
+		printf("Multiple relevant observations found\n");
+	else if(obs.size() == 0)
 	{
-		printf("Unknown detail level '%d'. Exiting.\n", detail);
-		return false;
+		printf("No relevant observations found.\n");
+		return -1;
 	}
+
+	return class_true_vals[stoi(obs[0].type)];
 }
-
-int getTrueVal(const vector<Event>& events)
-{
-	if(detailLevel == CLASSES_IN_OUT_FRAME)
-	{
-		if(containsEvent(events, "parent behavior - not in frame"))
-			return 0;
-		else if(containsEvent(events, "parent behavior - in frame"))
-			return 1;
-	}
-	else if(detailLevel == CLASSES_DETAILED)
-	{
-		if(containsEvent(events, "parent behavior - not in frame"))
-			return 0;
-		else if(containsEvent(events, "parent behavior - on nest"))
-			return 1;
-		else if(containsEvent(events, "parent behavior - flying"))
-			return 2;
-		else if(containsEvent(events, "parent behavior - walking"))
-			return 3;
-	}
-	else if(detailLevel == CLASSES_SUPER_DETAILED)
-	{
-
-	}
-	return -1; // error unknown detail level or no events found
-		
-}*/
 
 //do not use this function on multiple VideoCaptures at once. Run one throught to the end before
 //going on to the next
@@ -428,8 +295,7 @@ int main(int argc, const char **argv)
 		return 0;
 	}
 
-	if(!setupDetailLevel(detail))
-		return 0;
+	setupDetailLevel(detail);
 
 	printf("Preprocessing technique = %d\n", scaleType);
 
@@ -522,8 +388,13 @@ int main(int argc, const char **argv)
 		//get observations from video and put in observations
 		Observations observations;
 		ostringstream expert_query;
-		expert_query << "SELECT event_type, start_time, end_time FROM expert_observations"
-			<< " WHERE video_id = " << video_id << ";";
+
+		//old database tables
+		// expert_query << "SELECT event_type, start_time, end_time FROM expert_observations"
+		// 	<< " WHERE video_id = " << video_id << ";";
+
+		//new database tables
+		expert_query << "SELECT event_id, start_time, end_time FROM timed_observations WHERE video_id = " << video_id << ";";
 		// printf("Query to expert_observations:\n'%s'\n", expert_query.str().c_str());
 		mysql_query_check(wildlife_db_conn, expert_query.str());
 		MYSQL_RES *obs_result = mysql_store_result(wildlife_db_conn);
@@ -585,7 +456,7 @@ int main(int argc, const char **argv)
 	
 
 			observations.getEvents(obs_starttime + framenum * .1, curEvents); //assuming 10 frames per second.
-			int trueVal = getTrueVal(curEvents);
+			int trueVal = mapToTrueVal(curEvents);
 			if(trueVal != -1)
 			{
 				Mat tempMat;
@@ -672,7 +543,7 @@ int main(int argc, const char **argv)
 	//2. Train CNN over seamcarved images
 	//initialized up top
 	net.setSaveName(outname);
-	net.setClassNames(class_names,class_true_vals);
+	net.setClassNames(class_names,class_true_vals_vector);
 	if(train_as_is)
 		net.setTrainingType(TRAIN_AS_IS);
 	else

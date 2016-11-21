@@ -11,7 +11,6 @@
 #define CLASSES_SUPER_DETAILED 2
 #define CLASSES_ON_OFF_OUT 3
 
-#define RANDOM_CROP -1
 #define DISTORT_DOWN 0
 #define SCALE_DOWN 1
 #define CARVE_DOWN_VTH 2
@@ -30,11 +29,6 @@
 
 
 //Vectors for each classes define
-int detailLevel = CLASSES_IN_OUT_FRAME;
-
-std::vector<std::string> class_names;
-std::vector<int> class_true_vals;
-
 int getTime(std::string tim) // must be in format hh::mm::ss. Military time
 {
 	int t = 0;
@@ -44,7 +38,7 @@ int getTime(std::string tim) // must be in format hh::mm::ss. Military time
 	return t;
 }
 
-void getClasses(int classLevel, vector<int>& dest)
+void getClasses(int classLevel, std::vector<int>& dest)
 {
 	dest.clear();
 	if(classLevel == CLASSES_ON_OFF_OUT)
@@ -103,7 +97,7 @@ std::string getTime(int tim) //in seconds. Formats to hh::mm::ss. Military time
 //class definitions
 struct Event
 {
-	std::string type;
+	std::string type; // this should be the id from observation_types table
 	int starttime;
 	int endtime;
 	std::string starttime_string;
@@ -330,34 +324,6 @@ std::string Observations::toString() const
 		ss << events[i].toString();
 	}
 	return ss.str();
-}
-
-int getTrueVal(const std::vector<Event>& events)
-{
-	if(detailLevel == CLASSES_IN_OUT_FRAME)
-	{
-		if(containsEvent(events, "parent behavior - not in frame"))
-			return 0;
-		else if(containsEvent(events, "parent behavior - in frame"))
-			return 1;
-	}
-	else if(detailLevel == CLASSES_DETAILED)
-	{
-		if(containsEvent(events, "parent behavior - not in frame"))
-			return 0;
-		else if(containsEvent(events, "parent behavior - on nest"))
-			return 1;
-		else if(containsEvent(events, "parent behavior - flying"))
-			return 2;
-		else if(containsEvent(events, "parent behavior - walking"))
-			return 3;
-	}
-	else if(detailLevel == CLASSES_SUPER_DETAILED)
-	{
-
-	}
-	return -1; // error unknown detail level or no events found
-		
 }
 
 #endif /* defined _____ConvNetEvent__ */
