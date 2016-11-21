@@ -9,7 +9,9 @@
 #define CLASSES_IN_OUT_FRAME 0
 #define CLASSES_DETAILED 1
 #define CLASSES_SUPER_DETAILED 2
+#define CLASSES_ON_OFF_OUT 3
 
+#define RANDOM_CROP -1
 #define DISTORT_DOWN 0
 #define SCALE_DOWN 1
 #define CARVE_DOWN_VTH 2
@@ -18,7 +20,16 @@
 #define CARVE_DOWN_BOTH_SCALED 5
 #define RANDOM_CROP 6
 
+#define PARENT_BEHAVIOR__NOT_IN_VIDEO 4
+#define PARENT_BEHAVIOR__ON_NEST 41
+#define PARENT_BEHAVIOR__OFF_NEST 42
+#define PARENT_BEHAVIOR__FLYING 6
+#define PARENT_BEHAVIOR__WALKING 7
+#define PARENT_BEHAVIOR__STANDING 5
+#define PARENT_BEHAVIOR__SITTING 8
 
+
+//Vectors for each classes define
 int detailLevel = CLASSES_IN_OUT_FRAME;
 
 std::vector<std::string> class_names;
@@ -31,6 +42,29 @@ int getTime(std::string tim) // must be in format hh::mm::ss. Military time
 	t += 60 * stoi(tim.substr(tim.find(':')+1, 2)); //minutes
 	t += 3600 * stoi(tim.substr(0,2)); //hours
 	return t;
+}
+
+void getClasses(int classLevel, vector<int>& dest)
+{
+	dest.clear();
+	if(classLevel == CLASSES_ON_OFF_OUT)
+	{
+		dest.push_back(PARENT_BEHAVIOR__ON_NEST);
+		dest.push_back(PARENT_BEHAVIOR__OFF_NEST);
+		dest.push_back(PARENT_BEHAVIOR__NOT_IN_VIDEO);
+	}
+	else if(classLevel == CLASSES_DETAILED)
+	{
+		dest.push_back(PARENT_BEHAVIOR__NOT_IN_VIDEO);
+		dest.push_back(PARENT_BEHAVIOR__ON_NEST);
+		dest.push_back(PARENT_BEHAVIOR__FLYING);
+		dest.push_back(PARENT_BEHAVIOR__WALKING);
+	}
+	else 
+	{
+		printf("Class level not currently supported\n");
+		exit(0);
+	}
 }
 
 std::string getTime(int tim) //in seconds. Formats to hh::mm::ss. Military time

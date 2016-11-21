@@ -13,6 +13,7 @@
 //ConvNet
 #include <ConvNetCL.h>
 #include <ConvNetSeam.h>
+#include <ConvNetEvent.h>
 
 //OpenCV
 #include "opencv2/imgproc/imgproc.hpp"
@@ -29,48 +30,50 @@
 #include <sstream>
 #include <random>
 #include <time.h>
+#include <unordered_map>
 
 using namespace std;
 using namespace cv;
 
 #define mysql_query_check(conn,query) __mysql_check(conn, query, __FILE__, __LINE__)
 
-#define CLASSES_IN_OUT_FRAME 0
-#define CLASSES_DETAILED 1
-#define CLASSES_SUPER_DETAILED 2
+// #define CLASSES_IN_OUT_FRAME 0
+// #define CLASSES_DETAILED 1
+// #define CLASSES_SUPER_DETAILED 2
 
-#define RANDOM_CROP -1
-#define DISTORT_DOWN 0
-#define SCALE_DOWN 1
-#define CARVE_DOWN_VTH 2
-#define CARVE_DOWN_HTV 3
-#define CARVE_DOWN_BOTH_RAW 4
-#define CARVE_DOWN_BOTH_SCALED 5
+// #define RANDOM_CROP -1
+// #define DISTORT_DOWN 0
+// #define SCALE_DOWN 1
+// #define CARVE_DOWN_VTH 2
+// #define CARVE_DOWN_HTV 3
+// #define CARVE_DOWN_BOTH_RAW 4
+// #define CARVE_DOWN_BOTH_SCALED 5
 
-int detailLevel = CLASSES_IN_OUT_FRAME;
+int detailLevel = CLASSES_ON_OFF_OUT;
 
 vector<string> class_names;
-vector<int> class_true_vals;
+// vector<int> class_true_vals;
+unordered_map<int,int> class_true_vals;
 
 //class definitions
-struct Event
-{
-	string type;
-	int starttime;
-	int endtime;
-	bool isOvernight = false; //this means the starttime is before midnight and endtime is after
-};
+// struct Event
+// {
+// 	string type;
+// 	int starttime;
+// 	int endtime;
+// 	bool isOvernight = false; //this means the starttime is before midnight and endtime is after
+// };
 
-class Observations
-{
-	vector<Event> events;
+// class Observations
+// {
+// 	vector<Event> events;
 
-public:
-	void addEvent(string type, string starttime, string endtime);
-	void getEvents(string tim, vector<Event>& dest);
-	void getEvents(int tim, vector<Event>& dest);
-	void getAllEvents(vector<Event>& dest);
-};
+// public:
+// 	void addEvent(string type, string starttime, string endtime);
+// 	void getEvents(string tim, vector<Event>& dest);
+// 	void getEvents(int tim, vector<Event>& dest);
+// 	void getAllEvents(vector<Event>& dest);
+// };
 
 //Global variables
 MYSQL *wildlife_db_conn = NULL;
@@ -104,71 +107,71 @@ string secondsToString(time_t seconds)
 	return outString;
 }
 
-int getTime(string tim) // must be in format hh::mm::ss. Military time
-{
-	int t = 0;
-	t += stoi(tim.substr(tim.rfind(':')+1)); // seconds
-	t += 60 * stoi(tim.substr(tim.find(':')+1, 2)); //minutes
-	t += 3600 * stoi(tim.substr(0,2)); //hours
-	return t;
-}
+// int getTime(string tim) // must be in format hh::mm::ss. Military time
+// {
+// 	int t = 0;
+// 	t += stoi(tim.substr(tim.rfind(':')+1)); // seconds
+// 	t += 60 * stoi(tim.substr(tim.find(':')+1, 2)); //minutes
+// 	t += 3600 * stoi(tim.substr(0,2)); //hours
+// 	return t;
+// }
 
-bool containsEvent(vector<Event> events, string type)
-{
-	for(int i = 0; i < events.size(); i++)
-	{
-		if(events[i].type == type)
-			return true;
-	}
-	return false;
-}
+// bool containsEvent(vector<Event> events, string type)
+// {
+// 	for(int i = 0; i < events.size(); i++)
+// 	{
+// 		if(events[i].type == type)
+// 			return true;
+// 	}
+// 	return false;
+// }
 
 
 //Class Level functions (and getTime)
-void Observations::addEvent(string type, string starttime, string endtime)
-{
-	Event event;
-	event.type = type;
-	event.starttime = getTime(starttime);
-	event.endtime = getTime(endtime);
-	if(event.endtime < event.starttime) // possible if the starttime is before midnight and endtime is after
-		event.isOvernight = true;
-	events.push_back(event);
-	// printf("event: %s, start %s|%d, end %s|%d\n", event.type.c_str(), starttime.c_str(), event.starttime, endtime.c_str(), event.endtime);
-}
+// void Observations::addEvent(string type, string starttime, string endtime)
+// {
+// 	Event event;
+// 	event.type = type;
+// 	event.starttime = getTime(starttime);
+// 	event.endtime = getTime(endtime);
+// 	if(event.endtime < event.starttime) // possible if the starttime is before midnight and endtime is after
+// 		event.isOvernight = true;
+// 	events.push_back(event);
+// 	// printf("event: %s, start %s|%d, end %s|%d\n", event.type.c_str(), starttime.c_str(), event.starttime, endtime.c_str(), event.endtime);
+// }
 
-void Observations::getEvents(int tim, vector<Event>& dest)
-{
-	dest.resize(0);
-	//seconds in a day = 3600 * 24 = 86400
-	tim %= 86400; //make sure we are within a valid time for a day
-	for(int i = 0; i < events.size(); i++)
-	{
-		//check if time is within event time. if so add to dest
-		if(events[i].isOvernight) 
-		{
-			if(events[i].starttime <= tim || tim  <= events[i].endtime)
-				dest.push_back(events[i]);
-		}
-		else
-		{
-			if(events[i].starttime <= tim && tim  <= events[i].endtime)
-				dest.push_back(events[i]);
-		}
-	}
-}
+// void Observations::getEvents(int tim, vector<Event>& dest)
+// {
+// 	dest.resize(0);
+// 	//seconds in a day = 3600 * 24 = 86400
+// 	tim %= 86400; //make sure we are within a valid time for a day
+// 	for(int i = 0; i < events.size(); i++)
+// 	{
+// 		//check if time is within event time. if so add to dest
+// 		if(events[i].isOvernight) 
+// 		{
+// 			if(events[i].starttime <= tim || tim  <= events[i].endtime)
+// 				dest.push_back(events[i]);
+// 		}
+// 		else
+// 		{
+// 			if(events[i].starttime <= tim && tim  <= events[i].endtime)
+// 				dest.push_back(events[i]);
+// 		}
+// 	}
+// }
 
-void Observations::getEvents(string tim, vector<Event>& dest)
-{
-	getEvents(getTime(tim),dest);
-}
+// void Observations::getEvents(string tim, vector<Event>& dest)
+// {
+// 	getEvents(getTime(tim),dest);
+// }
 
-void Observations::getAllEvents(vector<Event>& dest)
-{
-	dest.resize(0);
-	for(int i = 0; i < events.size(); i++)
-		dest.push_back(events[i]);
-}
+// void Observations::getAllEvents(vector<Event>& dest)
+// {
+// 	dest.resize(0);
+// 	for(int i = 0; i < events.size(); i++)
+// 		dest.push_back(events[i]);
+// }
 
 //Other Functions
 void init_wildlife_database()
@@ -191,6 +194,20 @@ void init_wildlife_database()
 }
 
 bool setupDetailLevel(int detail)
+{
+	vector<int> classIds;
+	getClasses(detail,classIds);
+	char buf[50];
+	for(int i = 0; i < classIds.size(); i++)
+	{
+		sprintf(buf,"%d",classIds[i])
+		class_names.push_back(string(buf));
+		// class_true_vals.push_back(i);
+		class_true_vals[classIds[i]] = i;
+	}
+}
+
+/*bool setupDetailLevel(int detail)
 {
 	if(0 <= detail && detail <= 1)
 	{
@@ -252,7 +269,7 @@ int getTrueVal(const vector<Event>& events)
 	}
 	return -1; // error unknown detail level or no events found
 		
-}
+}*/
 
 //do not use this function on multiple VideoCaptures at once. Run one throught to the end before
 //going on to the next
