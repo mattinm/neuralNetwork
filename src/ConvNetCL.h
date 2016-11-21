@@ -101,6 +101,36 @@ private: 	// structs
 		void clearWeights();
 	};
 
+	struct Kernels{
+		cl_kernel reluKernelF;
+		cl_kernel leakyReluKernelF;
+		cl_kernel convKernelF;
+		cl_kernel convKernelFC;
+		cl_kernel zeroPadKernelF;
+		cl_kernel maxPoolKernelF;
+		cl_kernel softmaxKernelF;
+		cl_kernel reluKernel;
+		cl_kernel reluBackKernel;
+		cl_kernel leakyReluKernel;
+		cl_kernel leakyReluBackKernel;
+		cl_kernel convKernel;
+		cl_kernel convBackNeuronsKernel;
+		cl_kernel convBackBiasesKernel;
+		cl_kernel convBackWeightsKernel;
+		cl_kernel convBackWeightsMomentKernel;
+		cl_kernel zeroPadKernel;
+		cl_kernel zeroPadBackKernel;
+		cl_kernel maxPoolKernel;
+		cl_kernel maxPoolBackKernel;
+		cl_kernel softmaxKernel;
+		cl_kernel softmaxBackKernel;
+		cl_kernel copyArrayKernel;
+		cl_kernel maxSubtractionKernel;
+		cl_kernel vectorESumKernel;
+		cl_kernel plusEqualsKernel;
+		cl_kernel divideEqualsKernel;
+	};
+
 private: 	// members
 	bool __inited = false;
 	//hyperparameters
@@ -174,7 +204,7 @@ private: 	// members
 
 
 	//DE
-	int __targetSelectionMethod = DE_RAND;
+	int __targetSelectionMethod = DE_BEST;
 
 public: 	// functions
 	//Constructors and Destructors
@@ -253,8 +283,8 @@ public: 	// functions
 	//training
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
-	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
-	void DETrain_sameSize(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
+	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
+	void DETrain_sameSize(int generations, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
 
@@ -301,18 +331,22 @@ private:	// functions
 	void getTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals);
 	void initVelocities(std::vector<cl_mem>& velocities);
 	void pullCLWeights();
-	void pushCLWeights(std::vector<Layer*>& layers, std::vector<cl_mem>& clWeights, std::vector<cl_mem>& clBiases, cl_command_queue& queue, cl_bool block);
+	void pullCLWeights(Net* net, const std::vector<cl_mem>& clWeights, const cl_command_queue& queue);
+	void pushCLWeights(std::vector<Layer*>& layers, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, cl_bool block);
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
 	std::string secondsToString(time_t seconds);
 	void trainSetup(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void feedForward(std::vector<cl_mem>& layerNeeds);
 	void feedForward(cl_mem* prevNeurons, cl_mem* neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
- 		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom);
+ 		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxForward();
-	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom);
+	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);
+	void softmaxBackprop(int curTrueVal, cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const Kernels& k, Net* net);
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
+	void backprop(int curTrueVal, cl_mem* prevNeurons, cl_mem* neurons, Net* net, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& velocities, 
+	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue queue, const cl_mem& denom, const Kernels& k);
 	void storeWeightsInHolder(WeightHolder& holder);
 	void loadWeightsFromHolder(WeightHolder& holder);
 	std::string tolower(std::string str);
@@ -332,6 +366,11 @@ private:	// functions
 	int mapConvLayer(Net* orig, int layerNum, Net* dest);
 	void mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, int* destpos);
 	// void DE_mutation_crossover_selection(int netNum, );
+	void buildKernels(Kernels& k, int device);
+	void releaseKernels(Kernels&k);
+	void trial_thread(int netIndex, std::vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem* prevNeurons, 
+		cl_mem* neurons, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, 
+		const std::vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP);
 
 	//OpenCL functions
 	void CheckError(cl_int error);
