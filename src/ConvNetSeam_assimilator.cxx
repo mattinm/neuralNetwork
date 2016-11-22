@@ -132,11 +132,11 @@ int init_result(RESULT& result, void*& data)
 	}
 	catch(string error_message)
 	{
-		log_messages.printf(MSG_DEBUG,"ConvNetSeam_validator get_error_from_result([RESULT#%d %s]) failed with error: %s\n",result.id, result.name, error_message.c_str());
+		log_messages.printf(MSG_DEBUG,"ConvNetSeam_assimilator get_error_from_result([RESULT#%d %s]) failed with error: %s\n",result.id, result.name, error_message.c_str());
 	}
 	catch(const exception &ex)
 	{
-		log_messages.printf(MSG_CRITICAL,"ConvNetSeam_validator get_error_from_result([RESULT#%d %s]) failed with error: %s\n",result.id, result.name, ex.what());
+		log_messages.printf(MSG_CRITICAL,"ConvNetSeam_assimilator get_error_from_result([RESULT#%d %s]) failed with error: %s\n",result.id, result.name, ex.what());
 		exit(0);
 		return 1;
 	}
@@ -144,7 +144,7 @@ int init_result(RESULT& result, void*& data)
 	int retval = get_output_file_paths(result, filepaths);
 	if(retval)
 	{
-		log_messages.printf(MSG_CRITICAL, "ConvNetSeam_validator: Failed to get output file path: %d %s\n",result.id, result.name);
+		log_messages.printf(MSG_CRITICAL, "ConvNetSeam_assimilator: Failed to get output file path: %d %s\n",result.id, result.name);
 		exit(0);
 		return retval;
 	}
@@ -199,6 +199,9 @@ int assimilate_handler(WORKUNIT& wu, vector<RESULT>& /*results*/, RESULT& canoni
 			return -2;
 		}
 		data = (cnn_output*)vptr;
+		string new_loc = "/results/ConvNetSeam/"+cnn_config_id+"/";
+		system("mkdir -p "+new_loc);
+		system("cp -r "+data->raw_location+" "+new_loc+data->video_id);
 
 		/*ostringstream event_query;
 		event_query << "SELECT id, event FROM event_type;";
