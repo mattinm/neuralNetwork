@@ -17,6 +17,7 @@ find_package( BOINC )
 find_package( OpenCL )
 find_package( MySQL )
 find_package( OpenSSL )
+find_package( EXPAT )
 
 FIND_LIBRARY(UNDVC_COMMON_LIBRARY
 	NAMES undvc_common
@@ -56,6 +57,10 @@ IF(BOINC_SERVER_FOUND)
 	link_directories(/home/tdesell/boost_1_53_0/stage/lib)
 ENDIF(BOINC_SERVER_FOUND)
 
+IF(EXPAT_FOUND)
+	include_directories(${EXPAT_INCLUDE_DIRS})
+ENDIF(EXPAT_FOUND)
+
 IF(MYSQL_FOUND)
 	include_directories(${MYSQL_INCLUDE_DIR})
 ENDIF(MYSQL_FOUND)
@@ -90,7 +95,7 @@ IF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 	target_link_libraries(ConvNetSeamRun_BOINC ${OpenCL_LIBRARY} ${OpenCV_LIBS} ${BOINC_APP_LIBRARIES})
 ENDIF(OpenCV_FOUND AND OpenCL_FOUND AND BOINC_APP_FOUND)
 
-IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
+IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND AND EXPAT_FOUND)
 	FIND_PATH(UNDVC_COMMON_INCLUDE_DIR file_io.hxx
 		../undvc_common #add additional paths here if undvc_common in different directory
 		${PROJECT_SOURCE_DIR}/../undvc_common
@@ -110,17 +115,19 @@ IF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
 		${BOINC_INCLUDE_DIR}/sched/validate_util2
 		src/ConvNetSeam_validator
 		src/ConvNetEvent
+		/home/tdesell/csg_boinc/lib/parse.cpp
 		)
-	target_link_libraries(ConvNetSeam_validator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} boost_system boost_filesystem)
+	target_link_libraries(ConvNetSeam_validator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} boost_system boost_filesystem ${EXPAT_LIBRARIES} ${Boost_LIBRARIES} ${BOINC_LIBARIES} ${BOINC_APP_LIBARIES})
 
 	add_executable(ConvNetSeam_assimilator
 		${BOINC_INCLUDE_DIR}/sched/assimilator
 		${BOINC_INCLUDE_DIR}/sched/validate_util
 		src/ConvNetSeam_assimilator
 		src/ConvNetEvent
+		/home/tdesell/csg_boinc/lib/parse.cpp
 		)
-	target_link_libraries(ConvNetSeam_assimilator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES})
-ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND)
+	target_link_libraries(ConvNetSeam_assimilator ${UNDVC_COMMON_LIBRARY} ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${EXPAT_LIBRARIES})
+ENDIF(BOINC_SERVER_FOUND AND MYSQL_FOUND AND OPENSSL_FOUND AND EXPAT_FOUND)
 
 
 
