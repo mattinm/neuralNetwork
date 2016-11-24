@@ -129,14 +129,15 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt deviceNum -DE(optional)\n");
+		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional)\n");
 		return 0;
 	}
 	int device = 0;
 	bool useDE = false;
-	if(argc >= 4)
-		device = atoi(argv[3]);
-	if(argc >= 5 && string(argv[4]) == "-DE")
+	int dataBatchSize = atoi(argv[3]);
+	if(argc >= 5)
+		device = atoi(argv[4]);
+	if(argc >= 6 && string(argv[5]) == "-DE")
 		useDE = true;
 
 	ifstream training_label_in("train-labels.idx1-ubyte");
@@ -175,6 +176,7 @@ int main(int argc, char** argv)
 	test_label_in.close();
 	test_data_in.close();
 
+
 	Net net(argv[1]);
 	net.preprocessCollectively();
 	net.setSaveName(argv[2]);
@@ -186,10 +188,10 @@ int main(int argc, char** argv)
 		cout << "Something went wrong making the net. Exiting." << endl;
 		return 0;
 	}
-	net.addTrainingData(training_data,training_true);
+	net.addTrainingData(test_data,test_true);
 
 	if(useDE)
-		net.DETrain_sameSize(100);
+		net.DETrain_sameSize(100,dataBatchSize);
 	else
 		net.train();
 

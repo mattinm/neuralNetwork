@@ -284,7 +284,7 @@ public: 	// functions
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
 	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
-	void DETrain_sameSize(int generations, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
+	void DETrain_sameSize(int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
 
@@ -343,10 +343,10 @@ private:	// functions
 	void softmaxForward();
 	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);
-	void softmaxBackprop(int curTrueVal, cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const Kernels& k, Net* net);
+	void softmaxBackprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, const cl_command_queue& queue, const Kernels& k, Net* net);
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
-	void backprop(int curTrueVal, cl_mem* prevNeurons, cl_mem* neurons, Net* net, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& velocities, 
-	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue queue, const cl_mem& denom, const Kernels& k);
+	void backprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, Net* net, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& velocities, 
+	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue queue, const Kernels& k);
 	void storeWeightsInHolder(WeightHolder& holder);
 	void loadWeightsFromHolder(WeightHolder& holder);
 	std::string tolower(std::string str);
@@ -368,8 +368,8 @@ private:	// functions
 	// void DE_mutation_crossover_selection(int netNum, );
 	void buildKernels(Kernels& k, int device);
 	void releaseKernels(Kernels&k);
-	void trial_thread(int netIndex, std::vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem* prevNeurons, 
-		cl_mem* neurons, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, 
+	void trial_thread(int netIndex, std::vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem** prevNeurons, 
+		cl_mem** neurons, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, 
 		const std::vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP);
 
 	//OpenCL functions
