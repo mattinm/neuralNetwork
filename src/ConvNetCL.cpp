@@ -2414,12 +2414,25 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 
 void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
-	// int dataBatchSize = -1; //make parameter
 	double mutationMax = 0.9, mutationMin = 0.1;
 
 	printf("DE training same size\n");
-	BP = true;
+	BP = false;
 	cl_int error;
+
+	int mutationType = DE_CURRENT_TO_BEST;
+	int numDiffVec;
+	if(mutationType == DE_BEST || mutationType == DE_RAND)
+		numDiffVec = 1;
+	else if(mutationType == DE_CURRENT_TO_BEST)
+		numDiffVec = 2;
+	else if(mutationType == DE_QUIN_AND_SUGANTHAN)
+		numDiffVec = -1; //set in makeDonor
+	else
+	{
+		printf("Unknown mutationType: %d\n",mutationType);
+		return;
+	}
 
 	//We'll need some stuff to hold our training data
 	vector<vector<double>* > trainingData(0);
@@ -2429,6 +2442,28 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 	int curTrainDataIndex = 0;
 	if(dataBatchSize <= 0)
 		dataBatchSize = trainingData.size();
+
+	double percentTotalData = (double)dataBatchSize/trainingData.size();
+	printf("percentTotalData = %lf\n",percentTotalData);
+	// if(mutationMin*percentTotalData < 0.01)
+	// {
+	// 	mutationMin = .01;
+	// 	mutationMax = mutationMax/mutationMin * mutationMin;
+	// }
+	// else
+	// {
+		mutationMax *= percentTotalData;
+		mutationMin *= percentTotalData;
+	// }
+	// if(crossProb * percentTotalData < 0.01)
+	// {
+	// 	crossProb = 0.01;
+	// }
+	// else
+	// {
+		crossProb *= percentTotalData;
+	// }
+	
 
 	//preprocess the data, training and test
  	if(__preprocessIndividual)
@@ -2452,7 +2487,10 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 	// vector<Net*>* netsPtr = &nets;
 	vector<double> netfit(population, 0);
 	vector<int> netCorrect(population, 0);
+	vector<int> prevCorrect(population, 0);
+	vector<double> prevfit(population, 0);
 	vector<Net*> trials(population);
+	vector<double> trialfit(population, 0);
 
 	setupEquivalentNets(nets);
 	vector<vector<double> > curConfid;
@@ -2535,21 +2573,29 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
  	vector<thread> thr(clBatchSize);
 
  	printf("Starting gens\n");
- 	int starttime = time(NULL);
+ 	time_t genstarttime = time(NULL);
+ 	int starttime = genstarttime;
+ 	bool firstTime = true;
 	while(curGen <= generations)
 	{
 		/******************************
-		 *
-		 *  END OF AN EPOCH/GENERATION
-		 *
-		 ******************************/
-		if(curTrainDataIndex == trainingData.size() || curGen == generations)
+		*
+		*  END OF AN EPOCH/GENERATION
+		*
+		******************************/
+		if(curTrainDataIndex == trainingData.size() || curGen == generations || firstTime)
 		// if(true)
 		{
-			printf("Time for a generation: %s\n", secondsToString(time(NULL) - starttime).c_str());
+			if(firstTime)
+				firstTime = false;
+			else
+			{
+				curGen++;
+				printf("Time for a generation: %s\n", secondsToString(time(NULL) - genstarttime).c_str());
+			}
 			printf("---------------------------------------------------------------\n");
 			time_t starttime = time(NULL);
-			curGen++;
+			
 			//end of an epoch
 			for(int i =0; i < netCorrect.size(); i++)
 			{
@@ -2604,6 +2650,12 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 				}
 				for(int t = 0; t < myclBatchSize; t++)
 				{
+					if(netCorrect[i+t] > prevCorrect[i+t]) 	printf("*");
+					else 									printf(" ");
+					if(netfit[i+t] < prevfit[i+t])			printf("*");
+					else 									printf(" ");
+					prevCorrect[i+t] = netCorrect[i+t];
+					prevfit[i+t] = netfit[i+t];
 					printf("Net: %3d. Acc: %7.3lf. Error %9.2lf\n", i+t, 100.0*netCorrect[i+t]/trainingData.size(), netfit[i+t]);
 				}
 
@@ -2611,7 +2663,16 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 			}
 
 			int best = getMaxElementIndex(netCorrect);
-			printf("End Gen %4d. Best accuracy is %lf, Error %lf |", curGen, 100.0*netCorrect[best]/trainingData.size(),netfit[best]);
+			int bestErrorIndex = 0;
+			double bestError = netfit[0];
+			for(int i = 1; i < netfit.size(); i++)
+				if(netfit[i] < bestError)
+				{
+					bestError = netfit[i];
+					bestErrorIndex = i;
+				}
+			printf("End Gen %4d. Best accuracy is: Net %d, %lf, Error %lf |", curGen, best, 100.0*netCorrect[best]/trainingData.size(),netfit[best]);
+			printf("             Best error is:    Net %d, %lf, Error %lf |", bestErrorIndex, 100.0*netCorrect[bestErrorIndex]/trainingData.size(),netfit[bestErrorIndex]);
 			printf("Time to run all training over all indivs: %s\n", secondsToString(time(NULL)-starttime).c_str());
 			printf("---------------------------------------------------------------\n");
 
@@ -2624,14 +2685,15 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 			//get new training data
 			getTrainingData(trainingData, trueVals);
 			curTrainDataIndex = 0;
+			genstarttime = time(NULL);
 
 		}
 
 		/******************************
-		 *
-		 *  START OF DE TRAINING PER IMAGE
-		 *
-		 ******************************/
+		*
+		*  START OF DE TRAINING PER IMAGE
+		*
+		******************************/
 
 		if(curTrainDataIndex % 1000 == 0 && curTrainDataIndex != 0)
 		{
@@ -2639,8 +2701,7 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 			printf("Time for 1000: %s\n", secondsToString(time(NULL)-starttime).c_str());
 			starttime = time(NULL);
 		}
-		// else if(curTrainDataIndex == 0)
-		if(curTrainDataIndex == 0)
+		else if(curTrainDataIndex == 0)
 			starttime = time(NULL); //cause we had to wait for it to run over all the images
 
 		int mydataBatchSize = curTrainDataIndex + dataBatchSize >= trainingData.size() ? trainingData.size() - curTrainDataIndex : dataBatchSize;
@@ -2693,63 +2754,237 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 		}
 
 		/******************************
-		 *
-		 *  GETTING DONOR AND TRIAL VECTORS SEQUENTIALLY
-		 *
-		 ******************************/
-		 int mutationCurrent = mutationMin + (mutationMax - mutationMin)*(generations - curGen)/generations;
-		for(int i = 0; i < nets.size(); i++)
+		*
+		*  GETTING DONOR AND TRIAL VECTORS SEQUENTIALLY
+		*
+		******************************/
+		int mutationCurrent = mutationMin + (mutationMax - mutationMin)*(generations - curGen)/generations;
+		if(mutationType != DE_QUIN_AND_SUGANTHAN)
 		{
-			// printf("mutation and stuff for net %d\n", i);
-			//get target and parameter vectors
-			int target = getTargetVector(__targetSelectionMethod,netfit,i);
-			// printf("got target\n");
-			getHelperVectors(nets, target, i, helperParents); //fills helperParents
-			// printf("got helpers\n");
-
-			//make donor vector. will be same structure as target
-			Net* donor = makeDonor(helperParents,mutationCurrent);
-			// printf("got donor\n");
-
-			//apply crossover to get trial vector of same structure as original
-			trials[i] = crossover(nets[i],donor, crossMethod, crossProb);
-			// printf("got trial\n");
-			delete donor;
-
-			pushCLWeights(trials[i]->__layers, clWeights[0], clBiases[0], queues[0], CL_TRUE);
-			double trialfit = 0;
-
-			for(int d = 0; d < mydataBatchSize; d++)
+			for(int i = 0; i < nets.size(); i++)
 			{
-				CheckError(clEnqueueWriteBuffer(queues[0], *(prevNeurons[0]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
-					0, nullptr, nullptr));
-				//run trial over data and get fitness of trial
-				cl_mem ** prevptr = &(prevNeurons[0]), **nptr = &(neurons[0]);
-				feedForward(prevptr,nptr,trials[i]->__neuronDims, trials[i]->__layers, 
-						layerNeeds[0], clWeights[0], clBiases[0], queues[0], denoms[0], kerns[0]);
+				trialfit[i] = 0;
+				// printf("starting donor\n");
+				Net* donor = makeDonor(mutationType, nets, netfit, i, numDiffVec, mutationCurrent);
+				// printf("starting crossover\n");
+				trials[i] = crossover(nets[i],donor, crossMethod, crossProb);
 
-				CheckError(clEnqueueReadBuffer(queues[0], *(neurons[0]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
-					 	soft.data(), 0, nullptr, nullptr));
-				trialfit += getFitness(soft, trueVals[curTrainDataIndex+d]);
+				delete donor;
 			}
-			// printf("trial ran\n");
+			for(int i = 0; i < nets.size();)
+			{
+				int myclBatchSize;
+				if(i + clBatchSize >= nets.size())
+					myclBatchSize = nets.size() - i;
+				else
+					myclBatchSize = clBatchSize;
 
-			//apply selection
-			printf("Data %d-%d, Net: %3d. NetErr: %9.2lf, TrialErr: %9.2lf\n",curTrainDataIndex,curTrainDataIndex+mydataBatchSize-1, i,netfit[i],trialfit);
-			if(trialfit < netfit[i]) //trial is better. backprop it over training data
+				vector<thread> thr(myclBatchSize);
+
+				for(int t = 0; t < myclBatchSize; t++)
+					pushCLWeights(trials[i+t]->__layers, clWeights[t], clBiases[t], queues[t], CL_TRUE);
+				for(int d = 0; d < mydataBatchSize; d++)
+				{
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
+							0, nullptr, nullptr));
+						clFinish(queues[t]);
+						//this does both feedForward and softmaxForward
+						cl_mem ** prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]);
+						thr[t] = thread([=] {feedForward(prevptr, nptr,ref(trials[i+t]->__neuronDims), ref(trials[i+t]->__layers), ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+					}
+					for(int t = 0; t < myclBatchSize; t++)
+						thr[t].join();
+
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						//get output and see if right
+						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+						 	soft.data(), 0, nullptr, nullptr));
+						trialfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex + d]);
+					}
+				}
+				// printf("trial ran\n");
+				i+= myclBatchSize;
+
+			} //got all trials
+
+			// printf("donors made:\n");
+			// for(int i = 0; i < r1v.size(); i++)
+			// 	printf("%2d %2d\n",r1v[i],r2v[i]);
+			// r1v.clear();
+			// r2v.clear();
+			// getchar();
+			//figure out next generation individuals / apply selection
+			for(int i = 0; i < nets.size(); i++)
 			{
-				delete nets[i];
-				nets[i] = trials[i];				
+				
+				if(trialfit[i] < netfit[i]) //trial is better. backprop it over training data
+				{
+					delete nets[i];
+					nets[i] = trials[i];
+					// printf("trial better\n");
+					if(BP)
+					{
+						cl_mem ** prevptr = &(prevNeurons[0]), **nptr = &(neurons[0]);
+						backprop(trueVals[curTrainDataIndex], prevptr, nptr, nets[i], layerNeeds[0], velocities[i], clWeights[0], clBiases[0], queues[0], kerns[0]);
+						pullCLWeights(nets[i], clWeights[0], queues[0]);
+					}
+					printf("*");			
+				}
+				else 
+				{
+					// printf("trial not better\n");
+					delete trials[i];
+					printf(" ");
+				}
+				printf("Net %d netfit %lf trialfit %lf\n", i, netfit[i], trialfit[i]);
+				// printf("nets[%d] @ %#x\n", i,nets[i]);
 			}
-			else 
+		}
+		else //mutationType == DE_QUIN_AND_SUGANTHAN
+		{
+			vector<double> randfit(population,0), curbestfit(population, 0);
+			vector<Net*> randtrial(population), curbesttrial(population);
+			//get both sets of donor vectors and trial vectors
+			// printf("getting rand and curbest donors and trials\n");
+			for(int i = 0; i < nets.size(); i++)
 			{
-				delete trials[i];
+				Net* randDonor = makeDonor(DE_RAND,nets,netfit,i,1,mutationCurrent);
+				Net* curBestDonor = makeDonor(DE_CURRENT_TO_BEST,nets,netfit,i,2,mutationCurrent);
+
+				randtrial[i] = crossover(nets[i],randDonor,crossMethod,crossProb);
+				curbesttrial[i] = crossover(nets[i],curBestDonor,crossMethod,crossProb);
+
+				delete randDonor;
+				delete curBestDonor;
 			}
-			// cl_mem ** prevptr = &(prevNeurons[0]), **nptr = &(neurons[0]);
-			// backprop(trueVals[curTrainDataIndex], prevptr, nptr, nets[i], layerNeeds[0], velocities[i], clWeights[0], clBiases[0], queues[0], kerns[0]);
-			// printf("end copied code\n");
-			//end copied code
-		} //got all trials
+			//run both sets of trial vectors
+			// printf("running rand trials\n");
+			for(int i = 0; i < nets.size();)
+			{
+				int myclBatchSize;
+				if(i + clBatchSize >= nets.size())
+					myclBatchSize = nets.size() - i;
+				else
+					myclBatchSize = clBatchSize;
+
+				vector<thread> thr(myclBatchSize);
+				//rand
+				for(int t = 0; t < myclBatchSize; t++)
+					pushCLWeights(randtrial[i+t]->__layers, clWeights[0], clBiases[0], queues[0], CL_TRUE);
+				for(int d = 0; d < mydataBatchSize; d++)
+				{
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
+							0, nullptr, nullptr));
+						//run trial over data and get fitness of trial
+						cl_mem ** prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]);
+						thr[t] = thread([=] {feedForward(prevptr,nptr,ref(randtrial[i]->__neuronDims), ref(randtrial[i]->__layers), 
+								ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+					}
+					for(int t = 0; t < myclBatchSize; t++)
+						thr[t].join();
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+							 	soft.data(), 0, nullptr, nullptr));
+						randfit[i] += getFitness(soft, trueVals[curTrainDataIndex+d]);
+					}
+				}
+				i+=myclBatchSize;
+			}
+			// printf("running curbest trials\n");
+			for(int i = 0; i < nets.size();)
+			{
+				int myclBatchSize;
+				if(i + clBatchSize >= nets.size())
+					myclBatchSize = nets.size() - i;
+				else
+					myclBatchSize = clBatchSize;
+
+				vector<thread> thr(myclBatchSize);
+				//curbest
+				pushCLWeights(curbesttrial[i]->__layers, clWeights[0], clBiases[0], queues[0], CL_TRUE);
+				for(int d = 0; d < mydataBatchSize; d++)
+				{
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
+							0, nullptr, nullptr));
+						//run trial over data and get fitness of trial
+						cl_mem ** prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]);
+						thr[t] = thread([=]{feedForward(prevptr,nptr,ref(curbesttrial[i]->__neuronDims), ref(curbesttrial[i]->__layers), 
+								ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+					}
+					for (int t = 0; t < myclBatchSize; ++t)
+						thr[t].join();
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+							 	soft.data(), 0, nullptr, nullptr));
+						curbestfit[i] += getFitness(soft, trueVals[curTrainDataIndex+d]);
+					}
+				}
+				i+=myclBatchSize;
+			}
+			//calculate survivals and deaths of offspring
+			// printf("calc survivals\n");
+			int nsrand = 0, nscurbest = 0;// don't think we actually need these: nfrand = 0, nfcurbest = 0;
+			for(int i = 0; i < nets.size(); i++)
+			{
+				if(randfit[i] < netfit[i])
+					nsrand++;
+				if(curbestfit[i] < netfit[i])
+					nscurbest++;
+			}
+			//calculate probability of choosing DE/rand/1/z
+			double probRand = nsrand * population/(nscurbest * population + nsrand * population);
+			uniform_real_distribution<double> dis(0.0, 1.0);
+			default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+			if(probRand < dis(gen))
+			{
+				for(int i = 0; i < curbesttrial.size(); i++)
+					delete curbesttrial[i];
+				for(int i = 0; i < nets.size(); i++)
+					if(randfit[i] < netfit[i])
+					{
+						delete nets[i];
+						nets[i] = randtrial[i];
+						// printf("trial better\n");
+						if(BP)
+						{
+							cl_mem ** prevptr = &(prevNeurons[0]), **nptr = &(neurons[0]);
+							backprop(trueVals[curTrainDataIndex], prevptr, nptr, nets[i], layerNeeds[0], velocities[i], clWeights[0], clBiases[0], queues[0], kerns[0]);
+							pullCLWeights(nets[i], clWeights[0], queues[0]);
+						}	
+					}
+					else
+						delete randtrial[i];
+			}
+			else
+			{
+				for(int i = 0; i < randtrial.size(); i++)
+					delete randtrial[i];
+				for(int i = 0; i < nets.size(); i++)
+					if(curbestfit[i] < netfit[i])
+					{
+						delete nets[i];
+						nets[i] = curbesttrial[i];
+						// printf("trial better\n");
+						if(BP)
+						{
+							cl_mem ** prevptr = &(prevNeurons[0]), **nptr = &(neurons[0]);
+							backprop(trueVals[curTrainDataIndex], prevptr, nptr, nets[i], layerNeeds[0], velocities[i], clWeights[0], clBiases[0], queues[0], kerns[0]);
+							pullCLWeights(nets[i], clWeights[0], queues[0]);
+						}	
+					}
+					else
+						delete curbesttrial[i];
+			}
+		}
 
 
 
@@ -2971,7 +3206,7 @@ void Net::setupRandomNets(vector<Net*>& nets)
 		if(__layers[i]->layerType == MAX_POOL_LAYER)
 			maxs.push_back((MaxPoolLayer*)__layers[i]);
 	uniform_real_distribution<double> dis(0.0, 1.0);
-	default_random_engine gen;
+	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	uniform_int_distribution<int> filsize_dis(0,4); //need *2 + 1. filterSizes are 1-9
 
 	for(int i = 0; i < nets.size(); i++)
@@ -3020,7 +3255,7 @@ double Net::getFitness(vector<double>& prediction, double trueVal)
 			diff = prediction[i]; //should be 0, is prediction[i]
 		sum += diff;
 	}
-	return sum;
+	return sum*sum;
 }
 
 bool Net::setDETargetSelectionMethod(int method)
@@ -3033,14 +3268,14 @@ bool Net::setDETargetSelectionMethod(int method)
 	return false;
 }
 
-int Net::getTargetVector(int method, vector<double>& fits, int curNet)
+int Net::getTargetVector(int method, const vector<double>& fits, int curNet)
 {
 	if(method == DE_BEST)
 	{
 		int bestIndex = (curNet == 0) ? 1 : 0; //don't want to count curNet in the running
 		double bestFit = fits[bestIndex];
 		for(int i = 0; i < fits.size(); i++)
-			if(i != curNet && fits[i] < bestFit)
+			if(fits[i] < bestFit)
 			{
 				bestFit = fits[i];
 				bestIndex = i;
@@ -3062,12 +3297,15 @@ int Net::getTargetVector(int method, vector<double>& fits, int curNet)
 	}
 }
 
-void Net::getHelperVectors(vector<Net*>& nets, int target, int curNet, vector<Net*>& helpers)
+void Net::getHelperVectors(const vector<Net*>& nets, int target, int curNet, vector<Net*>& helpers)
 {
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 
 	if(helpers.size() != 3)
+	{
+		printf("resizing helpers\n");
 		helpers.resize(3);
+	}
 	if(nets.size() < 4)
 	{
 		printf("Should have at least 4 individuals for donor vector\n");
@@ -3135,19 +3373,99 @@ int Net::mapConvLayer(Net* orig, int layerNum, Net* dest)
 	return i;
 }
 
-//helpers = {target, param1, param2}
-Net* Net::makeDonor(vector<Net*> helpers, double scaleFactor)
+//n is from DE/x/n/z
+Net* Net::makeDonor(int mutType, const vector<Net*>& nets, const vector<double>& netfit, int curIndex, int n, double scaleFactor)
 {
-	Net* donor = new Net(*(helpers[0])); // copy construct target to donor
+	if(mutType == DE_BEST)
+	{
+		vector<Net*> helpers(3);
+		int target = getTargetVector(DE_BEST, netfit, curIndex);
+		getHelperVectors(nets,target,curIndex,helpers);
+		return makeDonor(helpers,scaleFactor);
+	}
+	else if(mutType == DE_RAND)
+	{
+		int target = getTargetVector(DE_RAND, netfit, curIndex);
+		uniform_int_distribution<int> first(0,nets.size()-2);
+		default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+		int r1 = first(gen);
+		int r2 = first(gen);
+		if(r1 >= curIndex) r1++;
+		if(r2 >= curIndex) r2++;
+		// printf("i %d target %d r1 %d r2 %d\n", curIndex,target, r1,r2);
+		// r1v.push_back(r1);
+		// r2v.push_back(r2);
+		return makeDonor({nets[target],nets[r1],nets[r2]},scaleFactor,false); //deep copy
+	}
+	else if(mutType == DE_CURRENT_TO_BEST)
+	{
+		// printf("current to best\n");
+		// u = x_current + beta(x_hat - x_current) + beta*sum_1^n(x_k1 - x_k2)
+		//first: x_current + beta(x_hat - x_i)
+		int bestIndex = getTargetVector(DE_BEST, netfit, curIndex);
+		Net* donor = makeDonor({nets[curIndex],nets[bestIndex],nets[curIndex]},scaleFactor); //this one is deep copy
+
+		default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+		uniform_int_distribution<int> first(0,nets.size()-2);
+		uniform_int_distribution<int> second(0,nets.size()-3);
+		for(int i = 0; i < n-1; i++)
+		{
+			// printf("curTobest i: %d\n", i);
+			int in1 = first(gen);
+			if(in1 >= curIndex) in1++;
+			int in2 = second(gen);
+			if(in2 >= in1)
+			{
+				in2++;
+				if(in2 >= curIndex) in2++;
+			}
+			else if(in2 >= curIndex)
+			{
+				in2++;
+				if(in2 >= in1) in2++;
+			}
+			// printf("in1 %d in2 %d\n", in1,in2);
+			makeDonor({donor,nets[in1],nets[in2]},scaleFactor,true); //shallow
+		}
+		return donor;
+	}
+	// else if(mutType == DE_QUIN_AND_SUGANTHAN)
+	// {
+
+	// }
+	else
+	{
+		printf("Unknown mutation type: %d\n", mutType);
+		return nullptr;
+	}
+}
+
+Net* Net::makeDonor(const vector<Net*>& helpers, double scaleFactor, bool shallow)
+{
+	if(helpers.size() != 3)
+	{
+		if(helpers.size() < 3)
+		{
+			printf("Helpers should be sized 3. It is less than that. Exiting.\n");
+			exit(1);
+		}
+		else
+			printf("Helpers should be sized 3. It is more than that. The extra nets are ignored.\n");
+	}
+	Net* donor;
+	if(shallow)
+		donor = helpers[0];
+	else
+		donor = new Net(*(helpers[0])); // copy construct target to donor
 	if(donor == nullptr)
 	{
 		printf("nullptr! donor\n");
 		getchar();
 	}
+	if(helpers[1] == helpers[2]) //the subtraction would be 0
+		return donor;
 	// printf("donor copied\n");
 	//u = target + scaleFactor * (x2 - x3)
-	int maxsHit = 0;
-	int convsHit = 0;
 	for(int i = 1; i < donor->__layers.size(); i++) //start at 1 b/c 0 is input
 	{
 		if(donor->__layers[i]->layerType == CONV_LAYER)
@@ -3159,42 +3477,6 @@ Net* Net::makeDonor(vector<Net*> helpers, double scaleFactor)
 			int filsize = conv->filterSize;
 			int prevDepth = donor->__neuronDims[i-1][2]; // = conv->numWeights/(conv->filsize^2 * numFilters)
 
-			//get corresponding conv layers from others. NULL means doesn't exist
-			// for(int h = 0; h < helperConvs.size(); h++)
-			// {
-			// 	int hconvsHit = 0;
-			// 	int hmaxsHit = 0;
-			// 	int hl;
-			// 	bool doesntExist = false;
-			// 	for(hl = 1; hl < helpers[h]->__layers.size(); hl++)
-			// 	{
-			// 		if(hmaxsHit == maxsHit)
-			// 			break;
-			// 		else if(helpers[h]->__layers[hl]->layerType == MAX_POOL_LAYER)
-			// 			hmaxsHit++;
-			// 	}
-			// 	for( ; hl < helpers[h]->__layers.size(); hl++)
-			// 	{
-			// 		if(hconvsHit == convsHit)
-			// 			break;
-			// 		else if(helpers[h]->__layers[hl]->layerType == CONV_LAYER)
-			// 			hconvsHit++;
-			// 		else if(helpers[h]->__layers[hl]->layerType == MAX_POOL_LAYER)
-			// 		{
-			// 			//this means the layer doesn't exist
-			// 			doesntExist = true;
-			// 			break;
-			// 		}
-			// 	}
-			// 	if(doesntExist)
-			// 		helperConvs[h] = NULL;
-			// 	else
-			// 	{
-			// 		helperConvs[h] = (ConvLayer*)(helpers[h]->__layers[hl]);
-			// 		helperDepths[h] = helpers[h]->__neuronDims[h-2][2];
-			// 	}	
-			// }
-
 			int index1 = mapConvLayer(donor, i, helpers[1]);
 			int index2 = mapConvLayer(donor, i, helpers[2]);
 
@@ -3204,7 +3486,10 @@ Net* Net::makeDonor(vector<Net*> helpers, double scaleFactor)
 				helperDepths[0] = helpers[1]->__neuronDims[index1-1][2];
 			}
 			else
+			{
+				printf("NULL helper 0\n");
 				helperConvs[0] = NULL;
+			}
 
 			if(index2 != -1)
 			{
@@ -3212,7 +3497,10 @@ Net* Net::makeDonor(vector<Net*> helpers, double scaleFactor)
 				helperDepths[1] = helpers[2]->__neuronDims[index2-1][2];
 			}
 			else
+			{
+				printf("NULL helper 1\n");
 				helperConvs[1] = NULL;
+			}
 			//go through all filters
 			for(int f = 0; f < conv->numBiases; f++)
 			{
@@ -3240,16 +3528,8 @@ Net* Net::makeDonor(vector<Net*> helpers, double scaleFactor)
 							
 						}
 			}
-
-			convsHit++;
-		}
-		else if(donor->__layers[i]->layerType == MAX_POOL_LAYER)
-		{
-			maxsHit++; // lets us know where we are in the net, relatively
-			convsHit = 0;
 		}
 	}
-
 	return donor;
 }
 
@@ -3325,7 +3605,7 @@ void Net::mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, 
 		}
 		uniform_int_distribution<int> xdis(geoIndexes[0][0], geoIndexes[0][1]);
 		uniform_int_distribution<int> ydis(geoIndexes[1][0], geoIndexes[1][1]);
-		default_random_engine gen;
+		default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 
 		destpos[0] = xdis(gen);
 		destpos[1] = ydis(gen);
@@ -3342,11 +3622,11 @@ Net* Net::crossover(Net* parent, Net* donor, int method, double prob)
 		getchar();
 	}
 	uniform_real_distribution<double> dis(0.0,1.0);
-	default_random_engine gen;
+	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	int donorPos[3];
 	if(method == DE_BINOMIAL_CROSSOVER)
 	{
-		printf("binomial\n");
+		// printf("binomial\n");
 		for(int i = 0; i < trial->__layers.size(); i++)
 		{
 			if(trial->__layers[i]->layerType == CONV_LAYER)
@@ -3372,16 +3652,20 @@ Net* Net::crossover(Net* parent, Net* donor, int method, double prob)
 						for(int b = 0; b < filsize; b++)
 							for(int c = 0; c < prevdepth; c++)
 							{
+								// int mypos[] = {a,b,c};
+								// mapPosIndexes(myconv, mypos, theirconv, donorPos);
+								// printf("My weight: %lf Their weight: %lf\n", myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)],theirconv->weights[POSITION(f % theirconv->numBiases,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)]);
 								if(dis(gen) < prob)
 								{
-									printf("U < prob: myConv %d theirConv %d. \n", i, theirconvIndex);
+									// printf("U < prob: myConv %d theirConv %d. \n", i, theirconvIndex);
 									if(theirconvIndex != -1)
 									{
 										int mypos[] = {a,b,c};
 										mapPosIndexes(myconv, mypos, theirconv, donorPos);
+										// printf("My weight: %lf Their weight: %lf\n", myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)],theirconv->weights[POSITION(f % theirconv->numBiases,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)]);
 										myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)]
-											 = theirconv->weights[POSITION(f % theirconv->numBiases,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)];
-										printf("My weight: %lf Their weight: %lf\n", myconv->weights[POSITION(f,a,b,c,filsize,prevdepth)],theirconv->weights[POSITION(f % theirconv->numBiases,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)]);
+											 = theirconv->weights[POSITION(f /*% theirconv->numBiases*/,donorPos[0],donorPos[1],donorPos[2],theirconv->filterSize,theirprevDepth)];
+										
 									}
 									else
 									{
@@ -3396,7 +3680,7 @@ Net* Net::crossover(Net* parent, Net* donor, int method, double prob)
 	}
 	else if(method == DE_EXPONENTIAL_CROSSOVER)
 	{
-		default_random_engine gen;
+		default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 		//need a random start point
 		int numConvLayers = 0;
 		for(int i = 1; i < trial->__layers.size(); i++)
@@ -3586,7 +3870,7 @@ void Net::shuffleData(vector<vector<double>* >& data, int times)
 {
 	if(times < 1)
 		return;
-	default_random_engine gen(time(0));
+	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	uniform_int_distribution<int> distr(0,data.size()-1);
 	vector<double>* temp;
 	for(int t=0; t < times; t++)
@@ -3607,7 +3891,7 @@ void Net::shuffleTrainingData(vector<vector<double>* >& trainingData, vector<dou
 	//return;
 	if(times < 1)
 		return;
-	default_random_engine gen(time(0));
+	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	uniform_int_distribution<int> distr(0,trainingData.size()-1);
 	vector<double>* temp;
 	int tempTrue;

@@ -46,6 +46,8 @@
 //defines for DE
 #define DE_RAND 0
 #define DE_BEST 1
+#define DE_CURRENT_TO_BEST 2
+#define DE_QUIN_AND_SUGANTHAN 3
 
 #define DE_BINOMIAL_CROSSOVER 0
 #define DE_EXPONENTIAL_CROSSOVER 1
@@ -206,6 +208,9 @@ private: 	// members
 	//DE
 	int __targetSelectionMethod = DE_BEST;
 
+	//delete r1v,r2v
+	// std::vector<int> r1v, r2v;
+
 public: 	// functions
 	//Constructors and Destructors
 	Net();
@@ -284,7 +289,7 @@ public: 	// functions
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
 	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
-	void DETrain_sameSize(int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.5, bool BP = true);
+	void DETrain_sameSize(int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
 
@@ -358,9 +363,10 @@ private:	// functions
 	void setupEquivalentNets(std::vector<Net*>& nets);
 	void releaseCLMem();
 	double getFitness(std::vector<double>& prediction, double trueVal);
-	int getTargetVector(int method, std::vector<double>& fits, int curNet);
-	void getHelperVectors(std::vector<Net*>& nets, int target, int curNet, std::vector<Net*>& helpers);
-	Net* makeDonor(std::vector<Net*> helpers, double scaleFactor);
+	int getTargetVector(int method, const std::vector<double>& fits, int curNet);
+	void getHelperVectors(const std::vector<Net*>& nets, int target, int curNet, std::vector<Net*>& helpers);
+	Net* makeDonor(const std::vector<Net*>& helpers, double scaleFactor, bool shallow = false);
+	Net* makeDonor(int mutType, const std::vector<Net*>& nets, const std::vector<double>& netfit, int curIndex, int n, double scaleFactor);
 	inline int POSITION(int filter, int x, int y, int z, int filsize, int prevdepth);
 	Net* crossover(Net* parent, Net* donor, int method, double prob);
 	int mapConvLayer(Net* orig, int layerNum, Net* dest);

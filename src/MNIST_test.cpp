@@ -181,7 +181,7 @@ int main(int argc, char** argv)
 	net.preprocessCollectively();
 	net.setSaveName(argv[2]);
 	net.setTrainingType(TRAIN_AS_IS);
-	cout << boolalpha << net.setDevice(device) << endl;
+	net.setDevice(device);
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;
