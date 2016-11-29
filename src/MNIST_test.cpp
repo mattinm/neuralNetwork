@@ -129,16 +129,20 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional)\n");
+		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional) -DEType\n");
 		return 0;
 	}
 	int device = 0;
 	bool useDE = false;
+	int detype = 0;
 	int dataBatchSize = atoi(argv[3]);
 	if(argc >= 5)
 		device = atoi(argv[4]);
 	if(argc >= 6 && string(argv[5]) == "-DE")
+	{
 		useDE = true;
+		detype = atoi(argv[6]);
+	}
 
 	ifstream training_label_in("train-labels.idx1-ubyte");
 	ifstream training_data_in("train-images.idx3-ubyte");
@@ -191,7 +195,7 @@ int main(int argc, char** argv)
 	net.addTrainingData(test_data,test_true);
 
 	if(useDE)
-		net.DETrain_sameSize(100,dataBatchSize);
+		net.DETrain_sameSize(detype,1000,dataBatchSize);
 	else
 		net.train();
 

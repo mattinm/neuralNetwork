@@ -2412,7 +2412,7 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 
 }
 
-void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
+void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
 	double mutationMax = 0.9, mutationMin = 0.1;
 
@@ -2420,7 +2420,7 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 	BP = false;
 	cl_int error;
 
-	int mutationType = DE_CURRENT_TO_BEST;
+	// int mutationType = mutationType;
 	int numDiffVec;
 	if(mutationType == DE_BEST || mutationType == DE_RAND)
 		numDiffVec = 1;
@@ -2671,8 +2671,8 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 					bestError = netfit[i];
 					bestErrorIndex = i;
 				}
-			printf("End Gen %4d. Best accuracy is: Net %d, %lf, Error %lf |", curGen, best, 100.0*netCorrect[best]/trainingData.size(),netfit[best]);
-			printf("             Best error is:    Net %d, %lf, Error %lf |", bestErrorIndex, 100.0*netCorrect[bestErrorIndex]/trainingData.size(),netfit[bestErrorIndex]);
+			printf("End Gen %4d. Best accuracy is: Net %d, %lf, Error %lf\n", curGen, best, 100.0*netCorrect[best]/trainingData.size(),netfit[best]);
+			printf("              Best error is:    Net %d, %lf, Error %lf |", bestErrorIndex, 100.0*netCorrect[bestErrorIndex]/trainingData.size(),netfit[bestErrorIndex]);
 			printf("Time to run all training over all indivs: %s\n", secondsToString(time(NULL)-starttime).c_str());
 			printf("---------------------------------------------------------------\n");
 
@@ -2758,7 +2758,7 @@ void Net::DETrain_sameSize(int generations, int dataBatchSize, int population, d
 		*  GETTING DONOR AND TRIAL VECTORS SEQUENTIALLY
 		*
 		******************************/
-		int mutationCurrent = mutationMin + (mutationMax - mutationMin)*(generations - curGen)/generations;
+		double mutationCurrent = mutationMin + (mutationMax - mutationMin)*(generations - curGen)/generations;
 		if(mutationType != DE_QUIN_AND_SUGANTHAN)
 		{
 			for(int i = 0; i < nets.size(); i++)
@@ -3510,7 +3510,7 @@ Net* Net::makeDonor(const vector<Net*>& helpers, double scaleFactor, bool shallo
 						for(int c = 0; c < prevDepth; c++)
 						{
 							int mypos[] = {a,b,c};
-							int otherNums[2];
+							double otherNums[2];
 							for(int o = 0; o < 2; o++)
 							{
 								if(helperConvs[o] == NULL)
@@ -3524,6 +3524,8 @@ Net* Net::makeDonor(const vector<Net*>& helpers, double scaleFactor, bool shallo
 
 								conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]
 									+= scaleFactor * (otherNums[0] - otherNums[1]);
+								// printf("scaleFactor %lf [0] %lf [1] %lf\n", scaleFactor, otherNums[0],otherNums[1]);
+								// printf("target: %lf donor: %lf\n", conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)],((ConvLayer*)(helpers[0]->__layers[i]))->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]);
 							}
 							
 						}
