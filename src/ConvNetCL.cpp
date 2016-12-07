@@ -2841,7 +2841,7 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 			nets[i]->__dataPointer = &curTrainData;
 			nets[i]->run();
 			nets[i]->getConfidences(curConfid);
-			netfit[i] = getFitness(curConfid[0], curTrueVal);
+			netfit[i] = getFitness(curConfid[0], curTrueVal,nets[i]);
 		}
 
 		//get indivs for mutation
@@ -2873,7 +2873,7 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 			trial->__dataPointer = &curTrainData;
 			trial->run();
 			trial->getConfidences(curConfid);
-			double trialfit = getFitness(curConfid[0], curTrueVal);
+			double trialfit = getFitness(curConfid[0], curTrueVal,trial);
 
 			if(trialfit < netfit[i]) //trial is better. backprop it over training data
 			{
@@ -2931,7 +2931,8 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 
 void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
-	double mutationMax = 0.9, mutationMin = 0.1;
+	double mutationMax = 0.1, mutationMin = 0.1;
+	double crossMax = 0.8, crossMin = 0.1;
 
 	printf("DE training same size\n");
 	BP = false;
@@ -3142,7 +3143,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 				{
 					for(int t = 0; t < myclBatchSize; t++)
 					{
-
+						// continue;
 						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[data]->data(),
 							0, nullptr, nullptr));
 						
@@ -3160,7 +3161,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 						//get output and see if right
 						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 						 	soft.data(), 0, nullptr, nullptr));
-						netfit[i+t] += getFitness(soft, trueVals[data]);
+						netfit[i+t] += getFitness(soft, trueVals[data],nets[i+t]);
 						if(getMaxElementIndex(soft) == trueVals[data])
 							netCorrect[i+t]++;
 					}
@@ -3169,11 +3170,11 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 				{
 					if(netCorrect[i+t] > prevCorrect[i+t]) 	printf("*");
 					else 									printf(" ");
-					if(netfit[i+t] < prevfit[i+t])			printf("*");
+					if(netfit[i+t] < prevfit[i+t] - 0.0001)	printf("*");
 					else 									printf(" ");
 					prevCorrect[i+t] = netCorrect[i+t];
 					prevfit[i+t] = netfit[i+t];
-					printf("Net: %3d. Acc: %7.3lf. Error %9.2lf\n", i+t, 100.0*netCorrect[i+t]/trainingData.size(), netfit[i+t]);
+					printf("Net: %3d. Acc: %7.3lf. Error %lf\n", i+t, 100.0*netCorrect[i+t]/trainingData.size(), netfit[i+t]);
 				}
 
 				i+=myclBatchSize;
@@ -3248,6 +3249,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 			{
 				for(int t = 0; t < myclBatchSize; t++)
 				{
+					// continue;
 					CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
 						0, nullptr, nullptr));
 					clFinish(queues[t]);
@@ -3263,7 +3265,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 					//get output and see if right
 					CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 					 	soft.data(), 0, nullptr, nullptr));
-					netfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex + d]);
+					netfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex + d],nets[i+t]);
 				}
 			}
 
@@ -3276,6 +3278,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 		*
 		******************************/
 		double mutationCurrent = mutationMin + (mutationMax - mutationMin)*(generations - curGen)/generations;
+		crossProb = crossMin + (crossMax - crossMin) * (generations - curGen)/generations;
 		if(mutationType != DE_QUIN_AND_SUGANTHAN)
 		{
 			for(int i = 0; i < nets.size(); i++)
@@ -3304,6 +3307,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 				{
 					for(int t = 0; t < myclBatchSize; t++)
 					{
+						// continue;
 						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
 							0, nullptr, nullptr));
 						clFinish(queues[t]);
@@ -3319,7 +3323,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 						//get output and see if right
 						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 						 	soft.data(), 0, nullptr, nullptr));
-						trialfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex + d]);
+						trialfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex + d],trials[i+t]);
 					}
 				}
 				// printf("trial ran\n");
@@ -3348,15 +3352,15 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 						backprop(trueVals[curTrainDataIndex], prevptr, nptr, nets[i], layerNeeds[0], velocities[i], clWeights[0], clBiases[0], queues[0], kerns[0]);
 						pullCLWeights(nets[i], clWeights[0], queues[0]);
 					}
-					printf("*");			
+					// printf("*");			
 				}
 				else 
 				{
 					// printf("trial not better\n");
 					delete trials[i];
-					printf(" ");
+					// printf(" ");
 				}
-				printf("Net %d netfit %lf trialfit %lf\n", i, netfit[i], trialfit[i]);
+				// printf("Net %d netfit %lf trialfit %lf\n", i, netfit[i], trialfit[i]);
 				// printf("nets[%d] @ %#x\n", i,nets[i]);
 			}
 		}
@@ -3395,11 +3399,12 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 				{
 					for(int t = 0; t < myclBatchSize; t++)
 					{
+						// continue;
 						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
 							0, nullptr, nullptr));
 						//run trial over data and get fitness of trial
 						cl_mem ** prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]);
-						thr[t] = thread([=] {feedForward(prevptr,nptr,ref(randtrial[i]->__neuronDims), ref(randtrial[i]->__layers), 
+						thr[t] = thread([=] {feedForward(prevptr,nptr,ref(randtrial[i+t]->__neuronDims), ref(randtrial[i+t]->__layers), 
 								ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
 					}
 					for(int t = 0; t < myclBatchSize; t++)
@@ -3408,7 +3413,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 					{
 						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 							 	soft.data(), 0, nullptr, nullptr));
-						randfit[i] += getFitness(soft, trueVals[curTrainDataIndex+d]);
+						randfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex+d],randtrial[i+t]);
 					}
 				}
 				i+=myclBatchSize;
@@ -3429,11 +3434,12 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 				{
 					for(int t = 0; t < myclBatchSize; t++)
 					{
+						// continue;
 						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(),
 							0, nullptr, nullptr));
 						//run trial over data and get fitness of trial
 						cl_mem ** prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]);
-						thr[t] = thread([=]{feedForward(prevptr,nptr,ref(curbesttrial[i]->__neuronDims), ref(curbesttrial[i]->__layers), 
+						thr[t] = thread([=]{feedForward(prevptr,nptr,ref(curbesttrial[i+t]->__neuronDims), ref(curbesttrial[i+t]->__layers), 
 								ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
 					}
 					for (int t = 0; t < myclBatchSize; ++t)
@@ -3442,7 +3448,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 					{
 						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 							 	soft.data(), 0, nullptr, nullptr));
-						curbestfit[i] += getFitness(soft, trueVals[curTrainDataIndex+d]);
+						curbestfit[i+t] += getFitness(soft, trueVals[curTrainDataIndex+d],curbesttrial[i+t]);
 					}
 				}
 				i+=myclBatchSize;
@@ -3458,11 +3464,12 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 					nscurbest++;
 			}
 			//calculate probability of choosing DE/rand/1/z
-			double probRand = nsrand * population/(nscurbest * population + nsrand * population);
+			double probRand = nsrand * population/((double)nscurbest * population + nsrand * population);
 			uniform_real_distribution<double> dis(0.0, 1.0);
 			default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 			if(probRand < dis(gen))
 			{
+				printf("rand survive\n");
 				for(int i = 0; i < curbesttrial.size(); i++)
 					delete curbesttrial[i];
 				for(int i = 0; i < nets.size(); i++)
@@ -3483,6 +3490,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 			}
 			else
 			{
+				printf("cur2best survive\n");
 				for(int i = 0; i < randtrial.size(); i++)
 					delete randtrial[i];
 				for(int i = 0; i < nets.size(); i++)
@@ -3588,7 +3596,7 @@ void Net::trial_thread(int netIndex, vector<Net*>* nets, double netfit, Net* tri
 	CheckError(clEnqueueReadBuffer(queue, **neurons, CL_TRUE, 0, sizeof(double) * trial->__neuronSizes.back(),
 		 	soft.data(), 0, nullptr, nullptr));
 	// printf("get fit\n");
-	double trialfit = getFitness(soft, curTrueVal);
+	double trialfit = getFitness(soft, curTrueVal,(*nets)[netIndex]);
 	// printf("trial ran\n");
 
 	
@@ -3758,8 +3766,24 @@ void Net::setupRandomNets(vector<Net*>& nets)
 	}
 }
 
-double Net::getFitness(vector<double>& prediction, double trueVal)
+double Net::getFitness(vector<double>& prediction, double trueVal, Net* net)
 {
+	//minimize weights (for testing)
+	// double fit = 0;
+	// unsigned long numWeights = 0;
+	// for(int i = 0; i < net->__layers.size(); i++)
+	// {
+	// 	if(__layers[i]->layerType == CONV_LAYER)
+	// 	{
+	// 		ConvLayer* conv = (ConvLayer*)net->__layers[i];
+	// 		// numWeights += conv->numWeights;
+	// 		for(int j = 0; j < conv->numWeights; j++)
+	// 			fit += fabs(conv->weights[j]);
+	// 	}
+	// }
+	// // printf("%lf %lu\n", fit, numWeights);
+	// return fit;
+	//MSE
 	double sum = 0;
 	// printf("getfit\n");
 	for(int i = 0; i < prediction.size(); i++)
@@ -4038,12 +4062,11 @@ Net* Net::makeDonor(const vector<Net*>& helpers, double scaleFactor, bool shallo
 									mapPosIndexes(conv, mypos, helperConvs[o], pos);
 									otherNums[o] = helperConvs[o]->weights[POSITION(f % helperConvs[o]->numBiases,pos[0],pos[1],pos[2],helperConvs[o]->filterSize,helperDepths[o])];
 								}
-
-								conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]
-									+= scaleFactor * (otherNums[0] - otherNums[1]);
-								// printf("scaleFactor %lf [0] %lf [1] %lf\n", scaleFactor, otherNums[0],otherNums[1]);
-								// printf("target: %lf donor: %lf\n", conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)],((ConvLayer*)(helpers[0]->__layers[i]))->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]);
 							}
+							conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]
+								+= scaleFactor * (otherNums[0] - otherNums[1]);
+							// printf("scaleFactor %lf [0] %lf [1] %lf\n", scaleFactor, otherNums[0],otherNums[1]);
+							// printf("target: %lf donor: %lf\n", conv->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)],((ConvLayer*)(helpers[0]->__layers[i]))->weights[POSITION(f,a,b,c,conv->filterSize, prevDepth)]);
 							
 						}
 			}

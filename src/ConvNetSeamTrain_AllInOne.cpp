@@ -49,7 +49,7 @@ using namespace cv;
 // #define CARVE_DOWN_BOTH_RAW 4
 // #define CARVE_DOWN_BOTH_SCALED 5
 
-int detailLevel = CLASSES_ON_OFF_OUT;
+int detailLevel = CLASSES_ON_OFF_OUT; 
 
 vector<string> class_names;
 // vector<int> class_true_vals;
@@ -110,6 +110,9 @@ void setupDetailLevel(int detail)
 int mapToTrueVal(vector<Event>& obs)
 {
 	//erase any non-relevant obs
+	// printf("orig obs\n");
+	// for(int i = 0; i < obs.size(); i++)
+	// 	printf("%s\n", obs[i].type.c_str());
 	for(int i = 0; i < obs.size(); i++)
 	{
 		bool found = false;
@@ -126,10 +129,14 @@ int mapToTrueVal(vector<Event>& obs)
 		}
 	}
 
-	//if more than 1 relevant observation is there, that's interesting
-	if(obs.size() > 1)
-		printf("Multiple relevant observations found\n");
-	else if(obs.size() == 0)
+	// printf("relevant obs\n");
+	// for(int i = 0; i < obs.size(); i++)
+	// 	printf("%s\n", obs[i].type.c_str());
+
+	// //if more than 1 relevant observation is there, that's interesting
+	// if(obs.size() > 1)
+	// 	printf("Multiple relevant observations found\n");
+	if(obs.size() == 0)
 	{
 		printf("No relevant observations found.\n");
 		return -1;
@@ -405,6 +412,7 @@ int main(int argc, const char **argv)
 			string type = obs_row[0];
 			string start = obs_row[1];
 			string end = obs_row[2];
+			// printf("%s %s %s\n", obs_row[0],obs_row[1],obs_row[2]);
 			observations.addEvent(type, start, end);
 		}
 		mysql_free_result(obs_result); // free result because now it is stored in observations
