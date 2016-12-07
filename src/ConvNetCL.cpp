@@ -8,7 +8,6 @@
 #include <random>
 #include <unordered_map>
 #include <sstream>
-// #include <mach/mach.h>
 #include <thread>
 #include <chrono>
 
@@ -33,6 +32,8 @@ using namespace cv;
 
 #define GETMAX(x,y) (x > y) ? x: y
 #define RET_FALSE {file.close(); return false;}
+
+typedef unsigned int uint;
 
 /*****************************************
  * Constructors and Destructors and inits
@@ -2211,6 +2212,522 @@ void Net::train(int epochs)
 		clReleaseMemObject(velocities[i]);
 	__confidences.resize(__data.size());
 	__isTraining = false;
+}
+
+uint Net::getTotalWeights() const
+{
+	uint numWeights = 0;
+	for(uint i = 1; i < __layers.size(); i++) //layer 0 is input
+	{
+		if(__layers[i]->layerType == CONV_LAYER)
+		{
+			numWeights += ((ConvLayer*)(__layers[i]))->numWeights;
+		}
+	}
+	return numWeights;
+}
+
+uint Net::getTotalBiases() const
+{
+	uint numBiases = 0;
+	for(uint i = 1; i < __layers.size(); i++) //layer 0 is input
+	{
+		if(__layers[i]->layerType == CONV_LAYER)
+		{
+			numBiases += ((ConvLayer*)(__layers[i]))->numBiases;
+		}
+	}
+	return numBiases;
+}
+
+void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
+{
+	/******************************
+	*
+	*  set up all parameters
+	*
+	******************************/
+	double rho = 0.5; //evaporation constant
+	double Q;
+	double oneMinusRho = 1 - rho;
+	double alpha = 1; //phermone exponent
+	double weightMin = -__MAX_NORM_CAP/2; //-3
+	double weightMax =  __MAX_NORM_CAP/2; // 3
+	double weightDiff = weightMax - weightMin;
+	double granularity = 0.001;
+	uint numWeightOptions = ((weightMax - weightMin)/granularity); //also number of bias options
+	double weightPerOption = weightDiff/numWeightOptions;
+	Q = numWeightOptions/10.0;
+
+	double leakRange = .25; //this is how far on each side pheromone should leak.
+	const int leakRange_options = (int)(leakRange/weightPerOption);
+	int leakType = ANT_LEAK_NONE;
+	printf("leakRange options %d\n", leakRange_options);
+
+
+	int pheromone_init_type = ANT_FANT_INIT;
+	int pheromone_update_type = ANT_UPDATE_SIMPLE;
+
+	/******************************
+	*
+	*  get training data and check dataBatchSize
+	*
+	******************************/
+
+	vector<vector<double>* > trainingData(0);
+	vector<double> trueVals(0);
+
+	getTrainingData(trainingData, trueVals);
+	int curTrainDataIndex = 0;
+	if(dataBatchSize <= 0)
+		dataBatchSize = trainingData.size();
+
+	/******************************
+	*
+	*  get total numWeights/Biases and initialize phermones
+	*
+	******************************/
+	uint numWeights = getTotalWeights();
+	uint numBiases = getTotalBiases();
+
+	vector<vector<double> > pheromoneWeights(numWeights);
+	vector<vector<double> > pheromoneBiases(numBiases);
+
+	vector<vector<double> > weightProbs(numWeights);
+	vector<vector<double> > biasProbs(numBiases);
+
+	for(uint i = 0; i < numWeights; i++)
+	{
+		weightProbs[i].resize(numWeightOptions);
+		pheromoneWeights[i].resize(numWeightOptions);
+		if(pheromone_init_type == ANT_FANT_INIT)
+			for(uint j = 0; j < numWeightOptions; j++)
+				pheromoneWeights[i][j] = 1; //got from FANT in notes. might change
+	}
+	for(uint i = 0; i < numBiases; i++)
+	{
+		biasProbs[i].resize(numWeightOptions);
+		pheromoneBiases[i].resize(numWeightOptions);
+		if(pheromone_init_type == ANT_FANT_INIT)
+			for(uint j = 0; j < numWeightOptions; j++)
+				pheromoneBiases[i][j] = 1;
+	}
+
+	/******************************
+	*
+	*  set up ants as Nets and set up antfit
+	*
+	******************************/
+
+	vector<Net*> ants(population);
+	vector<double> antfit(population);
+	vector<uint> antCorrect(population);
+	vector<uint> prevCorrect(population,0);
+
+	for(uint i = 0; i < population; i++)
+		ants[i] = new Net(*this); //what the weights start at doesn't matter
+
+	Net* bestNet = nullptr;
+	uint bestCorrect = 0;
+	double bestFit;
+	uint bestEpoch;
+
+
+	/******************************
+	*
+	*  Set up everything for OpenCL on all ants
+	*
+	******************************/
+	cl_int error;
+	uint clBatchSize = 8;
+	vector<vector<cl_mem> > layerNeeds(clBatchSize), clWeights(clBatchSize), clBiases(clBatchSize), velocities(population);
+	vector<cl_mem> p(clBatchSize), n(clBatchSize);
+	vector<cl_mem*> prevNeurons(clBatchSize), neurons(clBatchSize);
+	vector<cl_command_queue> queues(clBatchSize);
+	vector<cl_mem> denoms(clBatchSize);
+	vector<Kernels> kerns(clBatchSize);
+
+	int q = __device == -1 ? 0: __device;
+	int __maxNeuronSize = 0;
+	for(int a = 0; a< clBatchSize; a++)
+	{
+		setupLayerNeeds(layerNeeds[a]);
+		for(int i=1; i < __layers.size(); i++)
+		{
+			if(__layers[i]->layerType == CONV_LAYER)
+			{
+				ConvLayer *conv = (ConvLayer*) __layers[i];
+
+				clWeights[a].push_back(clCreateBuffer(__context, CL_MEM_READ_WRITE,
+					sizeof(double) * conv->numWeights, nullptr, &error));
+				CheckError(error);
+				clBiases[a].push_back(clCreateBuffer(__context, CL_MEM_READ_WRITE,
+					sizeof(double) * conv->numBiases, nullptr, &error));
+				CheckError(error);
+				//none of the other layers have the ability to increase the size from the layer before
+				if(conv->maxSizeNeeded > __maxNeuronSize)
+				{
+					__maxNeuronSize = conv->maxSizeNeeded;
+				}
+			}
+		}
+
+		p[a] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __maxNeuronSize, nullptr, &error);
+		CheckError(error);
+		prevNeurons[a] = &(p[a]);
+		n[a] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __maxNeuronSize, nullptr, &error);
+		CheckError(error);
+		neurons[a] = &(n[a]);
+
+		queues[a] = clCreateCommandQueue(__context, __deviceIds[q], 0, &error);
+		CheckError(error);
+
+		denoms[a] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double), nullptr, &error);
+		CheckError(error);
+
+		buildKernels(kerns[a], q);
+	}
+	for(int a = 0; a < population; a++)
+	{
+		initVelocities(velocities[a]);
+	}
+
+
+	//set some softmax related args that won't change
+	for(int i = 0; i < kerns.size(); i++)
+	{
+	 	clSetKernelArg(kerns[i].maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
+	 	clSetKernelArg(kerns[i].vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
+ 	}
+
+ 	vector<double> soft(__neuronSizes.back());
+ 	vector<thread> thr(clBatchSize);
+
+	/******************************
+	*
+	*  MAIN LOOP
+	*
+	******************************/
+
+	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+	//set up random gen for choosing start weightOption. Used for both weights and biases
+	uniform_int_distribution<uint> optionStart(0,numWeightOptions-1);
+	//set up random gen for choosing weight choice
+	uniform_real_distribution<double> prob(0.0,1.0);
+	uint epoch = 0;
+	time_t epochStartTime  = time(NULL);
+	printf("Starting %d iterations\n", maxIterations);
+	for(uint iteration = 1; iteration <= maxIterations; iteration++)
+	{
+
+		/******************************
+		*
+		*  Determine probabilities
+		*
+		******************************/
+		printf("Determine probabilities\n");
+		//weights
+		double maxprob = 0, minprob = 100;
+		for(uint i = 0; i < numWeights; i++)
+		{
+			//get sum
+			double sum = 0;
+			double* wptr = pheromoneWeights[i].data();
+			for(uint j = 0; j < numWeightOptions; j++)	
+				sum += pow(*(wptr++),alpha);
+			//calc prob for each weightOption in weights
+			for(uint j = 0; j < numWeightOptions; j++)
+			{
+				double prob = pow(pheromoneWeights[i][j],alpha)/sum;
+				weightProbs[i][j] = prob;
+				if(prob < minprob) minprob = prob;
+				if(prob > maxprob) maxprob = prob;
+			}
+		}
+		printf("Probs: Min %lf Max %lf Range %lf\n", minprob,maxprob,maxprob-minprob);
+
+		//biases
+		for(uint i = 0; i < numBiases; i++)
+		{
+			//get sum
+			double sum = 0;
+			double* bptr = pheromoneBiases[i].data();
+			for(uint j = 0; j < numWeightOptions; j++)
+				sum += pow(*(bptr++),alpha);
+
+			//calc prob for each weightOption in biases
+			for(uint j = 0; j < numWeightOptions; j++)
+				biasProbs[i][j] = pow(pheromoneBiases[i][j],alpha)/sum;
+		}
+
+		/******************************
+		*
+		*  Make paths
+		*
+		******************************/
+		printf("Make paths\n");
+		for(uint i = 0; i < population; i++) //parallelize this later?
+		{
+			uint curWeight = 0; // used with weightProbs
+			uint curBias   = 0; // used with biasProbs
+			//get every weight
+			for(int l = 0; l < ants[i]->__layers.size(); l++)
+			{
+				if(ants[i]->__layers[l]->layerType == CONV_LAYER)
+				{
+					ConvLayer* conv = (ConvLayer*)ants[i]->__layers[l];
+					//weights
+					for(int w = 0; w < conv->numWeights; w++)
+					{
+						double chosenWeight;
+						//get chosenWeight using probs;
+						// start randomly for uniformness
+						for(uint p = optionStart(gen); true; p = (p+1)%numWeightOptions) //loop until found
+						{
+							if(prob(gen) < weightProbs[curWeight][p]) //p is a weightOption location
+							{
+								//chosenWeight = weightMin + ((double)(weightMax - weightMin) * p/numWeightOptions); //this is what is happening
+								chosenWeight = weightMin + weightPerOption * p; //p is option number
+								break;
+							}
+						}
+						conv->weights[w] = chosenWeight;
+						curWeight++;
+					}
+
+					//biases
+					for(int b = 0; b < conv->numBiases; b++)
+					{
+						double chosenBias;
+						for(uint p = optionStart(gen); true; p = (p+1)%numWeightOptions)
+							if(prob(gen) < biasProbs[curBias][p])
+							{
+								chosenBias = weightMin + weightPerOption * p;
+								break;
+							}
+						conv->biases[b] = chosenBias;
+						curBias++;
+					}
+				}
+			}
+		}
+
+		/******************************
+		*
+		*  Get fitnesses in parallel
+		*
+		******************************/
+		printf("Get fitnesses\n");
+		//determine amount of data for this iteration. is dataBatchSize unless not that much data left
+		int mydataBatchSize = curTrainDataIndex + dataBatchSize >= trainingData.size() ? trainingData.size() - curTrainDataIndex : dataBatchSize;
+		for(uint i = 0; i < population; i++)
+			antfit[i] = 0;
+		for(uint i = 0; i < population;) //no i++ b/c myclBatchSize
+		{
+			//determine amount of parallelism. is clBatchSize unless not that many ants left
+			int myclBatchSize = i+clBatchSize >= population ? population-i : clBatchSize;
+			if(myclBatchSize == 0)
+			{
+				printf("Error: myclBatchSize == 0. Infinite loop. Aborting.\n");
+				return;
+			}
+			//push weights
+			for(int t = 0; t < myclBatchSize; t++)
+				pushCLWeights(ants[i+t]->__layers, clWeights[t], clBiases[t], queues[t], CL_TRUE);
+			//for our data batch size
+			for(int d = 0; d < mydataBatchSize; d++)
+			{
+				for(int t = 0; t < myclBatchSize; t++)
+				{
+					//write training data piece
+					CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, 
+						sizeof(double) * __neuronSizes[0], trainingData[curTrainDataIndex+d]->data(), 0, nullptr, nullptr));
+
+					//run threads
+					cl_mem **prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]); //need because const rid
+					thr[t] = thread([=] {feedForward(prevptr, nptr,ref(ants[i+t]->__neuronDims), ref(ants[i+t]->__layers), ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+				}
+				for(int t = 0; t < myclBatchSize; t++)
+				{
+					thr[t].join();
+					CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double)*__neuronSizes.back(),
+						soft.data(), 0, nullptr, nullptr));
+					antfit[i+t] += getFitness(soft,trueVals[curTrainDataIndex + d]);
+				}
+			}
+			i += myclBatchSize;
+		}
+		//we are done using data for this iteration so increase it for next iteration
+		curTrainDataIndex += mydataBatchSize;
+
+		/******************************
+		*
+		*  Pheromone evaporation
+		*
+		******************************/
+		//weights
+		for(uint i = 0; i < numWeights; i++)
+			for(uint j = 0; j < numWeightOptions; j++)
+				pheromoneWeights[i][j] *= oneMinusRho;
+
+		//biases
+		for(uint i = 0; i < numBiases; i++)
+			for(uint j = 0; j < numWeightOptions; j++)
+				pheromoneBiases[i][j] *= oneMinusRho;
+
+		/******************************
+		*
+		*  Phermone updates
+		*
+		******************************/
+		if(pheromone_update_type == ANT_UPDATE_SIMPLE)
+		{
+			for(uint i = 0; i < population; i++)
+			{
+				uint curWeight = 0;
+				uint curBias   = 0;
+
+				//make antfit the average error per example
+				antfit[i] /= mydataBatchSize;
+
+				for(uint l = 0; l < ants[i]->__layers.size(); l++)
+				{
+					if(ants[i]->__layers[l]->layerType == CONV_LAYER)
+					{
+						ConvLayer* conv = (ConvLayer*)ants[i]->__layers[l];
+						double deltaTau = Q/antfit[i];
+						//weights
+						for(int w = 0; w < conv->numWeights; w++)
+						{
+							int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
+							pheromoneWeights[curWeight][optionIndex] += deltaTau;
+
+							if(leakType == ANT_LEAK_LINEAR_DECREASE)
+							{
+								//go left leaking
+								for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+									pheromoneWeights[curWeight][opt] += deltaTau;// * (optionIndex - opt)/leakRange_options;
+								//go right leaking
+								for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+									pheromoneWeights[curWeight][opt] += deltaTau;// * (opt - optionIndex)/leakRange_options;
+							}
+
+							curWeight++;
+						}
+
+						for(int b = 0; b < conv->numBiases; b++)
+						{
+							int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
+							pheromoneBiases[curBias][optionIndex] += deltaTau;
+
+							if(leakType == ANT_LEAK_LINEAR_DECREASE)
+							{
+								//go left leaking
+								for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+									pheromoneBiases[curBias][opt] += deltaTau * (optionIndex - opt)/leakRange_options;
+								//go right leaking
+								for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+									pheromoneBiases[curBias][opt] += deltaTau * (opt - optionIndex)/leakRange_options;
+							}
+
+							curBias++;
+						}
+					}
+				}
+			}
+		}
+
+		/******************************
+		*
+		*  If we hit all data, then let's see how we're doing
+		*
+		******************************/
+		if(curTrainDataIndex == trainingData.size())
+		{
+			epoch++;
+			printf("---------------------------------------------------------------\n");
+			curTrainDataIndex = 0;
+			for(uint i = 0; i < population; i++)
+			{
+				antfit[i] = 0;
+				antCorrect[i] = 0;
+			}
+			for(uint i = 0; i < population;) //no i++ b/c myclBatchSize
+			{
+				//determine amount of parallelism. is clBatchSize unless not that many ants left
+				int myclBatchSize = i+clBatchSize >= population ? population-i : clBatchSize;
+				if(myclBatchSize == 0)
+				{
+					printf("Error: myclBatchSize == 0. Infinite loop. Aborting.\n");
+					return;
+				}
+				//push weights
+				for(int t = 0; t < myclBatchSize; t++)
+					pushCLWeights(ants[i+t]->__layers, clWeights[t], clBiases[t], queues[t], CL_TRUE);
+				//for our data batch size
+				for(int d = 0; d < trainingData.size(); d++)
+				{
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						//write training data piece
+						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, 
+							sizeof(double) * __neuronSizes[0], trainingData[d]->data(), 0, nullptr, nullptr));
+
+						//run threads
+						cl_mem **prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]); //need because const rid
+						thr[t] = thread([=] {feedForward(prevptr, nptr,ref(ants[i+t]->__neuronDims), ref(ants[i+t]->__layers), ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+					}
+					for(int t = 0; t < myclBatchSize; t++)
+					{
+						thr[t].join();
+						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double)*__neuronSizes.back(),
+							soft.data(), 0, nullptr, nullptr));
+						antfit[i+t] += getFitness(soft,trueVals[d]);
+						if(getMaxElementIndex(soft) == trueVals[d])
+							antCorrect[i+t]++;
+					}
+				}
+				i += myclBatchSize;
+			}
+			//get new (shuffled) training data for next epoch
+			getTrainingData(trainingData,trueVals);
+
+			//print out how we're doing
+			int curBestC = 0, curBestF = 0;
+			for(int i = 0; i < population; i++)
+			{
+				//finding best net
+				if(antfit[i] < antfit[curBestF])
+					curBestF = i;
+				if(antCorrect[i] > antCorrect[curBestC])
+					curBestC = i;
+
+				//printing stuff for this net
+				char better = ' ';
+				if(antCorrect[i] > prevCorrect[i])
+					better = '*'; //nicely display this was better than last time
+				prevCorrect[i] = antCorrect[i];
+				printf("%cAnt: %3d. Acc: %7.3lf. Error: %9.2lf\n",better,i,100.0*antCorrect[i]/trainingData.size(),antfit[i]);
+			}
+			char better = ' ';
+			if(antCorrect[curBestC] > bestCorrect)
+			{
+				better = '*';
+				if(bestNet != nullptr)
+					delete bestNet;
+				bestNet = new Net(*(ants[curBestC]));
+				bestNet->save(__saveName.c_str()); //save as we go so we don't lose it all on Ctrl+C
+				bestCorrect = antCorrect[curBestC];
+				bestFit = antfit[curBestC];
+				bestEpoch = epoch;
+			}
+			printf("End EPOCH %u ITERATION %u - Time: %s\n", epoch,iteration,secondsToString(time(NULL) - epochStartTime).c_str());
+			printf("%cAll time best: Acc: %7.3lf, Error: %9.3lf, epoch %u\n", better,100.0*bestCorrect/trainingData.size(),bestFit,bestEpoch);
+			printf( " Current Best : Acc: %7.3lf, Error: %9.3lf, Ant %d\n", 100.0*antCorrect[curBestC]/trainingData.size(),antfit[curBestC],curBestC);
+			printf("---------------------------------------------------------------\n");
+			epochStartTime = time(NULL)
+;		}
+	} //end iterations	
 }
 
 //If you use DETrain, only the input size and location of maxpools matter

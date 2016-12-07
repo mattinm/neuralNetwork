@@ -52,6 +52,17 @@
 #define DE_BINOMIAL_CROSSOVER 0
 #define DE_EXPONENTIAL_CROSSOVER 1
 
+//defines for ant
+//init types
+#define ANT_FANT_INIT 0
+
+//pheromone update types
+#define ANT_UPDATE_SIMPLE 0
+
+//pheromone leak types
+#define ANT_LEAK_NONE 0
+#define ANT_LEAK_LINEAR_DECREASE 1
+
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 class Net{
@@ -236,6 +247,8 @@ public: 	// functions
 	void printLayerDims() const;
 	int getInputWidth() const;
 	int getInputHeight() const;
+	unsigned int getTotalWeights() const;
+	unsigned int getTotalBiases() const;
 
 	bool finalize();
 	std::string getErrorLog() const;
@@ -292,6 +305,7 @@ public: 	// functions
 	void DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
+	void antTrain(unsigned int maxIterations, unsigned int population, int dataBatchSize);
 
 	//OpenCL functions
 	int getDevice() const;
