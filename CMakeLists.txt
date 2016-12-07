@@ -35,6 +35,7 @@ ENDIF(OpenCV_FOUND)
 
 IF(OpenCL_FOUND)
 	include_directories(${OpenCL_INCLUDE_DIRS})
+	message(“OpenCL include LIBS: ${OpenCL_LIBRARY})
 ENDIF(OpenCL_FOUND)
 
 IF(BOINC_APP_FOUND OR BOINC_SERVER_FOUND)

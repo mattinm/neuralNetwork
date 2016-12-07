@@ -289,7 +289,7 @@ public: 	// functions
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
 	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
-	void DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
+	void DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.8, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
 
@@ -362,7 +362,7 @@ private:	// functions
 	void setupRandomNets(std::vector<Net*>& nets);
 	void setupEquivalentNets(std::vector<Net*>& nets);
 	void releaseCLMem();
-	double getFitness(std::vector<double>& prediction, double trueVal);
+	double getFitness(std::vector<double>& prediction, double trueVal, Net* net);
 	int getTargetVector(int method, const std::vector<double>& fits, int curNet);
 	void getHelperVectors(const std::vector<Net*>& nets, int target, int curNet, std::vector<Net*>& helpers);
 	Net* makeDonor(const std::vector<Net*>& helpers, double scaleFactor, bool shallow = false);
