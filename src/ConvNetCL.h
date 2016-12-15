@@ -54,14 +54,19 @@
 
 //defines for ant
 //init types
-#define ANT_FANT_INIT 0
+#define ANT_INIT_FANT 0
+#define ANT_INIT_MMAS 1
 
 //pheromone update types
 #define ANT_UPDATE_SIMPLE 0
+#define ANT_UPDATE_BEST 1
+#define ANT_UPDATE_FANT 2
+#define ANT_UPDATE_ACS_GLOBAL 3
 
 //pheromone leak types
 #define ANT_LEAK_NONE 0
 #define ANT_LEAK_LINEAR_DECREASE 1
+#define ANT_LEAK_EXPONENTIAL_DECREASE 2
 
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
@@ -152,7 +157,7 @@ private: 	// members
 	double __LEAKY_RELU_CONST = 0.01;
 	double __l2Lambda = 0.05;
 	double __MOMENT_CONST = 0.9;
-	double __MAX_NORM_CAP = 6.0;
+	double __MAX_NORM_CAP = 3.0;
 	
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer

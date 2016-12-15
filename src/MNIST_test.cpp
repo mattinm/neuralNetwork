@@ -188,10 +188,14 @@ int main(int argc, char** argv)
 
 
 	Net net(argv[1]);
+	// net.save("testnetsave.txt");
+	// printf("saved\n");
+	// return 0;
 	net.preprocessCollectively();
 	net.setSaveName(argv[2]);
 	net.setTrainingType(TRAIN_AS_IS);
 	net.setDevice(device);
+	// net.set_learningRate(0);
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;
@@ -201,7 +205,7 @@ int main(int argc, char** argv)
 	net.addTrainingData(test_data,test_true);
 
 	if(useAnt)
-		net.antTrain(1000, 20, dataBatchSize);
+		net.antTrain(10000, 10, dataBatchSize);
 	// else if(useDE)
 	// 	net.DETrain_sameSize(detype,1000,dataBatchSize);
 	else

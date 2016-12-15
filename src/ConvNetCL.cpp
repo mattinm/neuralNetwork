@@ -2251,28 +2251,62 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 	double Q;
 	double oneMinusRho = 1 - rho;
 	double alpha = 1; //phermone exponent
-	double weightMin = -__MAX_NORM_CAP/2; //-3
-	double weightMax =  __MAX_NORM_CAP/2; // 3
+	double weightMin = -1;//-__MAX_NORM_CAP/2; //-3
+	double weightMax = 1;// __MAX_NORM_CAP/2; // 3
 	double weightDiff = weightMax - weightMin;
-	double granularity = 0.001;
+	double granularity = 0.04;
 	uint numWeightOptions = ((weightMax - weightMin)/granularity); //also number of bias options
 	double weightPerOption = weightDiff/numWeightOptions;
 	Q = numWeightOptions/10.0;
+	printf("Num weight options: %u, granularity %lf\n", numWeightOptions, granularity);
 
-	double leakRange = .25; //this is how far on each side pheromone should leak.
+	//leak types: ANT_LEAK_NONE, ANT_LEAK_LINEAR_DECREASE, ANT_LEAK_EXPONENTIAL_DECREASE
+	double leakRange = .16; //this is how far on each side pheromone should leak.
 	const int leakRange_options = (int)(leakRange/weightPerOption);
-	int leakType = ANT_LEAK_NONE;
+	int leakType = ANT_LEAK_LINEAR_DECREASE;
 	printf("leakRange options %d\n", leakRange_options);
 
+	//init types: ANT_INIT_FANT, ANT_INIT_MMAS
+	int pheromone_init_type = ANT_INIT_FANT;
 
-	int pheromone_init_type = ANT_FANT_INIT;
-	int pheromone_update_type = ANT_UPDATE_SIMPLE;
+	//update types: ANT_UPDATE_SIMPLE, ANT_UPDATE_BEST, ANT_UPDATE_FANT, ANT_UPDATE_ACS_GLOBAL, ANT_UPDATE_ACS_LOCAL
+	int pheromone_update_type = ANT_UPDATE_FANT;
+
+	//weights and stuff for FANT
+	double w1 = numWeightOptions / 10.0;
+	double w2 = numWeightOptions / 10.0;
+	if(pheromone_update_type == ANT_UPDATE_FANT)
+	{
+		rho = 0;
+		oneMinusRho = 1;
+		// population = 1;
+	}
+
+	//stuff for MMAS
+	double PHER_MAX, PHER_MIN;
+	double rho1_ACS, rho2_ACS;
 
 	/******************************
 	*
 	*  get training data and check dataBatchSize
 	*
 	******************************/
+
+	if(__preprocessIndividual)
+ 	{
+	 	if(!__trainingDataPreprocessed)
+	 		//preprocessTrainingDataCollective();
+	        preprocessTrainingDataIndividual();
+	    if(__testData.size() != 0 && !__testDataPreprocessed)
+	    	preprocessTestDataIndividual();
+	}
+	else // __preprocessCollective
+	{
+		if(!__trainingDataPreprocessed)
+			preprocessTrainingDataCollective();
+		if(!__testDataPreprocessed && __testData.size() != 0)
+			preprocessTestDataCollective();
+	}
 
 	vector<vector<double>* > trainingData(0);
 	vector<double> trueVals(0);
@@ -2300,17 +2334,29 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 	{
 		weightProbs[i].resize(numWeightOptions);
 		pheromoneWeights[i].resize(numWeightOptions);
-		if(pheromone_init_type == ANT_FANT_INIT)
+		if(pheromone_init_type == ANT_INIT_FANT)
+		{
 			for(uint j = 0; j < numWeightOptions; j++)
 				pheromoneWeights[i][j] = 1; //got from FANT in notes. might change
+		}
+		else if(pheromone_init_type == ANT_INIT_MMAS)
+		{
+
+		}
 	}
 	for(uint i = 0; i < numBiases; i++)
 	{
 		biasProbs[i].resize(numWeightOptions);
 		pheromoneBiases[i].resize(numWeightOptions);
-		if(pheromone_init_type == ANT_FANT_INIT)
+		if(pheromone_init_type == ANT_INIT_FANT)
+		{
 			for(uint j = 0; j < numWeightOptions; j++)
 				pheromoneBiases[i][j] = 1;
+		}
+		else if(pheromone_init_type == ANT_INIT_MMAS)
+		{
+
+		}
 	}
 
 	/******************************
@@ -2329,7 +2375,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 
 	Net* bestNet = nullptr;
 	uint bestCorrect = 0;
-	double bestFit;
+	double bestFit = DBL_MAX;
 	uint bestEpoch;
 
 
@@ -2339,7 +2385,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 	*
 	******************************/
 	cl_int error;
-	uint clBatchSize = 8;
+	uint clBatchSize = 10;
 	vector<vector<cl_mem> > layerNeeds(clBatchSize), clWeights(clBatchSize), clBiases(clBatchSize), velocities(population);
 	vector<cl_mem> p(clBatchSize), n(clBatchSize);
 	vector<cl_mem*> prevNeurons(clBatchSize), neurons(clBatchSize);
@@ -2425,16 +2471,23 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		*  Determine probabilities
 		*
 		******************************/
-		printf("Determine probabilities\n");
+		// printf("Determine probabilities\n");
 		//weights
 		double maxprob = 0, minprob = 100;
+		double avgprob = 0;
 		for(uint i = 0; i < numWeights; i++)
 		{
 			//get sum
 			double sum = 0;
 			double* wptr = pheromoneWeights[i].data();
-			for(uint j = 0; j < numWeightOptions; j++)	
+			for(uint j = 0; j < numWeightOptions; j++)
+			{
+				if(*wptr < 0)
+				{
+					printf("ERROR: Pheromone should not be negative. Found: %lf\n", *wptr);
+				}
 				sum += pow(*(wptr++),alpha);
+			}
 			//calc prob for each weightOption in weights
 			for(uint j = 0; j < numWeightOptions; j++)
 			{
@@ -2442,9 +2495,11 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 				weightProbs[i][j] = prob;
 				if(prob < minprob) minprob = prob;
 				if(prob > maxprob) maxprob = prob;
+				avgprob += prob;
 			}
 		}
-		printf("Probs: Min %lf Max %lf Range %lf\n", minprob,maxprob,maxprob-minprob);
+		avgprob /= numWeights * numWeightOptions;
+		// printf("Probs: Min %lf Max %lf Avg %lf Range %lf\n", minprob,maxprob,avgprob, maxprob-minprob);
 
 		//biases
 		for(uint i = 0; i < numBiases; i++)
@@ -2465,7 +2520,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		*  Make paths
 		*
 		******************************/
-		printf("Make paths\n");
+		// printf("Make paths\n");
 		for(uint i = 0; i < population; i++) //parallelize this later?
 		{
 			uint curWeight = 0; // used with weightProbs
@@ -2517,9 +2572,18 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		*  Get fitnesses in parallel
 		*
 		******************************/
-		printf("Get fitnesses\n");
+
+		// if(curTrainDataIndex % 1000 == 0)
+
+		for(uint i = 0; i < population; i++)
+		{
+			antfit[i] = 0;
+			antCorrect[i] = 0;
+		}
+		// printf("Get fitnesses\n");
 		//determine amount of data for this iteration. is dataBatchSize unless not that much data left
 		int mydataBatchSize = curTrainDataIndex + dataBatchSize >= trainingData.size() ? trainingData.size() - curTrainDataIndex : dataBatchSize;
+		printf("Training examples %d - %d\n", curTrainDataIndex,curTrainDataIndex + mydataBatchSize -1 );
 		for(uint i = 0; i < population; i++)
 			antfit[i] = 0;
 		for(uint i = 0; i < population;) //no i++ b/c myclBatchSize
@@ -2552,90 +2616,15 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 					thr[t].join();
 					CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double)*__neuronSizes.back(),
 						soft.data(), 0, nullptr, nullptr));
-					antfit[i+t] += getFitness(soft,trueVals[curTrainDataIndex + d]);
+					antfit[i+t] += getFitness(soft,trueVals[curTrainDataIndex + d],ants[i+t]);
+					if(getMaxElementIndex(soft) == trueVals[d])
+							antCorrect[i+t]++;
 				}
 			}
 			i += myclBatchSize;
 		}
 		//we are done using data for this iteration so increase it for next iteration
 		curTrainDataIndex += mydataBatchSize;
-
-		/******************************
-		*
-		*  Pheromone evaporation
-		*
-		******************************/
-		//weights
-		for(uint i = 0; i < numWeights; i++)
-			for(uint j = 0; j < numWeightOptions; j++)
-				pheromoneWeights[i][j] *= oneMinusRho;
-
-		//biases
-		for(uint i = 0; i < numBiases; i++)
-			for(uint j = 0; j < numWeightOptions; j++)
-				pheromoneBiases[i][j] *= oneMinusRho;
-
-		/******************************
-		*
-		*  Phermone updates
-		*
-		******************************/
-		if(pheromone_update_type == ANT_UPDATE_SIMPLE)
-		{
-			for(uint i = 0; i < population; i++)
-			{
-				uint curWeight = 0;
-				uint curBias   = 0;
-
-				//make antfit the average error per example
-				antfit[i] /= mydataBatchSize;
-
-				for(uint l = 0; l < ants[i]->__layers.size(); l++)
-				{
-					if(ants[i]->__layers[l]->layerType == CONV_LAYER)
-					{
-						ConvLayer* conv = (ConvLayer*)ants[i]->__layers[l];
-						double deltaTau = Q/antfit[i];
-						//weights
-						for(int w = 0; w < conv->numWeights; w++)
-						{
-							int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
-							pheromoneWeights[curWeight][optionIndex] += deltaTau;
-
-							if(leakType == ANT_LEAK_LINEAR_DECREASE)
-							{
-								//go left leaking
-								for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
-									pheromoneWeights[curWeight][opt] += deltaTau;// * (optionIndex - opt)/leakRange_options;
-								//go right leaking
-								for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
-									pheromoneWeights[curWeight][opt] += deltaTau;// * (opt - optionIndex)/leakRange_options;
-							}
-
-							curWeight++;
-						}
-
-						for(int b = 0; b < conv->numBiases; b++)
-						{
-							int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
-							pheromoneBiases[curBias][optionIndex] += deltaTau;
-
-							if(leakType == ANT_LEAK_LINEAR_DECREASE)
-							{
-								//go left leaking
-								for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
-									pheromoneBiases[curBias][opt] += deltaTau * (optionIndex - opt)/leakRange_options;
-								//go right leaking
-								for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
-									pheromoneBiases[curBias][opt] += deltaTau * (opt - optionIndex)/leakRange_options;
-							}
-
-							curBias++;
-						}
-					}
-				}
-			}
-		}
 
 		/******************************
 		*
@@ -2647,47 +2636,50 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 			epoch++;
 			printf("---------------------------------------------------------------\n");
 			curTrainDataIndex = 0;
-			for(uint i = 0; i < population; i++)
+			if(dataBatchSize != trainingData.size())
 			{
-				antfit[i] = 0;
-				antCorrect[i] = 0;
-			}
-			for(uint i = 0; i < population;) //no i++ b/c myclBatchSize
-			{
-				//determine amount of parallelism. is clBatchSize unless not that many ants left
-				int myclBatchSize = i+clBatchSize >= population ? population-i : clBatchSize;
-				if(myclBatchSize == 0)
+				for(uint i = 0; i < population; i++)
 				{
-					printf("Error: myclBatchSize == 0. Infinite loop. Aborting.\n");
-					return;
+					antfit[i] = 0;
+					antCorrect[i] = 0;
 				}
-				//push weights
-				for(int t = 0; t < myclBatchSize; t++)
-					pushCLWeights(ants[i+t]->__layers, clWeights[t], clBiases[t], queues[t], CL_TRUE);
-				//for our data batch size
-				for(int d = 0; d < trainingData.size(); d++)
+				for(uint i = 0; i < population;) //no i++ b/c myclBatchSize
 				{
-					for(int t = 0; t < myclBatchSize; t++)
+					//determine amount of parallelism. is clBatchSize unless not that many ants left
+					int myclBatchSize = i+clBatchSize >= population ? population-i : clBatchSize;
+					if(myclBatchSize == 0)
 					{
-						//write training data piece
-						CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, 
-							sizeof(double) * __neuronSizes[0], trainingData[d]->data(), 0, nullptr, nullptr));
+						printf("Error: myclBatchSize == 0. Infinite loop. Aborting.\n");
+						return;
+					}
+					//push weights
+					for(int t = 0; t < myclBatchSize; t++)
+						pushCLWeights(ants[i+t]->__layers, clWeights[t], clBiases[t], queues[t], CL_TRUE);
+					//for our data batch size
+					for(int d = 0; d < trainingData.size(); d++)
+					{
+						for(int t = 0; t < myclBatchSize; t++)
+						{
+							//write training data piece
+							CheckError(clEnqueueWriteBuffer(queues[t], *(prevNeurons[t]), CL_TRUE, 0, 
+								sizeof(double) * __neuronSizes[0], trainingData[d]->data(), 0, nullptr, nullptr));
 
-						//run threads
-						cl_mem **prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]); //need because const rid
-						thr[t] = thread([=] {feedForward(prevptr, nptr,ref(ants[i+t]->__neuronDims), ref(ants[i+t]->__layers), ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+							//run threads
+							cl_mem **prevptr = &(prevNeurons[t]), **nptr = &(neurons[t]); //need because const rid
+							thr[t] = thread([=] {feedForward(prevptr, nptr,ref(ants[i+t]->__neuronDims), ref(ants[i+t]->__layers), ref(layerNeeds[t]), ref(clWeights[t]), ref(clBiases[t]), ref(queues[t]), ref(denoms[t]), ref(kerns[t]));});
+						}
+						for(int t = 0; t < myclBatchSize; t++)
+						{
+							thr[t].join();
+							CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double)*__neuronSizes.back(),
+								soft.data(), 0, nullptr, nullptr));
+							antfit[i+t] += getFitness(soft,trueVals[d],ants[i+t]);
+							if(getMaxElementIndex(soft) == trueVals[d])
+								antCorrect[i+t]++;
+						}
 					}
-					for(int t = 0; t < myclBatchSize; t++)
-					{
-						thr[t].join();
-						CheckError(clEnqueueReadBuffer(queues[t], *(neurons[t]), CL_TRUE, 0, sizeof(double)*__neuronSizes.back(),
-							soft.data(), 0, nullptr, nullptr));
-						antfit[i+t] += getFitness(soft,trueVals[d]);
-						if(getMaxElementIndex(soft) == trueVals[d])
-							antCorrect[i+t]++;
-					}
+					i += myclBatchSize;
 				}
-				i += myclBatchSize;
 			}
 			//get new (shuffled) training data for next epoch
 			getTrainingData(trainingData,trueVals);
@@ -2710,23 +2702,372 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 				printf("%cAnt: %3d. Acc: %7.3lf. Error: %9.2lf\n",better,i,100.0*antCorrect[i]/trainingData.size(),antfit[i]);
 			}
 			char better = ' ';
-			if(antCorrect[curBestC] > bestCorrect)
+			//see if we have a new best!
+			//if(antCorrect[curBestC] > bestCorrect)
+			if(antfit[curBestF] < bestFit)
 			{
 				better = '*';
 				if(bestNet != nullptr)
 					delete bestNet;
-				bestNet = new Net(*(ants[curBestC]));
-				bestNet->save(__saveName.c_str()); //save as we go so we don't lose it all on Ctrl+C
-				bestCorrect = antCorrect[curBestC];
-				bestFit = antfit[curBestC];
+				bestNet = new Net(*(ants[curBestF]));
+				ants[curBestF]->save(__saveName.c_str());
+				// bestNet->save(__saveName.c_str()); //save as we go so we don't lose it all on Ctrl+C
+				printf("Saving best net with %u out of %lu correct.\n", antCorrect[curBestF],trainingData.size());
+				bestCorrect = antCorrect[curBestF];
+				bestFit = antfit[curBestF];
 				bestEpoch = epoch;
+
+				if(pheromone_update_type == ANT_UPDATE_FANT)
+				{
+					//reset pheromones
+					for(int i = 0; i < pheromoneWeights.size(); i++)
+						for(int j = 0; j < numWeightOptions; j++)
+							pheromoneWeights[i][j] = 1;
+
+					for(int i = 0; i < pheromoneBiases.size(); i++)
+						for(int j = 0; j < numWeightOptions; j++)
+							pheromoneBiases[i][j] = 1;
+
+					//increase w1?
+				}
 			}
 			printf("End EPOCH %u ITERATION %u - Time: %s\n", epoch,iteration,secondsToString(time(NULL) - epochStartTime).c_str());
 			printf("%cAll time best: Acc: %7.3lf, Error: %9.3lf, epoch %u\n", better,100.0*bestCorrect/trainingData.size(),bestFit,bestEpoch);
-			printf( " Current Best : Acc: %7.3lf, Error: %9.3lf, Ant %d\n", 100.0*antCorrect[curBestC]/trainingData.size(),antfit[curBestC],curBestC);
+			printf( " Current Best : Acc: %7.3lf, Error: %9.3lf, Ant %d\n", 100.0*antCorrect[curBestF]/trainingData.size(),antfit[curBestF],curBestF);
 			printf("---------------------------------------------------------------\n");
-			epochStartTime = time(NULL)
-;		}
+			epochStartTime = time(NULL);
+		}
+
+		/******************************
+		*
+		*  Pheromone evaporation
+		*
+		******************************/
+		if(oneMinusRho != 1.0)
+		{
+			//weights
+			for(uint i = 0; i < numWeights; i++)
+				for(uint j = 0; j < numWeightOptions; j++)
+					pheromoneWeights[i][j] *= oneMinusRho;
+
+			//biases
+			for(uint i = 0; i < numBiases; i++)
+				for(uint j = 0; j < numWeightOptions; j++)
+					pheromoneBiases[i][j] *= oneMinusRho;
+		}
+
+		/******************************
+		*
+		*  Phermone updates
+		*
+		******************************/
+
+		vector<Net*> uants;
+		vector<double> deltaTau;
+		if(pheromone_update_type == ANT_UPDATE_SIMPLE)
+		{
+			for(uint i = 0; i < ants.size(); i++)
+			{
+				uants.push_back(ants[i]);
+				deltaTau.push_back(Q/antfit[i]);
+			}
+		}
+		else if(pheromone_update_type == ANT_UPDATE_BEST || pheromone_update_type == ANT_UPDATE_FANT
+			|| pheromone_update_type == ANT_UPDATE_ACS_GLOBAL)
+		{
+			uint best = 0;
+			for(int i = 1; i < population; i++)
+			{
+				if(antfit[i] < antfit[best])
+					best = i;
+			}
+
+			if(pheromone_update_type == ANT_UPDATE_BEST)
+			{
+				uants.push_back(ants[best]);
+				deltaTau.push_back(Q/antfit[best]);
+			}
+			else if(pheromone_update_type == ANT_UPDATE_FANT)
+			{
+				uants.push_back(ants[best]);
+				deltaTau.push_back(w1);
+				if(bestNet != nullptr)
+				{
+					uants.push_back(bestNet);
+					deltaTau.push_back(w2);
+				}
+			}
+			else if(pheromone_update_type == ANT_UPDATE_ACS_GLOBAL)
+			{
+				if(bestNet != nullptr)
+				{
+					uants.push_back(bestNet);
+					deltaTau.push_back(rho1_ACS * Q/bestFit);
+				}
+				else
+				{
+					uants.push_back(ants[best]);
+					deltaTau.push_back(rho1_ACS * Q/antfit[best]);
+				}
+			}
+		}
+
+		for(uint i = 0; i < uants.size(); i++)
+		{
+			uint curWeight = 0, curBias = 0;
+			for(uint l = 0; l < uants[i]->__layers.size(); l++)
+			{
+				if(uants[i]->__layers[l]->layerType == CONV_LAYER)
+				{
+					ConvLayer* conv = (ConvLayer*)uants[i]->__layers[l];
+					
+					//weights
+					for(int w = 0; w < conv->numWeights; w++)
+					{
+						int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
+						pheromoneWeights[curWeight][optionIndex] += deltaTau[i];
+
+						if(leakType == ANT_LEAK_LINEAR_DECREASE)
+						{
+							//go left leaking
+							for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+								pheromoneWeights[curWeight][opt] += deltaTau[i] * (1 - (optionIndex - opt)/leakRange_options);
+							//go right leaking
+							for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+								pheromoneWeights[curWeight][opt] += deltaTau[i] * (1 - (opt - optionIndex)/leakRange_options);
+						}
+
+						curWeight++;
+					}
+
+					//biases
+					for(int b = 0; b < conv->numBiases; b++)
+					{
+						int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
+						pheromoneBiases[curBias][optionIndex] += deltaTau[i];
+
+						if(leakType == ANT_LEAK_LINEAR_DECREASE)
+						{
+							//go left leaking
+							for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+								pheromoneBiases[curBias][opt] += deltaTau[i] * (1 - (optionIndex - opt)/leakRange_options);
+							//go right leaking
+							for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+								pheromoneBiases[curBias][opt] += deltaTau[i] * (1 - (opt - optionIndex)/leakRange_options);
+						}
+
+						curBias++;
+					}
+				}
+			}
+
+		}
+		// if(pheromone_update_type == ANT_UPDATE_SIMPLE)
+		// {
+		// 	for(uint i = 0; i < population; i++)
+		// 	{
+		// 		uint curWeight = 0;
+		// 		uint curBias   = 0;
+
+		// 		//make antfit the average error per example
+		// 		antfit[i] /= mydataBatchSize;
+		// 		double deltaTau = Q/antfit[i];
+
+		// 		for(uint l = 0; l < ants[i]->__layers.size(); l++)
+		// 		{
+		// 			if(ants[i]->__layers[l]->layerType == CONV_LAYER)
+		// 			{
+		// 				ConvLayer* conv = (ConvLayer*)ants[i]->__layers[l];
+						
+		// 				//weights
+		// 				for(int w = 0; w < conv->numWeights; w++)
+		// 				{
+		// 					int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
+		// 					pheromoneWeights[curWeight][optionIndex] += deltaTau;
+
+		// 					if(leakType == ANT_LEAK_LINEAR_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+		// 							pheromoneWeights[curWeight][opt] += deltaTau * (optionIndex - opt)/leakRange_options;
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+		// 							pheromoneWeights[curWeight][opt] += deltaTau * (opt - optionIndex)/leakRange_options;
+		// 					}
+		// 					else if(leakType == ANT_LEAK_EXPONENTIAL_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+		// 							pheromoneWeights[curWeight][opt] += deltaTau * pow((optionIndex - opt)/leakRange_options,2);
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+		// 							pheromoneWeights[curWeight][opt] += deltaTau * pow((opt - optionIndex)/leakRange_options,2);
+		// 					}
+
+		// 					curWeight++;
+		// 				}
+
+		// 				for(int b = 0; b < conv->numBiases; b++)
+		// 				{
+		// 					int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
+		// 					pheromoneBiases[curBias][optionIndex] += deltaTau;
+
+		// 					if(leakType == ANT_LEAK_LINEAR_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+		// 							pheromoneBiases[curBias][opt] += deltaTau * (optionIndex - opt)/leakRange_options;
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+		// 							pheromoneBiases[curBias][opt] += deltaTau * (opt - optionIndex)/leakRange_options;
+		// 					}
+		// 					else if(leakType == ANT_LEAK_EXPONENTIAL_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+		// 							pheromoneBiases[curBias][opt] += deltaTau * pow((optionIndex - opt)/leakRange_options,2);
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+		// 							pheromoneBiases[curBias][opt] += deltaTau * pow((opt - optionIndex)/leakRange_options,2);
+		// 					}
+
+		// 					curBias++;
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// }
+		// else if(pheromone_update_type == ANT_UPDATE_BEST)
+		// {
+		// 	uint best = 0;
+		// 	for(int i = 1; i < population; i++)
+		// 	{
+		// 		if(antfit[i] < antfit[best])
+		// 			best = i;
+		// 	}
+		// 	antfit[best] /= mydataBatchSize; //make it avg per example. more scalable this way
+
+		// 	double deltaTau = Q/antfit[best];
+		// 	// printf("avgfit: %lf Q: %lf deltaTau: %lf\n", antfit[best],Q,deltaTau);
+
+		// 	uint curWeight = 0, curBias = 0;
+		// 	for(uint l = 0; l < ants[best]->__layers.size(); l++)
+		// 		{
+		// 			if(ants[best]->__layers[l]->layerType == CONV_LAYER)
+		// 			{
+		// 				ConvLayer* conv = (ConvLayer*)ants[best]->__layers[l];
+						
+		// 				//weights
+		// 				for(int w = 0; w < conv->numWeights; w++)
+		// 				{
+		// 					int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
+		// 					pheromoneWeights[curWeight][optionIndex] += deltaTau;
+
+		// 					if(leakType == ANT_LEAK_LINEAR_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+		// 							pheromoneWeights[curWeight][opt] += deltaTau * (1 - (optionIndex - opt)/leakRange_options);
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+		// 							pheromoneWeights[curWeight][opt] += deltaTau * (1 - (opt - optionIndex)/leakRange_options);
+		// 					}
+
+		// 					curWeight++;
+		// 				}
+
+		// 				for(int b = 0; b < conv->numBiases; b++)
+		// 				{
+		// 					int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
+		// 					pheromoneBiases[curBias][optionIndex] += deltaTau;
+
+		// 					if(leakType == ANT_LEAK_LINEAR_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+		// 							pheromoneBiases[curBias][opt] += deltaTau * (1 - (optionIndex - opt)/leakRange_options);
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+		// 							pheromoneBiases[curBias][opt] += deltaTau * (1 - (opt - optionIndex)/leakRange_options);
+		// 					}
+
+		// 					curBias++;
+		// 				}
+		// 			}
+		// 		}
+		// }
+		// else if(pheromone_update_type == ANT_UPDATE_FANT)
+		// {
+		// 	// printf("Start update fant\n");
+		// 	uint best = 0;
+		// 	for(int i = 1; i < population; i++)
+		// 	{
+		// 		if(antfit[i] < antfit[best])
+		// 			best = i;
+		// 	}
+
+		// 	double delta[] = {w1,w2};
+		// 	Net* fants[] = {ants[best],bestNet};
+			
+		// 	for(int i = 0; i < 2; i++)
+		// 	{
+		// 		uint curWeight = 0, curBias = 0;
+		// 		if(fants[i] == nullptr)
+		// 			continue;
+		// 		// printf("i: %d\n", i);
+		// 		// printf("size = %lu\n", fants[i]->__layers.size());
+		// 		// printf("here\n");
+		// 		for(uint l = 0; l < fants[i]->__layers.size(); l++)
+		// 		{
+		// 			if(fants[i]->__layers[l]->layerType == CONV_LAYER)
+		// 			{
+		// 				ConvLayer* conv = (ConvLayer*)fants[i]->__layers[l];
+						
+		// 				//weights
+		// 				// printf("layer %u\n", l);
+		// 				// printf("numWeight %d\n", conv->numWeights);
+		// 				for(int w = 0; w < conv->numWeights; w++)
+		// 				{
+		// 					int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
+		// 					pheromoneWeights[curWeight][optionIndex] += delta[i];
+
+		// 					if(leakType == ANT_LEAK_LINEAR_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+		// 							pheromoneWeights[curWeight][opt] += delta[i] * (1 - (optionIndex - opt)/leakRange_options);
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+		// 							pheromoneWeights[curWeight][opt] += delta[i] * (1 - (opt - optionIndex)/leakRange_options);
+		// 					}
+
+		// 					curWeight++;
+		// 				}
+
+		// 				// printf("weights done starting biases\n");
+		// 				// printf("numBiases %d\n", conv->numBiases);
+		// 				for(int b = 0; b < conv->numBiases; b++)
+		// 				{
+		// 					int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
+		// 					pheromoneBiases[curBias][optionIndex] += delta[i];
+
+		// 					if(leakType == ANT_LEAK_LINEAR_DECREASE)
+		// 					{
+		// 						//go left leaking
+		// 						for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+		// 							pheromoneBiases[curBias][opt] += delta[i] * (1 - (optionIndex - opt)/leakRange_options);
+		// 						//go right leaking
+		// 						for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+		// 							pheromoneBiases[curBias][opt] += delta[i] * (1 - (opt - optionIndex)/leakRange_options);
+		// 					}
+
+		// 					curBias++;
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// 	// printf("end update fant\n");
+		// }
 	} //end iterations	
 }
 
@@ -2738,9 +3079,6 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 	//We'll need some stuff to hold our training data
 	vector<vector<double>* > trainingData(0);
 	vector<double> trueVals(0);
-
-	getTrainingData(trainingData, trueVals);
-	int curTrainDataIndex = 0;
 
 	//preprocess the data, training and test
  	if(__preprocessIndividual)
@@ -2755,9 +3093,13 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 	{
 		if(!__trainingDataPreprocessed)
 			preprocessTrainingDataCollective();
-		if(!__testDataPreprocessed)
+		if(!__testDataPreprocessed && __testData.size() != 0)
 			preprocessTestDataCollective();
 	}
+
+	getTrainingData(trainingData, trueVals);
+	int curTrainDataIndex = 0;
+
 
 	//We'll have a vector of nets to hold the population
 	vector<Net*> nets(population);
