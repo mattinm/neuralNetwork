@@ -44,7 +44,14 @@ struct DoneFrame{
 	vector<double> confidences;
 
 	DoneFrame(int framenum, int classIndex, vector<double>& confidences);
+	DoneFrame();
 };
+
+DoneFrame::DoneFrame()
+{
+	this->framenum = -1;
+	this->classIndex = -1;
+}
 
 DoneFrame::DoneFrame(int framenum, int classIndex, vector<double>& confidences)
 {

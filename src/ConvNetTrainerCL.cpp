@@ -23,7 +23,7 @@ using namespace std;
 
 typedef vector<vector<vector<double> > > imVector;
 
-long __ifstreamend;
+std::streampos __ifstreamend;
 
 /**********************
  *	Helper Functions
@@ -204,7 +204,7 @@ double getNextImage(ifstream& in, imVector& dest, short x, short y, short z, sho
 unsigned long convertBinaryToDoublePtr(ifstream& in, double** dest, double* trueVals, short sizeByte, unsigned int size)
 {
     //calc how many images
-    size_t filesize = __ifstreamend - 4 * sizeof(short); // - 4 shorts for sizeByte, x, y, z
+    size_t filesize = (unsigned int)__ifstreamend - 4 * sizeof(short); // - 4 shorts for sizeByte, x, y, z
     size_t itemSize = 1;
     if(sizeByte == 1)
         itemSize = sizeof(unsigned char);

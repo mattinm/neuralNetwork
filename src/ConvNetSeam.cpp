@@ -790,7 +790,7 @@ bool seamcarve_vf(int numSeams, const Mat& source, Mat& dest)
 	return true;
 }
 
-bool seamcarve_vfRandom(int numSeams, const Mat& source, Mat& dest)
+/*bool seamcarve_vfRandom(int numSeams, const Mat& source, Mat& dest)
 {
 	cl_int error;
 
@@ -885,7 +885,7 @@ bool seamcarve_vfRandom(int numSeams, const Mat& source, Mat& dest)
 	}
 	clReleaseCommandQueue(queue);
 	return true;
-}
+}*/
 
 bool seamcarve_vfRev(int numSeams, const Mat& source, Mat& dest)
 {
