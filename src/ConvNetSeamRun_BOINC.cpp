@@ -109,7 +109,7 @@ bool readCheckpoint()
 	curFrame = stoi(line);
 	//the second line is the length of the vector
 	getline(check, line);
-	doneFrames.resize(stoi(line));
+	// doneFrames.resize(stoi(line)); //don't need to do b/c push_back()
 	//the third line is the number of classes
 	getline(check, line);
 	int numClasses = stoi(line);

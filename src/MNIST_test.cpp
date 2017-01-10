@@ -129,16 +129,26 @@ int main(int argc, char** argv)
 {
 	if(argc < 3)
 	{
-		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional)\n");
+		// printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional) -DEType\n");
+		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -ant(optional)\n");
 		return 0;
 	}
 	int device = 0;
-	bool useDE = false;
+	// bool useDE = false;
+	bool useAnt = false;
+	// int detype = 0;
 	int dataBatchSize = atoi(argv[3]);
 	if(argc >= 5)
 		device = atoi(argv[4]);
-	if(argc >= 6 && string(argv[5]) == "-DE")
-		useDE = true;
+	// if(argc >= 6 && string(argv[5]) == "-DE")
+	// {
+	// 	useDE = true;
+	// 	detype = atoi(argv[6]);
+	// }
+	if(argc >= 6 && string(argv[5]) == "-ant")
+	{
+		useAnt = true;
+	}
 
 	ifstream training_label_in("train-labels.idx1-ubyte");
 	ifstream training_data_in("train-images.idx3-ubyte");
@@ -178,10 +188,14 @@ int main(int argc, char** argv)
 
 
 	Net net(argv[1]);
+	// net.save("testnetsave.txt");
+	// printf("saved\n");
+	// return 0;
 	net.preprocessCollectively();
 	net.setSaveName(argv[2]);
 	net.setTrainingType(TRAIN_AS_IS);
-	cout << boolalpha << net.setDevice(device) << endl;
+	net.setDevice(device);
+	// net.set_learningRate(0);
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;
@@ -190,8 +204,10 @@ int main(int argc, char** argv)
 	}
 	net.addTrainingData(test_data,test_true);
 
-	if(useDE)
-		net.DETrain_sameSize(100,dataBatchSize);
+	if(useAnt)
+		net.antTrain(10000, 10, dataBatchSize);
+	// else if(useDE)
+	// 	net.DETrain_sameSize(detype,1000,dataBatchSize);
 	else
 		net.train();
 
