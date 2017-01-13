@@ -202,7 +202,7 @@ int main(int argc, char** argv)
 	{
 		cout << "Usage (Required to come first):\n   ./ConvNetContinuanceCL CNNConfigFile.txt binaryTrainingImagesFile";
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
-		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified new weights will be saved over old file.\n";
+		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified new weights will not be saved.\n";
 		cout << "   testSet=<name.txt>       A binary training file to be used as a test/validation set. Never trained on.\n";
 		cout << "   epochs=<#epochs>         Number of epochs to train for. Defaults to 1.\n";
 		cout << "   device=<device#>         Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
@@ -300,6 +300,14 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	if(!saveNewWeights)
+	{
+		printf("If you continue no weights will be saved. Would you like to continue? (y/n)\n");
+		char cont = getchar();
+		if(cont != 'y' && cont != 'Y')
+			return 0;
+	}
+
 	ifstream in;
 	in.open(argv[2]);
 
@@ -324,6 +332,35 @@ int main(int argc, char** argv)
 		exit(0);
 	}
 
+	vector<string> names;
+	vector<int> trues;
+
+	char oldOrNew = readChar(in);
+	if(oldOrNew == '\0') // new
+	{
+		int numClasses = readInt(in);
+		for(int i = 0; i < numClasses; i++)
+		{
+			unsigned int tru = readUInt(in);
+			char ch = readChar(in);
+			string name = "";
+			while(ch != '\0')
+			{
+				name += ch;
+				ch = readChar(in);
+			}
+
+			names.push_back(name);
+			trues.push_back(tru);
+		}
+	}
+	else //old
+	{
+		in.seekg(0, in.beg);
+		for(int i = 0; i < 4; i++)
+			readShort(in);
+	}
+
 	//set up net
 	Net net(argv[1]);
 	if(learningRate != -1)
@@ -343,7 +380,11 @@ int main(int argc, char** argv)
     if(preprocessCollective)
     	net.preprocessCollectively();
     if(preprocessIndividual)
-    	net.preprocessIndividually();	
+    	net.preprocessIndividually();
+    if(saveNewWeights)
+    	net.setSaveName(outputName);
+    if(names.size() != 0)
+    	net.setClassNames(names, trues);	
     net.setTrainingType(trainMethod);
 	if(!net.finalize())
 	{
@@ -420,12 +461,12 @@ int main(int argc, char** argv)
 	endtime = time(NULL);
 	cout << "Time for OpenCL code: " << secondsToString(endtime - starttime) << ". - " << secondsToString((endtime-starttime)/(float)epochs) << " per epoch." << endl;
 
-	if(saveNewWeights)
-	{
-		net.save(outputName.c_str());
-	}
-	else
-	{
-		net.save(argv[1]);
-	}
+	// if(saveNewWeights)
+	// {
+	// 	net.save(outputName.c_str());
+	// }
+	// else
+	// {
+	// 	net.save(argv[1]);
+	// }
 }

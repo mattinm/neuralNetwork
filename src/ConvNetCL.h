@@ -43,17 +43,48 @@
 #define TRAINING_PROGRAM 0
 #define RUNNING_PROGRAM 1
 
+//defines for DE
+#define DE_RAND 0
+#define DE_BEST 1
+#define DE_CURRENT_TO_BEST 2
+#define DE_QUIN_AND_SUGANTHAN 3
+
+#define DE_BINOMIAL_CROSSOVER 0
+#define DE_EXPONENTIAL_CROSSOVER 1
+
+//defines for ant
+//init types
+#define ANT_INIT_FANT 0
+#define ANT_INIT_MMAS 1
+
+//pheromone update types
+#define ANT_UPDATE_SIMPLE 0
+#define ANT_UPDATE_BEST 1
+#define ANT_UPDATE_FANT 2
+#define ANT_UPDATE_ACS_GLOBAL 3
+
+//pheromone leak types
+#define ANT_LEAK_NONE 0
+#define ANT_LEAK_LINEAR_DECREASE 1
+#define ANT_LEAK_EXPONENTIAL_DECREASE 2
+
 typedef std::vector<std::vector<std::vector<double> > > imVector;
 
 class Net{
+public:     // structs
+	struct ClassInfo{
+		std::string name = "";
+		int trueVal = -1;
+	};
 private: 	// structs
 	struct Layer{
 		int layerType = ABSTRACT_LAYER;
 	};
 
 	struct ConvLayer : Layer{
-		double* weights;
-		double* biases;
+		// int layerType = CONV_LAYER;
+		double* weights = nullptr;
+		double* biases = nullptr;
 		int numWeights;
 		int numBiases;
 		int numNeurons;
@@ -64,6 +95,9 @@ private: 	// structs
 		int paddedNeuronHeight;
 		int paddedNeuronSize;
 		int maxSizeNeeded;
+
+		ConvLayer& operator=(const ConvLayer& other);
+		bool equals(const ConvLayer& other);
 	};
 
 	struct MaxPoolLayer : Layer{
@@ -85,20 +119,52 @@ private: 	// structs
 		void clearWeights();
 	};
 
+	struct Kernels{
+		cl_kernel reluKernelF;
+		cl_kernel leakyReluKernelF;
+		cl_kernel convKernelF;
+		cl_kernel convKernelFC;
+		cl_kernel zeroPadKernelF;
+		cl_kernel maxPoolKernelF;
+		cl_kernel softmaxKernelF;
+		cl_kernel reluKernel;
+		cl_kernel reluBackKernel;
+		cl_kernel leakyReluKernel;
+		cl_kernel leakyReluBackKernel;
+		cl_kernel convKernel;
+		cl_kernel convBackNeuronsKernel;
+		cl_kernel convBackBiasesKernel;
+		cl_kernel convBackWeightsKernel;
+		cl_kernel convBackWeightsMomentKernel;
+		cl_kernel zeroPadKernel;
+		cl_kernel zeroPadBackKernel;
+		cl_kernel maxPoolKernel;
+		cl_kernel maxPoolBackKernel;
+		cl_kernel softmaxKernel;
+		cl_kernel softmaxBackKernel;
+		cl_kernel copyArrayKernel;
+		cl_kernel maxSubtractionKernel;
+		cl_kernel vectorESumKernel;
+		cl_kernel plusEqualsKernel;
+		cl_kernel divideEqualsKernel;
+	};
+
 private: 	// members
+	bool __inited = false;
 	//hyperparameters
 	double __learningRate = 1e-4;
 	double __RELU_CAP = 5000.0;
 	double __LEAKY_RELU_CONST = 0.01;
 	double __l2Lambda = 0.05;
 	double __MOMENT_CONST = 0.9;
-	double __MAX_NORM_CAP = 6.0;
+	double __MAX_NORM_CAP = 3.0;
+	
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer
-	bool __autoActivLayer = true;
 	std::vector<int> __neuronSizes; //[0] is input layer
-	int __maxNeuronSize;
 	std::vector<std::vector<int> > __neuronDims;  //[0] is input layer
+	bool __autoActivLayer = true;
+	int __maxNeuronSize;
 	int __defaultActivType = 0;
 	int __maxWeightSize = 0;
 
@@ -107,6 +173,7 @@ private: 	// members
 
 	//data and related members
 	int __numClasses = 0;
+	std::vector<ClassInfo> __classes;
 		//training
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
@@ -151,13 +218,26 @@ private: 	// members
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
 	std::vector<cl_mem> clBiases;
-	cl_mem n, p, *neurons, *prevNeurons, denom;
+	cl_mem n, p, *neurons, *prevNeurons, denom;	
+
+
+	//DE
+	int __targetSelectionMethod = DE_BEST;
+
+	//delete r1v,r2v
+	// std::vector<int> r1v, r2v;
 
 public: 	// functions
 	//Constructors and Destructors
+	Net();
+	Net(const Net& other);
 	Net(const char* filename);
 	Net(int inputWidth, int inputHeight, int inputDepth);
+	void init(int inputWidth, int inputHeight, int inputDepth);
 	~Net();
+
+	//Equals
+	Net& operator=(const Net& other);
 	
 	//functions dealing with layers and sizes
 	bool addActivLayer();
@@ -172,6 +252,8 @@ public: 	// functions
 	void printLayerDims() const;
 	int getInputWidth() const;
 	int getInputHeight() const;
+	unsigned int getTotalWeights() const;
+	unsigned int getTotalBiases() const;
 
 	bool finalize();
 	std::string getErrorLog() const;
@@ -202,6 +284,9 @@ public: 	// functions
 		void clearData();
 
 	int getNumClasses() const;
+	void setClassNames(std::vector<std::string> names, std::vector<int> trueVals);
+	void getClassNames(std::vector<ClassInfo>& infos) const;
+	std::string getClassForTrueVal(int trueVal) const;
 
 	//sets for hyperparameters
 	bool set_learningRate(double rate);
@@ -221,20 +306,29 @@ public: 	// functions
 	//training
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
+	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
+	void DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.8, bool BP = true);
+	bool setDETargetSelectionMethod(int method);
 	void setMomentum(bool useMomentum);
+	void antTrain(unsigned int maxIterations, unsigned int population, int dataBatchSize);
 
 	//OpenCL functions
 	int getDevice() const;
 	bool setDevice(unsigned int device);
+	void setDevice(cl_device_id device, cl_platform_id platform);
 	void setGPU(bool useGPU);
 	void setConstantMem(bool useConstantMem);
     
-    //save
+    //save and load
     bool save(const char* filename);
+	bool load(const char* filename);
 
 private:	// functions
+	//functions for operator=
+	void copyLayers(const Net& other);
+	void destroy();
+
 	//inits
-	void init(int inputWidth, int inputHeight, int inputDepth);
 	void initOpenCL();
 
 	//functions dealing with layers
@@ -248,6 +342,7 @@ private:	// functions
 	//functions dealing with data
 	int getTrueValIndex(double trueVal);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
+	int getMaxElementIndex(const std::vector<int>& vect) const;
 	void preprocessDataIndividual();
 	void preprocessDataCollective();
 	void preprocessTestDataIndividual();
@@ -260,24 +355,53 @@ private:	// functions
 	void getTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals);
 	void initVelocities(std::vector<cl_mem>& velocities);
 	void pullCLWeights();
+	void pullCLWeights(Net* net, const std::vector<cl_mem>& clWeights, const cl_command_queue& queue);
+	void pushCLWeights(std::vector<Layer*>& layers, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, cl_bool block);
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
 	std::string secondsToString(time_t seconds);
 	void trainSetup(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void feedForward(std::vector<cl_mem>& layerNeeds);
+	void feedForward(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
+ 		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxForward();
+	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);
+	void softmaxBackprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, const cl_command_queue& queue, const Kernels& k, Net* net);
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
+	void backprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, Net* net, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& velocities, 
+	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue queue, const Kernels& k);
 	void storeWeightsInHolder(WeightHolder& holder);
 	void loadWeightsFromHolder(WeightHolder& holder);
+	std::string tolower(std::string str);
+	bool stringToDims(std::string str, int* dims);
 
-	//load
-	bool load(const char* filename);
+
+	//de train
+	void setupRandomNets(std::vector<Net*>& nets);
+	void setupEquivalentNets(std::vector<Net*>& nets);
+	void releaseCLMem();
+	double getFitness(std::vector<double>& prediction, double trueVal, Net* net);
+	int getTargetVector(int method, const std::vector<double>& fits, int curNet);
+	void getHelperVectors(const std::vector<Net*>& nets, int target, int curNet, std::vector<Net*>& helpers);
+	Net* makeDonor(const std::vector<Net*>& helpers, double scaleFactor, bool shallow = false);
+	Net* makeDonor(int mutType, const std::vector<Net*>& nets, const std::vector<double>& netfit, int curIndex, int n, double scaleFactor);
+	inline int POSITION(int filter, int x, int y, int z, int filsize, int prevdepth);
+	Net* crossover(Net* parent, Net* donor, int method, double prob);
+	int mapConvLayer(Net* orig, int layerNum, Net* dest);
+	void mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, int* destpos);
+	// void DE_mutation_crossover_selection(int netNum, );
+	void buildKernels(Kernels& k, int device);
+	void releaseKernels(Kernels&k);
+	void trial_thread(int netIndex, std::vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem** prevNeurons, 
+		cl_mem** neurons, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, 
+		const std::vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP);
 
 	//OpenCL functions
 	void CheckError(cl_int error);
 	std::string LoadKernel(const char* name);
 	cl_program CreateProgram(std::string source, cl_context& context, int programNum = -1);
+
 };
 
 #endif /* defined(____ConvNetCL__) */

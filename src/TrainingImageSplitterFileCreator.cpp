@@ -6,8 +6,8 @@
 * 	All input images must be of the same size, specified in command line arguments. The format of the
 *	output file is this:
 *
-*		sizeByte xsize ysize zsize image1 trueVal1 image2 trueVal2... imageN trueValN
-*		short	 short short short 		  ushort		  ushort
+*		sizeByte xsize ysize zsize \0 numClasses trueVal   classname_c_str   image1 trueVal1 image2 trueVal2... imageN trueValN
+*		short	 short short short    int         uint   char[] ended by \0         ushort          ushort
 *
 *	The sizeByte says how large/what type each input is. 
 *		1 - unsigned byte 		-1 - signed byte
@@ -25,6 +25,7 @@
 
 
 #include <iostream>
+#include <iomanip>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -35,11 +36,17 @@
 #include <sys/stat.h>
 #include <unordered_map>
 #include <random>
+#include <cstdlib>
 
 using namespace std;
 using namespace cv;
 
 #define MAX_ADJUST 0.3
+
+struct imstruct{
+	string name;
+	unsigned long count = 0;
+};
 
 short xsize = -1, ysize = -1, zsize = -1;
 
@@ -51,6 +58,8 @@ unsigned long imageCount = 0;
 unsigned long unalteredImageCount = 0;
 unsigned short __globalTrueVal;
 unordered_map<unsigned short, int> trueMap;
+vector<imstruct> counts;
+
 
 bool __horizontalReflect = false;
 bool __verticalReflect = false;
@@ -65,6 +74,34 @@ bool __output = true;
 default_random_engine gen(time(0));
 uniform_real_distribution<double> distr(-MAX_ADJUST,MAX_ADJUST);
 uniform_real_distribution<double> distr1(0,1);
+
+int compareRev(const void* p1, const void* p2)
+{
+	imstruct* im1 = (imstruct*) p1;
+	imstruct* im2 = (imstruct*) p2;
+	if(im1->count > im2->count) return -1;
+	if(im1->count == im2->count) return 0;
+	return 1;
+}
+
+string getParallelName(const vector<string>& names, const vector<int>& trueVals, int trueVal)
+{
+	for(int i = 0; i < names.size(); i++)
+	{
+		if(trueVals[i] == trueVal)
+			return names[i];
+	}
+	return string("");
+}
+
+int getMaxNameSize(const vector<string>& names)
+{
+	int max = 0;
+	for(int i = 0; i < names.size(); i++)
+		if(names[i].length() > max)
+			max = names[i].length();
+	return max;
+}
 
 unsigned char clamp (int val, int min, int max)
 {
@@ -256,6 +293,7 @@ unsigned long writeImage(Mat& image, ofstream& outfile)
 				delete(mat);
 
 				imageCount++;
+				counts.back().count++;
 				byteCount += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short));
 				unordered_map<unsigned short, int>::const_iterator got = trueMap.find(__globalTrueVal);
 				if(got == trueMap.end()) // not found
@@ -273,6 +311,7 @@ unsigned long writeImage(Mat& image, ofstream& outfile)
 			trueMap[__globalTrueVal]+=numWritesPerImage;
 		byteCount  += (xsize * ysize * 3 * sizeof(type) + sizeof(unsigned short)) * numWritesPerImage; //extra for the ushort trueVal
 		imageCount += numWritesPerImage;
+		counts.back().count += numWritesPerImage;
 		if(imageCount % 100000 < numWritesPerImage)
 		{
 			printf("Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
@@ -297,14 +336,16 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 	int numThisImage = 0;
 	int numrows = image.rows;
 	int numcols = image.cols;
-	printf("%s rows: %d, cols: %d.     ",imageName, numrows,numcols);
+	// printf("%s rows: %d, cols: %d.     ",imageName, numrows,numcols);
 	if(numrows < ysize || numcols < xsize)
 	{
 		printf("The image %s is too small in at least one dimension. Minimum size is %dx%d.\n",imageName,xsize,ysize);
 		return;
 	}
 
-	cout << "Breaking with stride = " << stride << " and true val " << __globalTrueVal << endl;
+	// cout << "Breaking with stride = " << stride << " and true val " << __globalTrueVal << endl;
+	counts.resize(counts.size() + 1);
+	counts.back().name = imageName;
 	for(int i=0; i <= numrows-ysize; i+=stride)
 	{
 		for(int j=0; j<= numcols-xsize; j+=stride)
@@ -315,7 +356,7 @@ void breakUpImage(const char* imageName, ofstream& outfile)
 			//imageNum++;
 		}
 	}
-	printf("%d images created.\n", numThisImage);	
+	// printf("%d images created.\n", numThisImage);	
 }
 
 int checkExtensions(const char* filename)
@@ -326,8 +367,6 @@ int checkExtensions(const char* filename)
 	if(name.rfind(".png")  == name.length() - 4) return 1;
 	return 0;
 }
-
-
 
 template<typename type>
 void getImages(const char* folder, ofstream& outfile)
@@ -520,59 +559,118 @@ int main (int argc, char** argv)
 	outfile.write(reinterpret_cast<const char *>(&testf),sizeof(float));
 	*/
 
+	char slash0 = '\0';
+
 	outfile.write(reinterpret_cast<const char *>(&sizeByte),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&xsize),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&ysize),sizeof(short));
 	outfile.write(reinterpret_cast<const char *>(&zsize),sizeof(short));
+	outfile.write(reinterpret_cast<const char *>(&slash0),sizeof(char));
 
-	byteCount += 4 * sizeof(short);
+	byteCount += 4 * sizeof(short) + sizeof(char);
+
+	bool endtrueVals = false;
+
+	vector<string> names;
+	vector<int> trues;
+	int numClasses = 0;
 
 	while(getline(imageConfig, line))
 	{
 		if(line.size() == 0 || line[0] == '#' || line[0] == '\n')
 			continue;
-		int comma1 = line.find(',');
-		int comma2 = line.find(',',comma1+1);
-		string folder = line.substr(0,comma1);
-		unsigned short trueVal;
-		if(comma2 != string::npos)
-		 	trueVal = stoi(line.substr(comma1+1));
-		else
-			trueVal = stoi(line.substr(comma1+1,comma2));
-		__globalTrueVal = trueVal;
-		if(comma2 == string::npos)
-			stride = globalStride;
+		if(line[0] == '$') // set a trueval
+		{
+			if(endtrueVals)
+			{
+				printf("All trueVals must come before the image folders.\n");
+				return -1;
+			}
+
+			int space1 = line.find(' ');
+			int space2 = line.find(' ', space1+1);
+			int trueVal = stoi(line.substr(space1+1, space2 - space1 - 1));
+			trues.push_back(trueVal);
+			// string name = line.substr(space2 + 1);
+			names.push_back(line.substr(space2 + 1));
+			numClasses++;
+		}
 		else
 		{
-			string stri = line.substr(comma2+1);
-			if(stri.find("stride=") != string::npos)
+			if(!endtrueVals)
 			{
-				stride = stoi(stri.substr(stri.find('=') + 1));
-			}
-			else
-				stride = stoi(stri);
-		}
+				//write the number of classes
+				outfile.write(reinterpret_cast<const char *>(&numClasses),sizeof(int));
+				byteCount += sizeof(int);
 
-		if(sizeByte == 1)
-				getImages<unsigned char>(folder.c_str(),outfile);
-		else if(sizeByte == -1)
-				getImages<char>(folder.c_str(),outfile);
-		else if(sizeByte == 2)
-				getImages<unsigned short>(folder.c_str(),outfile);
-		else if(sizeByte == -2)
-				getImages<short>(folder.c_str(),outfile);
-		else if(sizeByte == 4)
-				getImages<unsigned int>(folder.c_str(),outfile);
-		else if(sizeByte == -4)
-				getImages<int>(folder.c_str(),outfile);
-		else if(sizeByte == 5)
-				getImages<float>(folder.c_str(),outfile);
-		else if(sizeByte == 6)
-				getImages<double>(folder.c_str(),outfile);
+				//write the trueval and name for each class
+				for(int i = 0; i < numClasses; i++)
+				{
+					int trueVal = trues[i];
+					char out_name[names[i].length()];
+					for(int j= 0; j < names[i].length(); j++)
+					{
+						out_name[j] = names[i][j];
+						// printf("%c\n", name[i]);
+					}
+					out_name[names[i].length()] = '\0';
+					printf("Class %d, %s\n", trueVal, out_name);
+					outfile.write(reinterpret_cast<const char *>(&trueVal),sizeof(int));
+					outfile.write(out_name, sizeof(char) * (names[i].length() + 1)); // +1 for the '\0'
+
+					byteCount += sizeof(int) + (names[i].length()+1) * sizeof(char);
+
+				}
+				endtrueVals = true;
+
+				// getchar();
+			}
+			
+			int comma1 = line.find(',');
+			int comma2 = line.find(',',comma1+1);
+			string folder = line.substr(0,comma1);
+			unsigned short trueVal;
+			if(comma2 != string::npos)
+			 	trueVal = stoi(line.substr(comma1+1));
+			else
+				trueVal = stoi(line.substr(comma1+1,comma2));
+			__globalTrueVal = trueVal;
+			if(comma2 == string::npos)
+				stride = globalStride;
+			else
+			{
+				string stri = line.substr(comma2+1);
+				if(stri.find("stride=") != string::npos)
+				{
+					stride = stoi(stri.substr(stri.find('=') + 1));
+				}
+				else
+					stride = stoi(stri);
+			}
+
+			if(sizeByte == 1)
+					getImages<unsigned char>(folder.c_str(),outfile);
+			else if(sizeByte == -1)
+					getImages<char>(folder.c_str(),outfile);
+			else if(sizeByte == 2)
+					getImages<unsigned short>(folder.c_str(),outfile);
+			else if(sizeByte == -2)
+					getImages<short>(folder.c_str(),outfile);
+			else if(sizeByte == 4)
+					getImages<unsigned int>(folder.c_str(),outfile);
+			else if(sizeByte == -4)
+					getImages<int>(folder.c_str(),outfile);
+			else if(sizeByte == 5)
+					getImages<float>(folder.c_str(),outfile);
+			else if(sizeByte == 6)
+					getImages<double>(folder.c_str(),outfile);
+		}
 	}
 
 	imageConfig.close();
 	outfile.close();
+
+	
 
 	printf("Total Images: %ld, GB: %lf\n", imageCount, byteCount/1.0e9);
 	//cout << "Total: " << imageCount << " images created.";
@@ -586,9 +684,67 @@ int main (int argc, char** argv)
 		sum += it->second;
 	}
 	cout << "Distribution:" << endl;
+	int nameSize = getMaxNameSize(names);
 	for( auto it = trueMap.begin(); it != trueMap.end(); it++)
 	{
-		cout << "True val " << it->first << ": " << it->second << "   " << it->second/sum * 100 << "%\n";
+		cout << "True val " << it->first << ", ";
+		cout << setw(nameSize) << left << getParallelName(names, trues, it->first) << ": ";
+		cout << setw(6) << right << it->second << "   " << it->second/sum * 100 << "%\n";
+	}
+
+	printf("Type y to see the distribution by image. Type any other char to quit.\n");
+	char cont = getchar();
+	getchar();
+	if(cont != 'y' && cont != 'Y')
+		return 0;
+
+	qsort(counts.data(), counts.size(), sizeof(imstruct), compareRev);
+	for(int i = 0; i < counts.size(); i++)
+	{
+		printf("%s - %lu images. %lf%%\n", counts[i].name.c_str(), counts[i].count, 100.0 * counts[i].count/imageCount);
+	}
+
+	printf("Type y to see the distribution by folder. Type any other char to quit\n");
+	cont = getchar();
+	if(cont != 'y' && cont != 'Y')
+		return 0;
+
+	vector<vector<imstruct> > folderCounts(1);
+	folderCounts.back() = counts;
+	int f = 1;
+	while(folderCounts.back().size() > 1)
+	{
+		folderCounts.resize(folderCounts.size() + 1);
+		for(int i = 0; i < folderCounts[f-1].size(); i++)
+		{
+			bool found = false;
+			string folder = folderCounts[f-1][i].name.substr(0, folderCounts[f-1][i].name.rfind('/'));
+			for(int j = 0; j < folderCounts[f].size(); j++)
+			{
+				if(folderCounts[f][j].name == folder)
+				{
+					folderCounts[f][j].count += folderCounts[f-1][i].count;
+					found = true;
+					break;
+				}
+			}
+			if(!found)
+			{
+				imstruct s;
+				s.name = folder;
+				s.count = folderCounts[f-1][i].count;
+				folderCounts[f].push_back(s);
+			}
+		}
+
+		qsort(folderCounts[f].data(), folderCounts[f].size(), sizeof(imstruct), compareRev);
+		for(int j = 0; j < folderCounts[f].size(); j++)
+		{
+			printf("%s - %lu images. %lf%%\n", folderCounts[f][j].name.c_str(), folderCounts[f][j].count, 100.0 * folderCounts[f][j].count/imageCount);
+		}
+		printf("\n");
+
+		f++;
 	}
 
 	return 0;

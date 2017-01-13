@@ -60,11 +60,11 @@ int main(int argc, char** argv)
 	//cout << "Platform id count: " <<  platformIdCount << endl;
 
 	cl_uint deviceIdCount = 0;
-	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_ALL, 0, nullptr, &deviceIdCount);
+	clGetDeviceIDs(platformIds[0],CL_DEVICE_TYPE_CPU, 0, nullptr, &deviceIdCount);
 	//cout << "Device id count: " << deviceIdCount << endl;
 
 	vector<cl_device_id> deviceIds(deviceIdCount);
-	clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_ALL, deviceIdCount, deviceIds.data(), nullptr);
+	clGetDeviceIDs(platformIds[0], CL_DEVICE_TYPE_CPU, deviceIdCount, deviceIds.data(), nullptr);
 
 	const cl_context_properties contextProperties[] = 
 	{

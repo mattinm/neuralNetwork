@@ -12,7 +12,7 @@
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
-#include <thread>
+// #include <thread>
 
 
 using namespace cv;
@@ -189,7 +189,7 @@ void breakUpImage(const char* imageName, Net& net)
 		{
 			for(int ii=i; ii < i+inputHeight && ii < numrows; ii++)
 			{
-				for(int jj=j; jj < j+inputHeight && jj < numcols; jj++)
+				for(int jj=j; jj < j+inputWidth && jj < numcols; jj++)
 				{
 					for(int cat = 0; cat < confidences[curImage].size(); cat++)
 					{
@@ -235,7 +235,7 @@ void breakUpImage(const char* imageName, Net& net)
 			else
 			{
 				outPix[0] = 255*fullImage[i][j][0]; // blue
-				outPix[1] = 255*fullImage[i][j][2]; // green
+				outPix[1] = 0;//255*fullImage[i][j][2]; // green
 				outPix[2] = 255*fullImage[i][j][1]; // red
 			}
 			/*//write only blue and red, no in between
@@ -279,8 +279,8 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("use format: ./ConvNetFullImageDriver cnnConfig.txt imageOrFolderPath (stride=1) (device=0)\n");
-		return -1;
+		printf("use format: ./ConvNetFullImageDriverCL cnnConfig.txt imageOrFolderPath (stride=1) (device=0)\n");
+		return 0;
 	}
 
 	inPath = argv[2];

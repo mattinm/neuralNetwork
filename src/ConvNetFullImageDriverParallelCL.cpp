@@ -39,12 +39,15 @@ int stride = 1;
 Mat fullMat;
 
 int numrowsmin, numcolsmin;
+int numClasses;
 
 vector<imVector> fullImages;
 vector<Net*> nets;
 vector<bool> deviceActive;
 
 char* __netName;
+
+vector<Net::ClassInfo> infos;
 
 int inputWidth, inputHeight;
 int __rows, __cols;
@@ -224,6 +227,18 @@ void __parallelImageRowProcessor(int device)
 	}
 }
 
+string getNameForVal(int trueVal)
+{
+	for(int i = 0; i < infos.size(); i++)
+	{
+		if(infos[i].trueVal == trueVal)
+			return infos[i].name;
+	}
+	char buf[100];
+	sprintf(buf,"class%d",trueVal);
+	return string(buf);
+}
+
 
 /*
  * The inner for loop gets the confidences for each pixel in the image. If a pixel is in more than one subimage
@@ -243,7 +258,7 @@ void breakUpImage(const char* imageName)
 
 	for(int i = 0; i < nets.size(); i++)
 	{
-		resize3DVector(fullImages[i],__rows,__cols,3);
+		resize3DVector(fullImages[i],__rows,__cols,numClasses);
 		setAll3DVector(fullImages[i],0);
 	}
 
@@ -260,7 +275,7 @@ void breakUpImage(const char* imageName)
 
 	combineImages(); // combines into fullImages[0]
 
-	int numClasses = fullImages[0][0][0].size(); //fullImages[device][row][col]
+	// int numClasses = fullImages[0][0][0].size(); //fullImages[device][row][col]
 
 	//process the data
 	double sumsq;
@@ -316,7 +331,11 @@ void breakUpImage(const char* imageName)
 
 	for(int k = 0; k < numClasses; k++)
 	{
-		sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
+		sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+		// if(infos.size() > k)
+		// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+		// else
+		// 	sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
 		printf("Writing %s\n", outName);
 		imwrite(outName,*(outputMats[k]));
 	}
@@ -342,7 +361,7 @@ int main(int argc, char** argv)
 {
 	if(argc < 3 || 5 < argc)
 	{
-		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt VideoOrFolderPath\n");
+		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt ImageOrFolderPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
 		printf("   stride=<int>        Stride across image. Defaults to 1.\n");
 		return -1;
@@ -438,9 +457,12 @@ int main(int argc, char** argv)
 		}
 	}
 
+	printf("Found %lu image(s).\n", filenames.size());
+
 	//init all nets
 	for(int i = 0; i < getNumDevices(); i++)
 	{
+		// printf("%d\n", i);
 		nets.push_back(new Net(__netName));	
 	}
 	fullImages.resize(nets.size());
@@ -448,11 +470,15 @@ int main(int argc, char** argv)
 
 	inputHeight = nets[0]->getInputHeight();
 	inputWidth = nets[0]->getInputWidth();
+	numClasses = nets[0]->getNumClasses();
 
+	nets[0]->getClassNames(infos);
+
+	printf("Getting devices\n");
 	//get the ones that work
 	for(int i = 0 ; i < nets.size(); i++)
 	{
-		nets[i]->setConstantMem(true);
+		// nets[i]->setConstantMem(true);
 		if(nets[i]->setDevice(i) && nets[i]->finalize())
 		{
 			deviceActive[i] = true;

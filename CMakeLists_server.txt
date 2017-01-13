@@ -1,0 +1,63 @@
+cmake_minimum_required(VERSION 2.8)
+project( ConvNetTest )
+#set variables
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
+#SET( SRCS src/ConvNetTest.cpp src/ConvNet.cpp )
+SET( CMAKE_CXX_FLAGS "-std=c++11 -Wall -O3")
+#SET( OpenCV_STATIC ON)
+
+
+#find packages and libraries
+#find_package( OpenCV REQUIRED )
+#find_package( MPI REQUIRED )
+find_package( BOINC REQUIRED )
+#find_package( OpenCL REQUIRED )
+find_package( MySQL REQUIRED )
+#find_library( OPENCL_LIBRARY OpenCL.framework )
+find_package( OpenSSL REQUIRED )
+#set include directories
+include_directories(
+	${MPI_INCLUDE_PATH}
+	${BOINC_INCLUDE_DIR}
+	${MYSQL_INCLUDE_DIR} 
+	${BOINC_INCLUDE_DIR}/db
+	${BOINC_INCLUDE_DIR}/lib
+	${BOINC_INCLUDE_DIR}/tools
+	${BOINC_INCLUDE_DIR}/sched
+	)
+
+FIND_PATH(UNDVC_COMMON_INCLUDE_DIR file_io.hxx
+	~/Development/undvc_common
+	)
+MESSAGE(STATUS "UNDVC_COMMON include dir: ${UNDVC_COMMON_INCLUDE_DIR}")
+
+FIND_LIBRARY(UNDVC_COMMON_LIBRARY
+	NAMES undvc_common
+	PATHS ~/Development/undvc_common/build #change or add paths if in different directory
+		  ~/Development/undvc_common/Build
+	PATH_SUFFIXES lib
+	)
+MESSAGE(STATUS "UNDVC_COMMON library: ${UNDVC_COMMON_LIBRARY}")
+
+include_directories(${UNDVC_COMMON_INCLUDE_DIR})
+
+
+######
+###### MAKE EXECUTABLES
+######
+#BOINC Specific
+add_executable( ConvNet_Video_work_generator src/ConvNet_Video_work_generator.cxx )
+add_executable( ConvNet_Video_validator 
+	${BOINC_INCLUDE_DIR}/sched/validator
+	${BOINC_INCLUDE_DIR}/sched/validate_util 
+	${BOINC_INCLUDE_DIR}/sched/validate_util2
+	src/ConvNet_Video_validator.cxx 
+	)
+
+######
+###### LINK LIBRARIES
+######
+
+#BOINC Specific
+target_link_libraries( ConvNet_Video_work_generator  ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_APP_LIBRARIES} ${BOINC_SCHED_LIBRARIES} ${OPENSSL_LIBRARIES})
+target_link_libraries( ConvNet_Video_validator      ${BOINC_SERVER_LIBRARIES} ${MYSQL_LIBRARIES} ${BOINC_APP_LIBRARIES} ${BOINC_SCHED_LIBRARIES} ${UNDVC_COMMON_LIBRARY})

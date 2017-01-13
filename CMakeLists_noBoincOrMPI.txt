@@ -26,11 +26,14 @@ add_executable( ConvNetContinuanceCL src/ConvNetContinuanceCL.cpp src/ConvNetCL.
 
 add_executable( ConvNetTester src/ConvNetTester.cpp src/ConvNet.cpp )
 
+# add_executable( ConvNetFullImageDriverCL_newOutput src/ConvNetFullImageDriverCL_newOutput.cpp src/ConvNetCL.cpp)
+
 add_executable( ConvNetFullImageDriverCL src/ConvNetFullImageDriverCL.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetFullImageDriverParallelCL src/ConvNetFullImageDriverParallelCL.cpp src/ConvNetCL.cpp)
 
 add_executable( ConvNetVideoDriverCL src/ConvNetVideoDriverCL.cpp src/ConvNetCL.cpp)
 add_executable( ConvNetVideoDriverParallelCL src/ConvNetVideoDriverParallelCL.cpp src/ConvNetCL.cpp)
+add_executable( ConvNetVideoDriverParallelCL_multiNet src/ConvNetVideoDriverParallelCL_multiNet.cpp src/ConvNetCL.cpp)
 
 add_executable( kernelBuilder src/kernelBuilder.cpp )
 
@@ -40,6 +43,8 @@ add_executable( ImageFileCreator src/ImageFileCreator.cpp )
 add_executable( TrainingImageFileCreator src/TrainingImageFileCreator.cpp )
 add_executable( ImageSplitterFileCreator src/ImageSplitterFileCreator.cpp )
 add_executable( TrainingImageSplitterFileCreator src/TrainingImageSplitterFileCreator.cpp )
+
+# add_executable( FileStorageOperations src/FileStorageOperations )
 
 ######
 ###### LINK LIBRARIES
@@ -52,11 +57,14 @@ target_link_libraries( ConvNetContinuanceCL ${OPENCL_LIBRARY} )
 
 target_link_libraries( ConvNetTester ${OPENCL_LIBRARY} )
 
+# target_link_libraries( ConvNetFullImageDriverCL_newOutput ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+
 target_link_libraries( ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 
 target_link_libraries( ConvNetVideoDriverCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 target_link_libraries( ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OPENCL_LIBRARY})
+target_link_libraries( ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OPENCL_LIBRARY})
 
 target_link_libraries( kernelBuilder ${OPENCL_LIBRARY} )
 
@@ -66,3 +74,8 @@ target_link_libraries( ImageFileCreator ${OpenCV_LIBS} )
 target_link_libraries( ImageSplitterFileCreator ${OpenCV_LIBS} )
 target_link_libraries( TrainingImageFileCreator ${OpenCV_LIBS} )
 target_link_libraries( TrainingImageSplitterFileCreator ${OpenCV_LIBS} )
+
+# target_link_libraries( FileStorageOperations ${OpenCV_LIBS} )
+
+
+

@@ -478,7 +478,8 @@ int main(int argc, char** argv)
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
-				return 0;
+				boinc_finish(-1); 
+				return -1;
 			}
 		}
 	}

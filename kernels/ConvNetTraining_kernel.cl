@@ -124,17 +124,28 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 }
 
 //run for each neuron in prevdNeurons
-__kernel void maxPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes)
+__kernel void maxPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes, int depth)
 {
 	const int i = get_global_id(0);
 	double result = 0;
-	for(int j=0; j< numIndexes; j++)
+	
+	//good
+	for(int j= i % depth; j < i; j += depth)
 	{
 		if(maxIndexes[j] == i)
 		{
 			result += dneurons[j];
 		}
 	}
+
+	//slow
+	// for(int j= 0; j < numIndexes; j ++)
+	// {
+	// 	if(maxIndexes[j] == i)
+	// 	{
+	// 		result += dneurons[j];
+	// 	}
+	// }
 
 	prevdNeurons[i] = result;
 }
