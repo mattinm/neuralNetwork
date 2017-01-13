@@ -1,1 +1,7 @@
-Instructions here: http://p-nand-q.com/programming/windows/building_openssl_with_visual_studio_2013.html
+1. Install all the files in the Installer directory
+
+2. Add Perl, NASM, and Python to the System PATH
+
+3. Pull the openssl submodule from the git root
+
+4. Double-click rebuild_openssl_vs2015 to compile openssl

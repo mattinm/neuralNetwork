@@ -19,8 +19,6 @@ IF ERRORLEVEL 1 (
 ) 
 
 
-set OPENSSL_VERSION=1.1.1-dev
-set SEVENZIP="C:\Program Files\7-Zip\7z.exe"
 set VS2015="C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\vcvars32.bat"
 set VS2015_AMD64="C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\amd64\vcvars64.bat"
 
@@ -60,23 +58,23 @@ cd %OPENSSL32_DIR%
 CALL %VS2015%
 cd %OPENSSL32_DIR%
 
-ECHO "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-DLL-VS2015"
-perl Configure VC-WIN32 --prefix="%cwd%openssl-%OPENSSL_VERSION%-32bit-release-DLL-VS2015"
+ECHO "%cwd%openssl-32bit-release-DLL-VS2015"
+perl Configure VC-WIN32 --prefix="%cwd%openssl-32bit-release-DLL-VS2015"
 nmake
 nmake test
 nmake install
 
-perl Configure debug-VC-WIN32 --prefix="%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-DLL-VS2015"
+perl Configure debug-VC-WIN32 --prefix="%cwd%openssl-32bit-debug-DLL-VS2015"
 nmake
 nmake test
 nmake install
 
-perl Configure VC-WIN32 --prefix="%cwd%openssl-%OPENSSL_VERSION%-32bit-release-static-VS2015"
+perl Configure VC-WIN32 --prefix="%cwd%openssl-32bit-release-static-VS2015"
 nmake
 nmake test
 nmake install
 
-perl Configure debug-VC-WIN32 --prefix="%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-static-VS2015"
+perl Configure debug-VC-WIN32 --prefix="%cwd%openssl-32bit-debug-static-VS2015"
 nmake
 nmake test
 nmake install
@@ -85,55 +83,28 @@ cd %OPENSSL64_DIR%
 CALL %VS2015_AMD64%
 cd %OPENSSL64_DIR%
 
-perl Configure VC-WIN64A --prefix="%cwd%openssl-%OPENSSL_VERSION%-64bit-release-DLL-VS2015"
+perl Configure VC-WIN64A --prefix="%cwd%openssl-64bit-release-DLL-VS2015"
 nmake
 nmake test
 nmake install
 
-perl Configure debug-VC-WIN64A --prefix="%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-DLL-VS2015"
+perl Configure debug-VC-WIN64A --prefix="%cwd%openssl-64bit-debug-DLL-VS2015"
 nmake
 nmake test
 nmake install
 
 cd \openssl-src-win64-VS2015
-perl Configure VC-WIN64A --prefix="%cwd%openssl-%OPENSSL_VERSION%-64bit-release-static-VS2015"
+perl Configure VC-WIN64A --prefix="%cwd%openssl-64bit-release-static-VS2015"
 nmake
 nmake test
 nmake install
 
-perl Configure debug-VC-WIN64A --prefix="%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-static-VS2015"
+perl Configure debug-VC-WIN64A --prefix="%cwd%openssl-64bit-debug-static-VS2015"
 nmake
 nmake test
 nmake install
 
-cd \
+cd %cwd%
 python copy_openssl_pys.py
-
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-DLL-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-DLL-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-DLL-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-DLL-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-DLL-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-DLL-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-DLL-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-DLL-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-static-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-static-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-static-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-static-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-static-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-static-VS2015\*"
-%SEVENZIP% a -r "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-static-VS2015.7z" "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-static-VS2015\*"
-
-DEL "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-DLL-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-DLL-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-DLL-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-DLL-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-static-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-static-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-static-VS2015" /Q /F /S
-DEL "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-static-VS2015" /Q /F /S
-
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-DLL-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-DLL-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-DLL-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-DLL-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-32bit-debug-static-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-32bit-release-static-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-64bit-debug-static-VS2015"
-RMDIR /S /Q "%cwd%openssl-%OPENSSL_VERSION%-64bit-release-static-VS2015"
 
 PAUSE
