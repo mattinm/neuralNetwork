@@ -41,12 +41,12 @@ def main(openssl_version):
             
             for build in ("release", "debug"):
                 target_name = "openssl-%s-%s-%s-%s" % (openssl_version, bitness, build, vs, )
-		target_name = os.path.join(cwd, target_name)
+                target_name = os.path.join(cwd, target_name)
                 build_name = ""
                 if build == "debug":
                     build_name = ".dbg"
                 source_name = "openssl-src-%s-%s" % (architecture, vs, )
-		source_name = os.path.join(cwd, source_name, "out32dll%s" % (architecture, vs, build_name, ))
+                source_name = os.path.join(cwd, source_name, "out32dll%s" % (architecture, vs, build_name, ))
                 ensure_files(os.path.join(target_name, "bin"), source_name)
                 ensure_files(os.path.join(target_name, "lib", "engines"), source_name)
 
