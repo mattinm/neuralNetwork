@@ -1,0 +1,10 @@
+[requires]
+Boost/1.60.0@lasote/stable
+OpenSSL/1.0.2g@lasote/stable
+expat/2.1.1@lasote/vcpkg
+opencv/3.1.0@lasote/vcpkg
+libmysql/5.7.16@lasote/vcpkg
+#MySQLClient/6.1.6@hklabbers/stable
+
+[generators]
+cmake
