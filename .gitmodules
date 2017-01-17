@@ -1,0 +1,15 @@
+[submodule "externals/boinc"]
+	path = externals/boinc
+	url = https://github.com/BOINC/boinc
+[submodule "externals/opencv"]
+	path = externals/opencv
+	url = https://github.com/opencv/opencv.git
+[submodule "externals/expat"]
+	path = externals/expat
+	url = http://git.code.sf.net/p/expat/code_git
+[submodule "externals/openssl"]
+	path = externals/openssl
+	url = https://github.com/openssl/openssl.git
+[submodule "externals/mysql-connector-cpp"]
+	path = externals/mysql-connector-cpp
+	url = https://github.com/mysql/mysql-connector-cpp.git
