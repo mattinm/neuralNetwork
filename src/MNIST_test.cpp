@@ -87,34 +87,48 @@ void resize3DVector(vector<vector<vector<double> > > &vect, int width, int heigh
     }
 }
 
-double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, short x, short y, short z, short sizeByte)
+int convertDataType(int dataType)
 {
+	int convert = dataType;
+	if(dataType == 0x08) convert = 1; 		//unsigned byte
+	else if(dataType == 0x09) convert = -1;	//signed byte
+	else if(dataType == 0x0B) convert = -2;	//signed short
+	else if(dataType == 0x0C) convert = -4;	//signed int
+	else if(dataType == 0x0D) convert = 5;	//float
+	else if(dataType == 0x0E) convert = 6;	//double
+	return convert;
+}
+
+double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel)
+{
+	//get 1 image
 	resize3DVector(dest,x,y,z);
+	// printf("resize as %d x %d x %d\n", x,y,z);
 	for(int i=0; i < x; i++)
 	{
 		for(int j=0; j < y; j++)
 		{
 			for(int k=0; k < z; k++)
 			{
-				if(sizeByte == 1)
+				if(sizeByteData == 1)
 					dest[i][j][k] = (double)readUChar(in);
-				else if(sizeByte == -1)
+				else if(sizeByteData == -1)
 					dest[i][j][k] = (double)readChar(in);
-				else if(sizeByte == 2)
+				else if(sizeByteData == 2)
 					dest[i][j][k] = (double)readUShort(in);
-				else if(sizeByte == -2)
+				else if(sizeByteData == -2)
 					dest[i][j][k] = (double)readShort(in);
-				else if(sizeByte == 4)
+				else if(sizeByteData == 4)
 					dest[i][j][k] = (double)readUInt(in);
-				else if(sizeByte == -4)
+				else if(sizeByteData == -4)
 					dest[i][j][k] = (double)readInt(in);
-				else if(sizeByte == 5)
+				else if(sizeByteData == 5)
 					dest[i][j][k] = (double)readFloat(in);
-				else if(sizeByte == 6)
+				else if(sizeByteData == 6)
 					dest[i][j][k] = readDouble(in);
 				else
 				{
-					cout << "Unknown sizeByte: " << sizeByte << ". Exiting" << endl;
+					cout << "Unknown sizeByte for data: " << sizeByteData << ". Exiting" << endl;
 					exit(0);
 				}
 			}
@@ -122,7 +136,44 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, short x,
 	}
 
 	//return the trueVal
-	return (double)readUChar(trueval_in);
+	double trueVal = 0;
+	if(sizeByteLabel == 1)
+		trueVal = (double)readUChar(trueval_in);
+	else if(sizeByteLabel == -1)
+		trueVal = (double)readChar(trueval_in);
+	else if(sizeByteLabel == 2)
+		trueVal = (double)readUShort(trueval_in);
+	else if(sizeByteLabel == -2)
+		trueVal = (double)readShort(trueval_in);
+	else if(sizeByteLabel == 4)
+		trueVal = (double)readUInt(trueval_in);
+	else if(sizeByteLabel == -4)
+		trueVal = (double)readInt(trueval_in);
+	else if(sizeByteLabel == 5)
+		trueVal = (double)readFloat(trueval_in);
+	else if(sizeByteLabel == 6)
+		trueVal = readDouble(trueval_in);
+	else
+	{
+		cout << "Unknown sizeByte for data: " << sizeByteLabel << ". Exiting" << endl;
+		exit(0);
+	}
+	// printf("trueVal: %lf\n", trueVal);
+	return trueVal;
+}
+
+//this function parses the magic number at the beginning of an idx file and therefore
+//SHOULD ONLY BY USED AT THE BEGINNING OF AN IDX FILE
+//this also advance the ifstream cursor past the magic number
+void magic(ifstream& in, int& dataType, int& numDims)
+{
+	if(readUChar(in) + readUChar(in) != 0)
+	{
+		printf("bad stuff happenin\n");
+		exit(0);
+	}
+	dataType = (int)readUChar(in);
+	numDims = (int)readUChar(in);
 }
 
 int main(int argc, char** argv)
@@ -150,35 +201,86 @@ int main(int argc, char** argv)
 		useAnt = true;
 	}
 
+	/**************************
+	*
+	* get all training metadata and set up for reading in images
+	*
+	**************************/
 	ifstream training_label_in("train-labels.idx1-ubyte");
 	ifstream training_data_in("train-images.idx3-ubyte");
+
+	//NOTE: the numDims includes the number of images, so x amount of rgb images would have a numDims of 4
+	int train_data_dataType, train_data_numDims, train_label_dataType, train_label_numDims;
+	magic(training_label_in, train_label_dataType, train_label_numDims);
+	magic(training_data_in, train_data_dataType, train_data_numDims);
+
+	int train_data_convType = convertDataType(train_data_dataType);
+	int train_label_convType = convertDataType(train_label_dataType);
+
+	int numTraining = readBigEndianInt(training_label_in); //number of items in label
+	if(readBigEndianInt(training_data_in) != numTraining)
+	{
+		printf("The training data and label files don't have the same amount of items");
+		return 0;
+	}
+	vector<int> trainDims(3,1);
+	if(train_data_numDims - 1 > 3)
+	{
+		printf("Can only handle at most 3 dimensions in the training data right now. Sorry.\n");
+		return 0;
+	}
+	for(int i = 0; i < train_data_numDims - 1; i++)
+		trainDims[i] = readBigEndianInt(training_data_in);
+
+	/**************************
+	*
+	* get all test metadata and set up for reading in images
+	*
+	**************************/
+
 	ifstream test_label_in("t10k-labels.idx1-ubyte");
 	ifstream test_data_in("t10k-images.idx3-ubyte");
+	int test_data_dataType, test_data_numDims, test_label_dataType, test_label_numDims;
+	magic(test_label_in, test_label_dataType, test_label_numDims);
+	magic(test_data_in, test_data_dataType, test_data_numDims);
 
-	readInt(training_label_in); //magic number
-	int numTraining = readBigEndianInt(training_label_in); //number of items
+	int test_data_convType = convertDataType(test_data_dataType);
+	int test_label_convType = convertDataType(test_label_dataType);
 
-	readInt(test_label_in); //magic number
 	int numTest = readBigEndianInt(test_label_in);
-
-	for(int i =0; i < 4; i++)
+	if(readBigEndianInt(test_data_in) != numTest)
 	{
-		readInt(training_data_in);
-		readInt(test_data_in);
+		printf("The test data and label files don't have the same amount of items\n");
+		return 0;
 	}
+	vector<int> testDims(3,1);
+	if(test_data_numDims - 1 > 3)
+	{
+		printf("Can only handle at most 3 dimensions in the test data right now. Sorry.\n");
+		return 0;
+	}
+	for(int i = 0; i < test_data_numDims - 1; i++)
+		testDims[i] = readBigEndianInt(test_data_in);
 
 	printf("numTrain %d numTest %d\n", numTraining, numTest);
+	printf("Train are %d x %d x %d\n", trainDims[0],trainDims[1],trainDims[2]);
+	printf("Test are %d x %d x %d\n", testDims[0],testDims[1],testDims[2]);
+	printf("Converted train data: %d label: %d\n", train_data_convType,train_label_convType);
+	printf("Converted test data: %d label: %d\n", test_data_convType,test_label_convType);
 
 	vector<imVector> training_data(numTraining), test_data(numTest);
 	vector<double> training_true(numTraining), test_true(numTest);
 
 	for(int i = 0; i < numTraining; i++)
 	{
-		training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i],28,28,1,1);
+		training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
 	}
+	// int quicksize = 1000;
+	// test_true.resize(quicksize);
+	// test_data.resize(quicksize);
 	for(int i = 0; i < numTest; i++)
 	{
-		test_true[i] = getNextImage(test_data_in, test_label_in, test_data[i],28,28,1,1);
+		test_true[i] = getNextImage(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType);
 	}
 
 	training_label_in.close();
@@ -202,7 +304,7 @@ int main(int argc, char** argv)
 		cout << "Something went wrong making the net. Exiting." << endl;
 		return 0;
 	}
-	net.addTrainingData(test_data,test_true);
+	net.addTrainingData(training_data,training_true);
 
 	if(useAnt)
 		net.antTrain(10000, 10, dataBatchSize);
