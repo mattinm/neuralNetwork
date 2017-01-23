@@ -1,0 +1,58 @@
+# Building the project on Windows 10
+
+## Intall the dependencies
+
+### Visual Studio 2013
+
+* https://www.visualstudio.com/en-us/news/releasenotes/vs2013-community-vs
+* Run vs_community.exe
+
+### OpenCV
+
+* https://sourceforge.net/projects/opencvlibrary/files/opencv-win/2.4.13/opencv-2.4.13.exe/download
+* Download OpenCV .exe
+* Unpack the .exe to any folder
+* Copy opencv\ to C:\opencv
+
+### OpenCL
+
+* https://software.intel.com/en-us/intel-opencl
+* Register on Intel.com for the OpenCL SDK .exe
+* Download the SDK and run the .exe
+
+### BOINC
+
+#### Download the BOINC and BOINC requirements submodules
+
+Open Git BASH
+cd C:\neuralNetwork
+git submodule init externals\boinc
+git submodule update externals\boinc
+git submodule init externals\boinc_depends_win_vs2013
+git submodule update externals\boinc_depends_win_vs2013
+
+#### Build BOINC
+
+Use File Explorer to go to C:\Program Files (x86)\Microsoft Visual Studio 12.0\Common7\Tools\Shortcuts
+Open "Developer Command Prompt for VS2013"
+cd C:\neuralNetwork
+cd externals\boinc\win_build
+
+## Build the 32-bit and 64-bit projects
+
+Note: Using "C:\neuralNetwork" as the intall location. Change as required.
+
+### Open the VS2015 Command Prompt
+Open "Developer Command Prompt for VS2015"
+cd C:\neuralNetwork
+mkdir build32
+mkdir build64
+
+### Build the 32-bit project
+cd build32
+cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 12 2013" ..
+cd ..
+
+### Build the 64-bit project
+cd build64
+cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 14 2015 Win64" ..

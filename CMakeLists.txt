@@ -6,8 +6,13 @@ if (${CMAKE_BINARY_DIR} EQUAL ${CMAKE_SOURCE_DIR})
     directory.")
 endif()
 
+# all our options
+option(BUILD_BOINC "builds the BOINC app" ON)
+option(BUILD_DYNAMIC "build dynamic libraries instead of static" OFF)
+
 if (APPLE)
     set(CMAKE_OSX_ARCHITECTURES "x86_64")
+	set(BUILD_32BIT OFF)
     add_definitions("-arch x86_64")
 endif ()
 
@@ -38,10 +43,6 @@ else()
     message (FATAL_ERROR "C++11 support required. Please update your compiler.")
 endif()
 
-# all our options
-option(BUILD_BOINC "builds the BOINC app" ON)
-option(BUILD_DYNAMIC "build dynamic libraries instead of static" OFF)
-
 if (BUILD_DYNAMIC)
     set (OpenCV_STATIC OFF)
 else ()
@@ -65,6 +66,16 @@ message(“OpenCL include LIBS: ${OpenCL_LIBRARIES})
 
 # add our includes directory
 include_directories (${CMAKE_SOURCE_DIR}/include)
+if (WIN32)
+    include_directories(${CMAKE_SOURCE_DIR}/win_include)
+    if (BUILD_DYNAMIC)
+        set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MD")
+        set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MDd")
+    else ()
+        set (CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+        set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+    endif ()
+endif ()
 
 # compile the main source
 add_subdirectory (src)
