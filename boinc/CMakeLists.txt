@@ -3,6 +3,7 @@ project (NeuralNetwork_BOINC)
 
 #set variables
 set (BOINC_BUILD_DYNAMIC ${BUILD_DYNAMIC})
+set (BOINC_DIR $ENV{BOINC_SOURCE} ${CMAKE_SOURCE_DIR}/externals/boinc)
 
 #find packages and libraries
 find_package (BOINC)

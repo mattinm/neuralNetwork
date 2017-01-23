@@ -6,6 +6,11 @@ if (${CMAKE_BINARY_DIR} EQUAL ${CMAKE_SOURCE_DIR})
     directory.")
 endif()
 
+if (APPLE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64")
+    add_definitions("-arch x86_64")
+endif ()
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/modules")
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
@@ -47,20 +52,19 @@ endif ()
 find_package( OpenCV )
 IF (NOT OpenCV_FOUND)
     message (FATAL_ERROR "Unable to find OpenCV.")
-ENDIF(OpenCV_FOUND)
+ENDIF ()
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 find_package( OpenCL )
 IF(NOT OpenCL_FOUND)
     message (FATAL_ERROR "Unable to find OpenCL.")
-ENDIF(OpenCL_FOUND)
+ENDIF ()
 
 include_directories(${OpenCL_INCLUDE_DIRS})
-message(“OpenCL include LIBS: ${OpenCL_LIBRARY})
-
+message(“OpenCL include LIBS: ${OpenCL_LIBRARIES})
 
 # add our includes directory
-include_directories ($CMAKE_SOURCE_DIR}/include)
+include_directories (${CMAKE_SOURCE_DIR}/include)
 
 # compile the main source
 add_subdirectory (src)

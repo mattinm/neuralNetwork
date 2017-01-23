@@ -13,13 +13,12 @@ if (BOINC_INCLUDE_DIRS)
 endif ()
 
 FIND_PATH (BOINC_INCLUDE_DIR boinc/boinc_api.h api/boinc_api.h
-    PATHS ${CMAKE_SOURCE_DIR}/externals/boinc
-    $ENV{BOINC_SOURCE}
+    PATHS ${BOINC_DIR}
 )
 
 if (BOINC_INCLUDE_DIR)
     if (EXISTS "${BOINC_INCLUDE_DIR}/api/boinc_api.h")
-        set (BOINC_INCLUDE_DIRS ${BOINC_INCLUDE_DIR} ${BOINC_INCLUDE_DIR}/api ${BOINC_INCLUDE_DIR}/lib ${BOINC_INCLUDE_DIR}/tools)
+        set (BOINC_INCLUDE_DIRS ${BOINC_INCLUDE_DIR} ${BOINC_INCLUDE_DIR}/api ${BOINC_INCLUDE_DIR}/lib)
     else ()
         set (BOINC_INCLUDE_DIRS ${BOINC_INCLUDE_DIR}/boinc)
     endif ()
@@ -48,14 +47,18 @@ else ()
         set (BOINC_LIB_NAME "libboinc.a")
         set (BOINC_OPENCL_NAME "libboinc_opencl.a")
         set (BOINC_SCHED_NAME "libboinc_sched.a")
+    endif ()
 endif ()
 
 if (WIN32)
     set (BOINC_RELEASE_DIR ${BOINC_INCLUDE_DIR}/win_build/Build/Win32/Release)
     set (BOINC_DEBUG_DIR ${BOINC_INCLUDE_DIR}/win_build/Build/Win32/Debug)
+elseif (APPLE)
+    set (BOINC_RELEASE_DIR ${BOINC_INCLUDE_DIR}/mac_build/build/Deployment)
+    set (BOINC_DEBUG_DIR ${BOINC_INCLUDE_DIR}/mac_build/build/Deployment)
 else ()
-    set (BOINC_RELEASE_DIR)
-    set (BOINC_DEBUG_DIR)
+    set (BOINC_RELEASE_DIR )
+    set (BOINC_DEBUG_DIR )
 endif()
 
 find_library (BOINC_LIBRARY ${BOINC_LIB_NAME}
@@ -63,7 +66,6 @@ find_library (BOINC_LIBRARY ${BOINC_LIB_NAME}
         ${BOINC_INCLUDE_DIR}
         ${BOINC_INCLUDE_DIR}/../lib
         ${BOINC_RELEASE_DIR}
-        $ENV{BOINC_SOURCE}
     PATH_SUFFIXES lib
 )
 MESSAGE(STATUS "BOINC library: ${BOINC_LIBRARY}")
@@ -73,7 +75,6 @@ find_library (BOINC_API_LIBRARY ${BOINC_API_NAME}
         ${BOINC_INCLUDE_DIR}
         ${BOINC_INCLUDE_DIR}/../lib
         ${BOINC_RELEASE_DIR}
-        $ENV{BOINC_SOURCE}
     PATH_SUFFIXES api
 )
 MESSAGE(STATUS "BOINC api library: ${BOINC_API_LIBRARY}")
@@ -83,7 +84,6 @@ FIND_LIBRARY(BOINC_CRYPT_LIBRARY ${BOINC_CRYPT_NAME}
         ${BOINC_INCLUDE_DIR}
         ${BOINC_INCLUDE_DIR}/../lib
         ${BOINC_RELEASE_DIR}
-        $ENV{BOINC_SOURCE}
     PATH_SUFFIXES lib
 )
 MESSAGE(STATUS "BOINC crypt library: ${BOINC_CRYPT_LIBRARY}")
@@ -93,7 +93,6 @@ FIND_LIBRARY(BOINC_OPENCL_LIBRARY ${BOINC_OPENCL_NAME}
         ${BOINC_INCLUDE_DIR}
         ${BOINC_INCLUDE_DIR}/../lib
         ${BOINC_RELEASE_DIR}
-        $ENV{BOINC_SOURCE}
     PATH_SUFFIXES lib
 )
 MESSAGE(STATUS "BOINC opencl library: ${BOINC_OPENCL_LIBRARY}")
@@ -103,7 +102,6 @@ FIND_LIBRARY(BOINC_SCHED_LIBRARY ${BOINC_SCHED_LIBRARY}
         ${BOINC_INCLUDE_DIR}
         ${BOINC_INCLUDE_DIR}/../lib
         ${BOINC_RELEASE_DIR}
-        $ENV{BOINC_SOURCE}
     PATH_SUFFIXES sched
 )
 MESSAGE(STATUS "BOINC sched library: ${BOINC_SCHED_LIBRARY}")
