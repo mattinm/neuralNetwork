@@ -166,7 +166,7 @@ private: 	// members
 	std::vector<std::vector<int> > __neuronDims;  //[0] is input layer
 	bool __autoActivLayer = true;
 	int __maxNeuronSize;
-	int __defaultActivType = 0;
+	int __defaultActivType = RELU;
 	int __maxWeightSize = 0;
 
 	bool usesSoftmax = true;
