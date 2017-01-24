@@ -12,7 +12,6 @@ option(BUILD_DYNAMIC "build dynamic libraries instead of static" OFF)
 
 if (APPLE)
     set(CMAKE_OSX_ARCHITECTURES "x86_64")
-	set(BUILD_32BIT OFF)
     add_definitions("-arch x86_64")
 endif ()
 

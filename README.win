@@ -17,7 +17,9 @@
 ### OpenCL
 
 * https://software.intel.com/en-us/intel-opencl
+* OR http://developer.amd.com/tools-and-sdks/opencl-zone/amd-accelerated-parallel-processing-app-sdk/
 * Register on Intel.com for the OpenCL SDK .exe
+* OR Agree to AMD requirements
 * Download the SDK and run the .exe
 
 ### BOINC
@@ -42,17 +44,33 @@ cd externals\boinc\win_build
 
 Note: Using "C:\neuralNetwork" as the intall location. Change as required.
 
-### Open the VS2015 Command Prompt
-Open "Developer Command Prompt for VS2015"
+### Open the VS2013 Command Prompt
+Open "Developer Command Prompt for VS2013"
 cd C:\neuralNetwork
-mkdir build32
-mkdir build64
+mkdir build
+mkdir build\Win32
+mkdir build\Win32\Debug
+mkdir build\Win32\Release
+mkdir build\x64
+mkdir build\x64\Debug
+mkdir build\x64\Release
 
-### Build the 32-bit project
-cd build32
-cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 12 2013" ..
-cd ..
+### Prepare the 32-bit project
+cd build\Win32\Debug
+cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 12 2013" ..\..\..
+cd ..\Release
+cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 12 2013" ..\..\..
+cd ..\..
 
-### Build the 64-bit project
-cd build64
-cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 14 2015 Win64" ..
+### Prepare the 64-bit project
+cd build\x64\Debug
+cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 12 2013 Win64" ..\..\..
+cd ..\Release
+cmake -DOpenCV_DIR=C:\opencv\build -G "Visual Studio 12 2013 Win64" ..\..\..
+cd ..\..
+
+### Build all the projects desired
+cmake --build Win32\Debug --config Debug
+cmake --build Win32\Release --config Release
+cmake --build x64\Debug --config Debug
+cmake --build x64\Release --config Release
