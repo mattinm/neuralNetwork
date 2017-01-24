@@ -166,7 +166,7 @@ void convertBinaryToVector(ifstream& in, vector<imVector>& dest, vector<double>&
 	}	
 
 	//cout << "Size: " << sizeByte << " x: " << xSize << " y: " << ySize << " z: " << zSize << endl;
-	while(in.tellg() != __ifstreamend && !in.eof())
+	while((long)(in.tellg()) != __ifstreamend && !in.eof())
 	{
 		dest.resize(dest.size() + 1);
 		trueVals.push_back(getNextImage(in,dest.back(),xSize,ySize,zSize,sizeByte));

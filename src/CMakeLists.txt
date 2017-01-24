@@ -22,23 +22,26 @@ target_link_libraries(ConvNetTrainerCL ${OpenCL_LIBRARIES} ConvNetCL)
 #add_executable (ConvNetContinuanceCL ConvNetContinuanceCL.cpp)
 #target_link_libraries(ConvNetContinuanceCL ${OpenCL_LIBRARIES} ConvNetCL)
 
-add_executable (ConvNetTester ConvNetTester.cpp ConvNet.cpp)
-target_link_libraries(ConvNetTester ${OpenCL_LIBRARIES})
+#add_executable (ConvNetTester ConvNetTester.cpp ConvNet.cpp)
+#target_link_libraries(ConvNetTester ${OpenCL_LIBRARIES})
 
 add_executable (ConvNetFullImageDriverCL ConvNetFullImageDriverCL.cpp)
 target_link_libraries(ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
-add_executable (ConvNetFullImageDriverParallelCL ConvNetFullImageDriverParallelCL.cpp)
-target_link_libraries(ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
+# TODO: pthread
+#add_executable (ConvNetFullImageDriverParallelCL ConvNetFullImageDriverParallelCL.cpp)
+#target_link_libraries(ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
 add_executable (ConvNetVideoDriverCL ConvNetVideoDriverCL.cpp)
 target_link_libraries(ConvNetVideoDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
-add_executable (ConvNetVideoDriverParallelCL ConvNetVideoDriverParallelCL.cpp)
-target_link_libraries(ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
+# TODO: pthread
+#add_executable (ConvNetVideoDriverParallelCL ConvNetVideoDriverParallelCL.cpp)
+#target_link_libraries(ConvNetVideoDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
-add_executable (ConvNetVideoDriverParallelCL_multiNet ConvNetVideoDriverParallelCL_multiNet.cpp)
-target_link_libraries(ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
+# TODO: pthread
+#add_executable (ConvNetVideoDriverParallelCL_multiNet ConvNetVideoDriverParallelCL_multiNet.cpp)
+#target_link_libraries(ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
 add_executable (kernelBuilder kernelBuilder.cpp)
 target_link_libraries(kernelBuilder ${OpenCL_LIBRARIES})
