@@ -1,3 +1,6 @@
+/**
+ * TODO: Convert to C++ standard <thread> then refactor.
+ */
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -13,6 +16,7 @@
 #include <time.h>
 #include <thread>
 #include <pthread.h>
+
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
 #else

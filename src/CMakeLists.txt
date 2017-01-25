@@ -3,13 +3,15 @@ project (NeuralNetwork_BASIC)
 
 # make the ConvNetCL library
 if (BUILD_DYNAMIC) 
-    add_library (ConvNetCL SHARED ConvNetCL.cpp)
-    add_library (ConvNetEvent SHARED ConvNetEvent.cpp)
-    add_library (ConvNetSeam SHARED ConvNetSeam.cpp)
+    add_library (ConvNetCL SHARED ConvNetCL.cpp ConvNetCommon.cpp)
+    #add_library (ConvNet SHARED ConvNet.cpp ConvNetCommon.cpp)
+    add_library (ConvNetEvent SHARED ConvNetEvent.cpp ConvNetCommon.cpp)
+    add_library (ConvNetSeam SHARED ConvNetSeam.cpp ConvNetCommon.cpp)
 else ()
-    add_library (ConvNetCL STATIC ConvNetCL.cpp)
-    add_library (ConvNetEvent STATIC ConvNetEvent.cpp)
-    add_library (ConvNetSeam STATIC ConvNetSeam.cpp)
+    add_library (ConvNetCL STATIC ConvNetCL.cpp ConvNetCommon.cpp)
+    #add_library (ConvNet STATIC ConvNet.cpp ConvNetCommon.cpp)
+    add_library (ConvNetEvent STATIC ConvNetEvent.cpp ConvNetCommon.cpp)
+    add_library (ConvNetSeam STATIC ConvNetSeam.cpp ConvNetCommon.cpp)
 endif ()
 
 ######
@@ -22,8 +24,8 @@ target_link_libraries(ConvNetTrainerCL ${OpenCL_LIBRARIES} ConvNetCL)
 #add_executable (ConvNetContinuanceCL ConvNetContinuanceCL.cpp)
 #target_link_libraries(ConvNetContinuanceCL ${OpenCL_LIBRARIES} ConvNetCL)
 
-#add_executable (ConvNetTester ConvNetTester.cpp ConvNet.cpp)
-#target_link_libraries(ConvNetTester ${OpenCL_LIBRARIES})
+#add_executable (ConvNetTester ConvNetTester.cpp)
+#target_link_libraries(ConvNetTester ${OpenCL_LIBRARIES} ConvNet)
 
 add_executable (ConvNetFullImageDriverCL ConvNetFullImageDriverCL.cpp)
 target_link_libraries(ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
