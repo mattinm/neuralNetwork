@@ -130,7 +130,7 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 	double result = 0;
 	
 	//good
-	for(int j= i % depth; j < i; j += depth)
+	for(int j= i % depth; j < numIndexes; j += depth)
 	{
 		if(maxIndexes[j] == i)
 		{

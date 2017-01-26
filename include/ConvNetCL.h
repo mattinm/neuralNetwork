@@ -11,9 +11,9 @@
 
 #include "ConvNetCommon.h"
 
+#include <cfloat>
 #include <string>
 #include <vector>
-#include <time.h>
 
 //OpenCV
 #include "opencv2/imgproc/imgproc.hpp"
@@ -63,7 +63,7 @@
 #define ANT_UPDATE_SIMPLE 0
 #define ANT_UPDATE_BEST 1
 #define ANT_UPDATE_FANT 2
-#define ANT_UPDATE_ACS_GLOBAL 3
+#define ANT_UPDATE_ACS 3
 
 //pheromone leak types
 #define ANT_LEAK_NONE 0
@@ -112,6 +112,7 @@ private: 	// structs
 	struct WeightHolder{
 		double trainAccuracy = 0;
 		double testAccuracy = 0;
+		double trainError = DBL_MAX;
 		std::vector<double*> weights; //weights[convLayer][weight]
 		std::vector<double*> biases;
 
@@ -165,8 +166,11 @@ private: 	// members
 	std::vector<std::vector<int> > __neuronDims;  //[0] is input layer
 	bool __autoActivLayer = true;
 	int __maxNeuronSize;
-	int __defaultActivType = 0;
+	int __defaultActivType = RELU;
 	int __maxWeightSize = 0;
+
+	bool usesSoftmax = true;
+	bool isApproximator = false;
 
 	bool __isFinalized = false;
 	std::string __errorLog;
