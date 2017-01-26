@@ -1,3 +1,17 @@
+/*******************************************************
+*
+* ConvNetCL is an open source Convolutional Neural Network (CNN) implementation using C++ and OpenCL. It trains the CNNs
+* using backpropagation with Nesterov Momementum and L2 regularization
+*
+* It's main purpose is to make a CNN that can classify images. It can save and load CNNs to a custom file format.
+* Said format can be customized by hand if needed (rarely needed though).
+*
+* The architecture for a CNN you want to train can be specified using a NetConfig file, which can check to make sure
+* the dimensions you think it will have after certain layers match up with what the software says they will be.
+* An explanation and example of the format, called CNN_config_example.txt, can be found in the root directory of the repo.
+*
+*******************************************************/
+
 #include <algorithm>
 #include "ConvNetCL.h"
 #include <iostream>
@@ -31,12 +45,18 @@ using namespace std;
 using namespace cv;
 
 #define GETMAX(x,y) (x > y) ? x: y
-#define RET_FALSE {file.close(); return false;}
+#define RET_FALSE {file.close(); return false;} //this is used in load but should be changed at some point probably
 
 typedef unsigned int uint;
 
 /*****************************************
  * Constructors and Destructors and inits
+ *
+ * NOTE ON CONSTRUCTORS AND ASSIGNMENTS:
+ * Using the copy constructor or = will copy
+ * the structure and weights of the CNN, but 
+ * it will not copy the training or test data 
+ *
  *****************************************/
 
 Net::Net()
@@ -44,6 +64,7 @@ Net::Net()
 
 }
 
+// See NOTE ON CONSTRUCTORS AND ASSIGNMENTS above
 Net::Net(const Net &other) // Copy constructor
 {
 	// printf("copy ------------------\n");
@@ -184,6 +205,7 @@ Net::~Net()
 	destroy();
 }
 
+// See NOTE ON CONSTRUCTORS AND ASSIGNMENTS above
 Net& Net::operator=(const Net& other)
 {
 	if(this != &other)
@@ -230,6 +252,12 @@ Net& Net::operator=(const Net& other)
 	return *this;
 }
 
+/*****************************
+*
+* Net::copyLayers is a private function used by operator= and the copy constructor
+* to copy over the CNN structure and layer weights. Uses the __layers member of this and other
+*
+*****************************/
 void Net::copyLayers(const Net& other)
 {
 	// printf("copyLayers\n");
@@ -290,6 +318,12 @@ void Net::copyLayers(const Net& other)
 	// printf("end copyLayers\n");
 }
 
+/*****************************
+*
+* Net::init creates the input layer and allows other layers to be added
+* It also calls initOpenCL
+*
+*****************************/
 void Net::init(int inputWidth, int inputHeight, int inputDepth)
 {
 	if(__inited)
@@ -302,6 +336,11 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 	initOpenCL();
 }
 
+/*****************************
+*
+* Net::initOpenCL gets platformIDs, deviceIDs and creates the context for OpenCL
+*
+*****************************/
 void Net::initOpenCL()
 {
 
@@ -334,11 +373,22 @@ void Net::initOpenCL()
  * Functions dealing with layers
  *****************************************/
 
+/*****************************
+*
+* Adds an activation layer of whatever the default type has been set to.
+* Initially set to RELU
+*
+*****************************/
 bool Net::addActivLayer()
 {
 	return addActivLayer(__defaultActivType);
 }
 
+/*****************************
+*
+* Adds an activation layer. Usually (and by default) placed right after a Convolutional Layer
+*
+*****************************/
 bool Net::addActivLayer(int activType)
 {
 	if(activType >= MAX_ACTIV || activType < 0)
@@ -361,11 +411,23 @@ bool Net::addActivLayer(int activType)
 	return true;
 }
 
+/*****************************
+*
+* Adds a Convolutional (Conv) Layer with random weights. Used for untrained Conv Layers
+* Public function
+*
+*****************************/
 bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad)
 {
 	return addConvLayer(numFilters, stride, filterSize, pad, string("random"));
 }
 
+/*****************************
+*
+* Adds a Convolutional Layer with weights specified by the string (could be the string random as it is above.)
+* Private function
+*
+*****************************/
 bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, const string& weightsAndBiases)
 {
 	int prevWidth  = __neuronDims.back()[0];
@@ -418,11 +480,23 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, cons
 	return true;
 }
 
+/*****************************
+*
+* Essential "fakes" a Fully Connected layer used in ANNs with a Convolutional Layer
+* Public
+*
+*****************************/
 bool Net::addFullyConnectedLayer(int outputSize)
 {
 	return addConvLayer(outputSize, 1, __neuronDims.back()[0], 0);
 }
 
+/*****************************
+*
+* Adds a Max Pooling Layer.
+* Public
+*
+*****************************/
 bool Net::addMaxPoolLayer(int poolSize, int stride)
 {
 	int prevWidth  = __neuronDims.back()[0];
@@ -449,7 +523,12 @@ bool Net::addMaxPoolLayer(int poolSize, int stride)
 	return true;
 }
 
-
+/*****************************
+*
+* Adds the layer size info into __neuronSizes and __neuronDims
+* Private
+*
+*****************************/
 void Net::pushBackLayerSize(int width, int height, int depth)
 {
 	__neuronSizes.push_back(width * height * depth);
@@ -465,6 +544,14 @@ void Net::pushBackLayerSize(int width, int height, int depth)
 // 	initRandomWeights(conv,prevDepth,0);
 // }
 
+/*****************************
+*
+* Initalizes random weights for a Convolutional layer. 
+* @parameter conv A pointer to the ConvLayer to get random weights
+* @parameter prevDepth The depth of the layer above
+* Private
+*
+*****************************/
 void Net::initRandomWeights(ConvLayer* conv, int prevDepth)
 {
     //cout << "making random weights" << endl;
@@ -487,6 +574,12 @@ void Net::initRandomWeights(ConvLayer* conv, int prevDepth)
 		conv->biases[b] = 0;
 }
 
+/*****************************
+*
+* Inits the weights of a Conv Layer according to string in format weight,weight,...,weight_bias,bias,bias
+* Private
+*
+*****************************/
 void Net::initWeights(ConvLayer* conv, const string& weights)
 {
 	// cout << "start init weights" << endl;
@@ -508,6 +601,12 @@ void Net::initWeights(ConvLayer* conv, const string& weights)
 	// cout << "done init weights" << endl;
 }
 
+/*****************************
+*
+* Sets default activation type
+* Public
+*
+*****************************/
 bool Net::setActivType(int activationType)
 {
 	if(activationType >= MAX_ACTIV || activationType < 0)
@@ -516,6 +615,12 @@ bool Net::setActivType(int activationType)
 	return true;
 }
 
+/*****************************
+*
+* Prints the layer set and dimesions to the terminal
+* Public
+*
+*****************************/
 void Net::printLayerDims() const 
 {
 	printf("Input         %d x %d x %d\n", __neuronDims[0][0], __neuronDims[0][1], __neuronDims[0][2]);
@@ -536,38 +641,82 @@ void Net::printLayerDims() const
 			printf("Unknown Layer: %d\n",__layers[i]->layerType);
 }
 
+/*****************************
+*
+* Returns input height as int
+* Public
+*
+*****************************/
 int Net::getInputHeight() const
 {
 	return __neuronDims[0][0];
 }
 
+/*****************************
+*
+* Returns input width as int
+* Public
+*
+*****************************/
 int Net::getInputWidth() const
 {
 	return __neuronDims[0][1];
 }
 
+/*****************************
+*
+* Sets whether or not an Activation Layer should automatically be added after every Conv Layer
+* Defaults to true.
+* Public
+*
+*****************************/
 void Net::setAutoActivLayer(bool isAuto)
 {
 	__autoActivLayer = isAuto;
 }
 
+/*****************************
+*
+* Sets the name of the file the trained CNN should be saved to.
+* Public
+*
+*****************************/
 void Net::setSaveName(const char* saveName)
 {
 	__saveName = string(saveName);
 	__saveNet = true;
 }
 
+/*****************************
+*
+* Sets the name of the file the trained CNN should be saved to.
+* Public
+*
+*****************************/
 void Net::setSaveName(string saveName)
 {
 	__saveName = saveName;
 	__saveNet = true;
 }
 
+/*****************************
+*
+* Returns a string of errors (if any) that were found by Net::finalize()
+* Public
+*
+*****************************/
 string Net::getErrorLog() const
 {
 	return __errorLog;
 }
 
+/*****************************
+*
+* Checks to make sure it is a valid CNN. If it is valid, it sets up most of the OpenCL stuff
+* Returns whether or not the CNN is valid.
+* Public
+*
+*****************************/
 bool Net::finalize()
 {
 	if(__isFinalized)
@@ -619,7 +768,7 @@ bool Net::finalize()
 
 	cl_int error;
 
-	if(!__stuffBuilt)
+	if(!__stuffBuilt) //if the OpenCL kernels have not been loaded and built
 	{
 		//build the program
 			//running
@@ -744,6 +893,12 @@ bool Net::finalize()
 	return true;
 }
 
+/*****************************
+*
+* Releases memory held by OpenCL MemObjects
+* Private
+*
+*****************************/
 void Net::releaseCLMem()
 {
 	for(int i = 0; i < clWeights.size(); i++)
@@ -758,6 +913,12 @@ void Net::releaseCLMem()
 	clReleaseMemObject(*prevNeurons);
 }
 
+/*****************************
+*
+* Sets the learning rate (aka step size) for backpropagation
+* Public
+*
+*****************************/
 bool Net::set_learningRate(double rate)
 {
 	if(rate < 0)
@@ -766,6 +927,13 @@ bool Net::set_learningRate(double rate)
 	return true;
 }
 
+/*****************************
+*
+* Sets the maximum absolute value (basically a cap) that can come out of a RELU or Leaky_RELU activation layer neuron
+* Default 5000.0
+* Public
+*
+*****************************/
 bool Net::set_RELU_CAP(double cap)
 {
 	if(cap <= 0)
@@ -775,6 +943,13 @@ bool Net::set_RELU_CAP(double cap)
 	return true;
 }
 
+/*****************************
+*
+* Sets the constant by which to multiply the neuron value by if it is negative. Constant must be between [0,1]
+* Default 0.01
+* Public
+*
+*****************************/
 bool Net::set_LEAKY_RELU_CONST(double lconst)
 {
 	if(lconst < 0 || 1 < lconst)
@@ -784,6 +959,13 @@ bool Net::set_LEAKY_RELU_CONST(double lconst)
 	return true;
 }
 
+/*****************************
+*
+* Sets the L2 regularization lambda constant (how strongly it regulates)
+* Default 0.05
+* Public
+*
+*****************************/
 bool Net::set_l2Lambda(double lambda)
 {
 	if(lambda < 0)
@@ -793,6 +975,13 @@ bool Net::set_l2Lambda(double lambda)
 	return true;
 }
 
+/*****************************
+*
+* Sets the (decay) constant used for momentum
+* Default 0.9
+* Public
+*
+*****************************/
 bool Net::set_MOMENT_CONST(double mconst)
 {
 	if(mconst < 0 || 1 < mconst)
@@ -802,6 +991,13 @@ bool Net::set_MOMENT_CONST(double mconst)
 	return true;
 }
 
+/*****************************
+*
+* Sets the maximum value as weight can take.
+* Default 3.0
+* Public
+*
+*****************************/
 bool Net::set_MAX_NORM_CAP(double cap)
 {
 	if(cap < 0)
@@ -815,6 +1011,21 @@ bool Net::set_MAX_NORM_CAP(double cap)
  * Running and Training
  *****************************************/
 
+
+/*****************************
+*
+* Net::run() is the main function used to run already trained CNNs
+* Requires: init or load to have been called. addData or setData to have been called.
+* Will finalize net if not done. Will preprocess data if not done.
+*
+* Puts output into __confidences. Can be accessed publically through getCalculatedClasses()
+* and getConfidences()
+*
+* Uses OpenCL kernel calls
+*
+* Public function
+*
+*****************************/
 void Net::run()
 {
  	// if(useGPU != __useGPU)
@@ -1015,30 +1226,33 @@ void Net::run()
 			prevNeurons = temp;
 		}
 
-		//cout << "Softmax" << endl;
-		//softmax. 
-		globalWorkSize[0] = 1;
-		//maxSubtraction. arg 1 set above
-		clSetKernelArg(maxSubtractionKernel, 0, sizeof(cl_mem), prevNeurons);
-		CheckError(clEnqueueNDRangeKernel(queue, maxSubtractionKernel, 1,
-			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
-		clFinish(queue);
+		if(usesSoftmax)
+		{
+			// cout << "Softmax" << endl;
+			//softmax. 
+			globalWorkSize[0] = 1;
+			//maxSubtraction. arg 1 set above
+			clSetKernelArg(maxSubtractionKernel, 0, sizeof(cl_mem), prevNeurons);
+			CheckError(clEnqueueNDRangeKernel(queue, maxSubtractionKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
 
-		//vectorESum. arg 1 set above
-		clSetKernelArg(vectorESumKernel, 0, sizeof(cl_mem), prevNeurons);
-		clSetKernelArg(vectorESumKernel, 2, sizeof(cl_mem), &denom);
-		CheckError(clEnqueueNDRangeKernel(queue, vectorESumKernel, 1,
-			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
-		clFinish(queue);
-		
-		//softmax
-		globalWorkSize[0] = (size_t)__neuronSizes.back();
-		clSetKernelArg(softmaxKernelF, 0, sizeof(cl_mem), prevNeurons);
-		clSetKernelArg(softmaxKernelF, 1, sizeof(cl_mem), neurons);
-		clSetKernelArg(softmaxKernelF, 2, sizeof(cl_mem), &denom);
-		CheckError(clEnqueueNDRangeKernel(queue, softmaxKernelF, 1,
-			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
-		clFinish(queue);
+			//vectorESum. arg 1 set above
+			clSetKernelArg(vectorESumKernel, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(vectorESumKernel, 2, sizeof(cl_mem), &denom);
+			CheckError(clEnqueueNDRangeKernel(queue, vectorESumKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+			
+			//softmax
+			globalWorkSize[0] = (size_t)__neuronSizes.back();
+			clSetKernelArg(softmaxKernelF, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(softmaxKernelF, 1, sizeof(cl_mem), neurons);
+			clSetKernelArg(softmaxKernelF, 2, sizeof(cl_mem), &denom);
+			CheckError(clEnqueueNDRangeKernel(queue, softmaxKernelF, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+		}
 
 		CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 		 	__confidences[r].data(), 0, nullptr, nullptr));
@@ -1053,6 +1267,20 @@ void Net::run()
  	// printf("End run\n");
 }
 
+
+/*****************************
+*
+* Returns the calculated classes for each data element as found by run(), in the same order they were inputted.
+* Returns as the true value int, can be mapped back to names using getClassForTrueVal(int) or 
+* getClassNames() which uses the ClassInfo struct
+*
+* Whichever class has the highest value in __confidences for a data element is considered the calculated class
+*
+* @parameter dest std::vector<int>& A reference to the vector of ints you want the results stored in
+*
+* Public function
+*
+*****************************/
 void Net::getCalculatedClasses(vector<int>& dest) const
 {
  	dest.resize(__confidences.size());
@@ -1060,11 +1288,24 @@ void Net::getCalculatedClasses(vector<int>& dest) const
  		dest[i] = getMaxElementIndex(__confidences[i]);
 }
 
+/*****************************
+*
+* Returns the confidences (basically raw output) from the CNN for each data in the same order they were inputted.
+* 
+* @parameter confidences std::vector<std::vector<double> >& A reference to the container where you want the output stored into.
+*
+*****************************/
 void Net::getConfidences(vector<vector<double> >& confidences) const
 {
  	confidences = __confidences;
 }
 
+/*****************************
+*
+* Just gets the maximum element of a vector of doubles
+* Private
+*
+*****************************/
 int Net::getMaxElementIndex(const vector<double>& vect) const
 {
 	if(vect.size() < 1)
@@ -1080,6 +1321,12 @@ int Net::getMaxElementIndex(const vector<double>& vect) const
 	return maxIndex;
 }
 
+/*****************************
+*
+* Just gets the max element of an  array of ints
+* Private
+*
+*****************************/
 int Net::getMaxElementIndex(const vector<int>& vect) const
 {
 	if(vect.size() < 1)
@@ -1095,6 +1342,15 @@ int Net::getMaxElementIndex(const vector<int>& vect) const
 	return maxIndex;
 }
 
+
+/*****************************
+*
+* Net::trainSetup is called from Net::train(). Makes sure training doesn't use constant mem, finalizes if needed, 
+* preprocesses data, sets up Net::run() to work on test data, sets some clKernelArgs for softmax, and calls
+* setupLayerNeeds() (always) and initVelocities() if using momentum
+* Private
+*
+*****************************/
 void Net::trainSetup(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 {
 	//make sure we're finalized without __constantMem
@@ -1158,8 +1414,15 @@ void Net::trainSetup(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 
 }
 
-//expects the input image to be in prevNeurons
-//puts output of feedForward into prevNeurons.
+/*****************************
+*
+* Runs the feed forward kernels for all Layers excluding softmax.
+* Expects the image to be in the prevNeurons pointer. 
+* Puts the output of the function into the prevNeurons pointer.
+* Layer needs should have been set up by setupLayerNeeds() which is called from trainSetup()
+* Private
+*
+*****************************/
 void Net::feedForward(vector<cl_mem>& layerNeeds)
 {
 	int curConvLayer = 0;
@@ -1269,6 +1532,13 @@ void Net::feedForward(vector<cl_mem>& layerNeeds)
 	}
 }
 
+/*****************************
+*
+* Runs the forward kernels need to do the softmax function
+* Output is in *neurons.
+* Private
+*
+*****************************/
 void Net::softmaxForward()
 {
 	size_t globalWorkSize[] = {1, 0, 0};
@@ -1294,7 +1564,13 @@ void Net::softmaxForward()
 	clFinish(queue);
 }
 
-//for de train takes in what things it should use
+/*****************************
+*
+* Identical to feed forward above except it doesn't use the class level variables. This method was used in DETrain and AntTrain to allow 
+* speedup via threads, and should be used in run() in future work.
+* Private
+*
+*****************************/
 void Net::feedForward(cl_mem** prevNeurons, cl_mem** neurons, vector<vector<int> >& __neuronDims, vector<Layer*>& __layers,
 	const vector<cl_mem>& layerNeeds, const vector<cl_mem>& clWeights, const vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom,
 	const Kernels& k)
@@ -1409,6 +1685,12 @@ void Net::feedForward(cl_mem** prevNeurons, cl_mem** neurons, vector<vector<int>
 	// printf("end feed\n");
 }
 
+/*****************************
+*
+* Identical to softmaxForward above but does not use class level variables.
+* Private
+*
+*****************************/
 void Net::softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k)
 {
 		// vector<double> soft(__neuronSizes.back());
@@ -1471,8 +1753,14 @@ void Net::softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_
 		// cout << "|\n";
 }
 
-//expects softmax output in neurons
-//puts dneurons back in neurons
+/*****************************
+*
+* Runs the backprop kernels for softmax
+* Expects the output of softmax to be in *neurons
+* Puts the output of the backprop in *neurons
+* Private
+*
+*****************************/
 void Net::softmaxBackprop(int curTrueVal)
 {
 	// int curTrueVal = trueVals[r];
@@ -1499,6 +1787,15 @@ void Net::softmaxBackprop(int curTrueVal)
 
 }
 
+
+/*****************************
+*
+* Runs Backprop kernels for all layers excluding softmax
+* Expects output of softmaxBackprop to be in *neurons.
+* Does weight updates
+* Private
+*
+*****************************/
 void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 {
 	int curConvLayer = clWeights.size() - 1;
@@ -1506,13 +1803,14 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 	cl_mem* temp;
 	for(int i = __layers.size() -1; i > 0; i--)
 	{
+		// printf("layer %d\n", i);
 		if(__layers[i]->layerType == ACTIV_LAYER)
 		{
 			int type = ((ActivLayer*)__layers[i])->activationType;
 			globalWorkSize[0] = (size_t)__neuronSizes[i-1];
 			if(type == RELU)
 			{
-				//cout << "running reluBackKernel " << endl;
+				// cout << "running reluBackKernel " << endl;
 				clSetKernelArg(reluBackKernel, 0, sizeof(cl_mem), prevNeurons);
 				clSetKernelArg(reluBackKernel, 1, sizeof(cl_mem), neurons);
 				clSetKernelArg(reluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
@@ -1521,7 +1819,7 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 			}
 			else if(type == LEAKY_RELU)
 			{
-				//cout << "running leakyReluBackKernel " << endl;
+				// cout << "running leakyReluBackKernel " << endl;
 				clSetKernelArg(leakyReluBackKernel, 0, sizeof(cl_mem), prevNeurons);
 				clSetKernelArg(leakyReluBackKernel, 1, sizeof(cl_mem), neurons);
 				clSetKernelArg(leakyReluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
@@ -1531,21 +1829,24 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 		}
 		else if(__layers[i]->layerType == MAX_POOL_LAYER)
 		{
-			//cout << "running maxPoolBackKernel " << endl;
+			// cout << "running maxPoolBackKernel " << endl;
 			int numIndexes = __neuronSizes[i];
 			clSetKernelArg(maxPoolBackKernel, 0, sizeof(cl_mem), prevNeurons);
 			clSetKernelArg(maxPoolBackKernel, 1, sizeof(cl_mem), neurons);
 			clSetKernelArg(maxPoolBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i]));
 			clSetKernelArg(maxPoolBackKernel, 3, sizeof(int), &numIndexes);
 			clSetKernelArg(maxPoolBackKernel, 4, sizeof(int), &(__neuronDims[i][2]));
+			// cout << "args set" << endl;
 			globalWorkSize[0] = (size_t)__neuronSizes[i-1];
+			// printf("globalWorkSize %lu\n", globalWorkSize[0]);
 			CheckError(clEnqueueNDRangeKernel(queue, maxPoolBackKernel, 1,
 				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			// cout << "kernel started" << endl;
 		}
 		else if(__layers[i]->layerType == CONV_LAYER)
 		{
 			//backprop neurons					
-			//cout << "running convBackNeuronsKernel" << endl;
+			// cout << "running convBackNeuronsKernel" << endl;
 			ConvLayer* conv = (ConvLayer*)__layers[i];
 			clSetKernelArg(convBackNeuronsKernel, 0, sizeof(cl_mem), prevNeurons);
 			clSetKernelArg(convBackNeuronsKernel, 1, sizeof(cl_mem), neurons);
@@ -1563,7 +1864,7 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 			clFinish(queue); //MUST finish before weights start getting updated
 
 			//backprop and update biases
-			//cout << "running convBackBiasesKernel " << curConvLayer << ": " << sizeOfNeurons << "/" << hyper[4] << endl;
+			// cout << "running convBackBiasesKernel " << endl;
 			clSetKernelArg(convBackBiasesKernel, 0, sizeof(cl_mem), &(clBiases[curConvLayer]));
 			clSetKernelArg(convBackBiasesKernel, 1, sizeof(cl_mem), neurons);
 			clSetKernelArg(convBackBiasesKernel, 2, sizeof(int), &(__neuronSizes[i]));
@@ -1581,7 +1882,7 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 		// getchar();
 
 			//backprop and update weights					
-			//cout << "running convBackWeightsKernel" << endl;
+			// cout << "running convBackWeightsKernel" << endl;
 			if(!__useMomentum) // no momentum
 			{
 				clSetKernelArg(convBackWeightsKernel, 0, sizeof(cl_mem), &(clWeights[curConvLayer]));
@@ -1638,7 +1939,7 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 				clSetKernelArg(zeroPadBackKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); //prevWidth (non-padded)
 				clSetKernelArg(zeroPadBackKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); //prevHeight(non-padded)
 				clSetKernelArg(zeroPadBackKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); //depth
-				//cout << "Running zeroPadBackKernel" << endl;
+				// cout << "Running zeroPadBackKernel" << endl;
 				globalWorkSize[0] = (size_t)conv->paddedNeuronSize;
 				CheckError(clEnqueueNDRangeKernel(queue,zeroPadBackKernel, 1,
 					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
@@ -1647,6 +1948,7 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 		} // end if-elseif for backprop of single layer
 
 		clFinish(queue);
+		// cout << "post finish" << endl;
 
 		// cout << "Backprop Layer " << i << endl;
 		// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
@@ -1664,8 +1966,15 @@ void Net::backprop(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 	}// end for loop for backprop
 }
 
-//expects softmax output in neurons
-//puts dneurons back in neurons
+
+/*****************************
+*
+* Same as softmaxBackprop above but doesn't use class level variables
+* Expects softmax output in *neurons
+* Puts output into *neurons
+* Private
+*
+*****************************/
 void Net::softmaxBackprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, const cl_command_queue& queue, const Kernels& k, Net* net)
 {
 	// int curTrueVal = trueVals[r];
@@ -1692,10 +2001,20 @@ void Net::softmaxBackprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons
 
 }
 
+
+/*****************************
+*
+* Same as backprop above but doesn't use class level variables
+* Expects output from softmax forwared output in *neurons
+* Updates Weights and runs all the kernels for backprop (including softmax)
+* Private
+*
+*****************************/
 void Net::backprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, Net* net, const vector<cl_mem>& layerNeeds, const vector<cl_mem>& velocities, 
 	const vector<cl_mem>& clWeights, const vector<cl_mem>& clBiases, const cl_command_queue queue, const Kernels& k)
 {
-	softmaxBackprop(curTrueVal, prevNeurons, neurons, queue, k, net);
+	if(usesSoftmax)
+		softmaxBackprop(curTrueVal, prevNeurons, neurons, queue, k, net);
 
 	int curConvLayer = clWeights.size() - 1;
 	size_t globalWorkSize[] = {0, 0, 0};
@@ -1860,6 +2179,16 @@ void Net::backprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, Net* 
 	}// end for loop for backprop
 }
 
+
+/***************************
+*
+* Not completed DO NOT USE
+* A miniBatch train function training with backprop.
+* TODO: Set it up so it stores the average of the gradient from each example
+* TODO: Parallelize so multiple stuff feed forwards at once. Use DETrain or AntTrain as a reference
+* Public
+*
+***************************/
 void Net::miniBatchTrain(int batchSize, int epochs)
 {
 	if(batchSize < 0)
@@ -2017,6 +2346,17 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	__isTraining = false;
 }
 
+/*****************************
+*
+* Main training function. Stochiastic gradient descent backprop used.
+* Saves trained net to file specified by setSaveName() every time new best net is found.
+* Has auto learning rate adjustment and auto cutoff functionality.
+* After 3 "stale" (accuracy not better than best) epochs, learning rate cut by 1/2 and weights
+* reset to best weights (get deeper in that valley). If better accuracy found, # times stale resets to 0.
+* If total 5 consecutive stale, cut again by 1/2 and go back to best. If total 7 consecutive stale, end.
+* Public
+*
+*****************************/
 void Net::train(int epochs)
 {
 	printf("STOCHASTIC GRADIENT DESCENT\n");
@@ -2074,8 +2414,10 @@ void Net::train(int epochs)
 	 	// printf("Epoch: %d",e);
 
 		getTrainingData(trainingData, trueVals); // this gets the training data for this epoch
+		// printf("Training size = %lu\n",trainingData.size());
 		
 		int numCorrect = 0;
+		double totalError = 0;
 
 	 	for(int r = 0; r < trainingData.size(); r++)
 	 	{
@@ -2090,14 +2432,35 @@ void Net::train(int epochs)
 			// start forwardprop
 			////////////////////////////
 			feedForward(layerNeeds); //output goes into prevNeurons
-			softmaxForward();
+			if(usesSoftmax)
+			{
+				// cout << "softmax forward" << endl;
+				softmaxForward();
 
-			//get the output and see if it was right
-			CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
-			 	soft.data(), 0, nullptr, nullptr));
-            clFinish(queue);
-			if(getMaxElementIndex(soft) == trueVals[r])
-				numCorrect++;
+				//get the output and see if it was right
+				CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+				 	soft.data(), 0, nullptr, nullptr));
+	            clFinish(queue);
+				if(getMaxElementIndex(soft) == trueVals[r])
+					numCorrect++;
+			}
+			else if(isApproximator)
+			{
+				// printf("is approx\n");
+				//get the output and see if it was right
+				CheckError(clEnqueueReadBuffer(queue, (*prevNeurons), CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+				 	soft.data(), 0, nullptr, nullptr));
+	            clFinish(queue);
+
+	            double singleError = trueVals[r] - soft[0];
+
+	            // for(int s = 0; s < soft.size(); s++)
+	            	totalError += abs(singleError);
+
+	            //set it up for backprop. Essentially approximatorBackprop
+	            CheckError(clEnqueueWriteBuffer(queue, *neurons, CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+	            	soft.data(), 0, nullptr, nullptr));
+			}
 
 			// printf("Image %d:  %lf", r, soft[0]);
 			// for(int v = 1; v < soft.size(); v++)
@@ -2107,9 +2470,15 @@ void Net::train(int epochs)
 			////////////////////////////
 			// start backprop
 			////////////////////////////
-			softmaxBackprop(trueVals[r]);
+			if(usesSoftmax)
+			{
+				// printf("softmax back\n");
+				softmaxBackprop(trueVals[r]);
+			}
+			// printf("rest back\n");
 			backprop(layerNeeds, velocities);
-	 	}// end for loop for training data (meaning the epoch has finished) 	
+	 	}// end for loop for training data (meaning the epoch has finished)
+	 	// printf("post epoch\n");	
  	 	endtime = time(NULL);
  	 	//beginning of this line is at the top of the epoch loop
  	 	double accuracy = 100.0 * numCorrect/trueVals.size();
@@ -2121,18 +2490,44 @@ void Net::train(int epochs)
  	 		run(); //this will update __confidences
  	 		curError = 0;
  	 		int testCorrect = 0;
+ 	 		double testError = 0;
+ 	 		double maxError = 0;
+ 	 		double was = 0, found = 0;
  	 		for(int c = 0; c < __confidences.size(); c++)
  	 		{
  	 			for(int im = 0; im < __confidences[c].size(); im++)
  	 				curError += __confidences[c][im];
- 		 		if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
- 		 			testCorrect++;
+ 	 			if(isApproximator)
+ 	 			{
+ 	 				double absError = abs(__testTrueVals[c] - __confidences[c][0]);
+ 	 				testError += absError;
+ 	 				if(absError > maxError)
+ 	 				{
+ 	 					maxError = absError;
+ 	 					was = __testTrueVals[c];
+ 	 					found  = __confidences[c][0];
+ 	 				}
+ 	 			}
+ 	 			else //is classifier
+ 	 			{
+ 		 			if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
+ 		 				testCorrect++;
+ 		 		}
  		 	}
  		 	endtime = time(NULL);
- 	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
- 	 		printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,secondsToString(endtime-starttime).c_str());
+ 		 	double testAccuracy = 0;
+ 		 	if(isApproximator)
+ 		 	{
+ 		 		printf("Total error on test data: %lf Max single error: %lf - Was: %lf Found: %lf\n", testError, maxError, was, found);
+ 		 	}
+ 		 	else //is classifier
+ 		 	{
+ 	 			testAccuracy = testCorrect/(double)__testData.size() * 100.0;
+ 	 			printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,secondsToString(endtime-starttime).c_str());
+ 	 		}
  
- 	 		if(testAccuracy > holder.testAccuracy)
+
+ 	 		if((testAccuracy > holder.testAccuracy && !isApproximator) || (totalError < holder.trainError && isApproximator))
  	 		{
  	 			pullCLWeights();
  	 			if(__saveNet)
@@ -2140,6 +2535,7 @@ void Net::train(int epochs)
  	 			storeWeightsInHolder(holder);
  	 			holder.testAccuracy = testAccuracy;
  	 			holder.trainAccuracy = accuracy;
+ 	 			holder.trainError = totalError;
  	 			timesStale = 0;
  	 		}
  	 		else
@@ -2153,6 +2549,7 @@ void Net::train(int epochs)
  	 			}
  	 			else if(timesStale == 5)
  	 			{
+ 	 				loadWeightsFromHolder(holder);
  	 				__learningRate *= .5;
  	 				printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
  	 			}
@@ -2162,41 +2559,47 @@ void Net::train(int epochs)
  	 				break;
  	 			}
  	 		}
+	 	 	
  	 		prevError = curError;
  	 	}
  	 	else // no test data. get the one with the best training data
  	 	{
- 	 		if(accuracy > holder.trainAccuracy)
+ 	 		if(!isApproximator)
  	 		{
- 	 			pullCLWeights();
- 	 			if(__saveNet)
- 	 			{
- 	 				save(__saveName.c_str());
- 	 				storeWeightsInHolder(holder);
- 	 			}
- 	 			holder.trainAccuracy = accuracy;
- 	 			timesStale = 0;
- 	 		}
- 	 		else
- 	 		{
- 	 			timesStale++;
- 	 			if(timesStale == 3)
- 	 			{
- 	 				loadWeightsFromHolder(holder);
- 	 				__learningRate *= .5;
- 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
- 	 			}
- 	 			else if(timesStale == 5)
-  				{
- 	 				__learningRate *= .5;
- 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
- 	 			}
- 	 			else if(timesStale == 7)
- 	 			{
- 	 				printf("We don't seem to be learning anymore. Exiting.\n");
- 	 				break;
- 	 			}
- 	 		}
+	 	 		if((accuracy > holder.trainAccuracy && !isApproximator) || (totalError < holder.trainError && isApproximator))
+	 	 		{
+	 	 			pullCLWeights();
+	 	 			if(__saveNet)
+	 	 			{
+	 	 				save(__saveName.c_str());
+	 	 				storeWeightsInHolder(holder);
+	 	 			}
+	 	 			holder.trainAccuracy = accuracy;
+	 	 			holder.trainError = totalError;
+	 	 			timesStale = 0;
+	 	 		}
+	 	 		else
+	 	 		{
+	 	 			timesStale++;
+	 	 			if(timesStale == 3)
+	 	 			{
+	 	 				loadWeightsFromHolder(holder);
+	 	 				__learningRate *= .5;
+	 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+	 	 			}
+	 	 			else if(timesStale == 5)
+	  				{
+	  					loadWeightsFromHolder(holder);
+	 	 				__learningRate *= .5;
+	 					printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e+1);
+	 	 			}
+	 	 			else if(timesStale == 7)
+	 	 			{
+	 	 				printf("We don't seem to be learning anymore. Exiting.\n");
+	 	 				break;
+	 	 			}
+	 	 		}
+	 	 	}
  	 	}
  	}
  	// end} of all epochs
@@ -2214,6 +2617,12 @@ void Net::train(int epochs)
 	__isTraining = false;
 }
 
+/*****************************
+*
+* Returns the total amount of weights (not biases) in all layers.
+* Public
+*
+*****************************/
 uint Net::getTotalWeights() const
 {
 	uint numWeights = 0;
@@ -2227,6 +2636,12 @@ uint Net::getTotalWeights() const
 	return numWeights;
 }
 
+/*****************************
+*
+* Returns the total amount of biases in all layers.
+* Public
+*
+*****************************/
 uint Net::getTotalBiases() const
 {
 	uint numBiases = 0;
@@ -2240,6 +2655,15 @@ uint Net::getTotalBiases() const
 	return numBiases;
 }
 
+/*****************************
+*
+* Trains CNN using Ant algorithms. Can choose what kind of ant algo to use
+* and parameters only by changing in code and recompiling. 
+* Does not work as well as backprop right now.
+* The parallelization of feed forward is good though.
+* Public
+*
+*****************************/
 void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 {
 	/******************************
@@ -2254,23 +2678,23 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 	double weightMin = -1;//-__MAX_NORM_CAP/2; //-3
 	double weightMax = 1;// __MAX_NORM_CAP/2; // 3
 	double weightDiff = weightMax - weightMin;
-	double granularity = 0.04;
+	double granularity = 0.005;
 	uint numWeightOptions = ((weightMax - weightMin)/granularity); //also number of bias options
 	double weightPerOption = weightDiff/numWeightOptions;
 	Q = numWeightOptions/10.0;
 	printf("Num weight options: %u, granularity %lf\n", numWeightOptions, granularity);
 
 	//leak types: ANT_LEAK_NONE, ANT_LEAK_LINEAR_DECREASE, ANT_LEAK_EXPONENTIAL_DECREASE
-	double leakRange = .16; //this is how far on each side pheromone should leak.
+	double leakRange = .1; //this is how far on each side pheromone should leak.
 	const int leakRange_options = (int)(leakRange/weightPerOption);
 	int leakType = ANT_LEAK_LINEAR_DECREASE;
 	printf("leakRange options %d\n", leakRange_options);
 
 	//init types: ANT_INIT_FANT, ANT_INIT_MMAS
-	int pheromone_init_type = ANT_INIT_FANT;
+	int pheromone_init_type = ANT_INIT_MMAS;
 
-	//update types: ANT_UPDATE_SIMPLE, ANT_UPDATE_BEST, ANT_UPDATE_FANT, ANT_UPDATE_ACS_GLOBAL, ANT_UPDATE_ACS_LOCAL
-	int pheromone_update_type = ANT_UPDATE_FANT;
+	//update types: ANT_UPDATE_SIMPLE, ANT_UPDATE_BEST, ANT_UPDATE_FANT, ANT_UPDATE_ACS
+	int pheromone_update_type = ANT_UPDATE_ACS;
 
 	//weights and stuff for FANT
 	double w1 = numWeightOptions / 10.0;
@@ -2284,7 +2708,14 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 
 	//stuff for MMAS
 	double PHER_MAX, PHER_MIN;
-	double rho1_ACS, rho2_ACS;
+	double rho1_ACS = 0.7, rho2_ACS = 0.5;
+	double tau_0 = 1 / numWeightOptions;
+	bool limitPheromone = true;
+	if(pheromone_update_type == ANT_UPDATE_ACS)
+	{
+		rho = rho1_ACS;
+		oneMinusRho = 1 - rho;
+	}
 
 	/******************************
 	*
@@ -2324,6 +2755,8 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 	uint numWeights = getTotalWeights();
 	uint numBiases = getTotalBiases();
 
+	//tau_0 = 1 / (numWeights + numBiases);
+
 	vector<vector<double> > pheromoneWeights(numWeights);
 	vector<vector<double> > pheromoneBiases(numBiases);
 
@@ -2341,7 +2774,8 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		}
 		else if(pheromone_init_type == ANT_INIT_MMAS)
 		{
-
+			for(uint j = 0; j < numWeightOptions; j++)
+				pheromoneWeights[i][j] = 1;
 		}
 	}
 	for(uint i = 0; i < numBiases; i++)
@@ -2355,7 +2789,8 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		}
 		else if(pheromone_init_type == ANT_INIT_MMAS)
 		{
-
+			for(uint j = 0; j < numWeightOptions; j++)
+				pheromoneBiases[i][j] = 1;
 		}
 	}
 
@@ -2499,7 +2934,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 			}
 		}
 		avgprob /= numWeights * numWeightOptions;
-		// printf("Probs: Min %lf Max %lf Avg %lf Range %lf\n", minprob,maxprob,avgprob, maxprob-minprob);
+		printf("Probs: Min %lf Max %lf Range %lf\n", minprob,maxprob, maxprob-minprob);
 
 		//biases
 		for(uint i = 0; i < numBiases; i++)
@@ -2521,6 +2956,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		*
 		******************************/
 		// printf("Make paths\n");
+		double deltaTau_acs_local = rho2_ACS * tau_0;
 		for(uint i = 0; i < population; i++) //parallelize this later?
 		{
 			uint curWeight = 0; // used with weightProbs
@@ -2547,6 +2983,23 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 							}
 						}
 						conv->weights[w] = chosenWeight;
+
+						if(pheromone_update_type == ANT_UPDATE_ACS)
+						{
+							int optionIndex = (int)((conv->weights[w] - weightMin)/weightPerOption);
+							pheromoneWeights[curWeight][optionIndex] = pheromoneWeights[curWeight][optionIndex] /* rho2_ACS*/ + deltaTau_acs_local;
+
+							if(leakType == ANT_LEAK_LINEAR_DECREASE)
+							{
+								//go left leaking
+								for(int opt = optionIndex - 1; opt >= 0 && opt >= optionIndex - leakRange_options; opt--)
+									pheromoneWeights[curWeight][opt] = pheromoneWeights[curWeight][opt] /* rho2_ACS*/ + deltaTau_acs_local * (1 - (optionIndex - opt)/leakRange_options);
+								//go right leaking
+								for(int opt = optionIndex + 1; opt < numWeightOptions && opt <= optionIndex + leakRange_options; opt++)
+									pheromoneWeights[curWeight][opt] = pheromoneWeights[curWeight][opt] /* rho2_ACS*/ + deltaTau_acs_local * (1 - (opt - optionIndex)/leakRange_options);
+							}
+						}
+
 						curWeight++;
 					}
 
@@ -2561,6 +3014,22 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 								break;
 							}
 						conv->biases[b] = chosenBias;
+
+						if(pheromone_update_type == ANT_UPDATE_ACS)
+						{
+							int optionIndex = (int)((conv->biases[b] - weightMin)/weightPerOption);
+							pheromoneBiases[curBias][optionIndex] = pheromoneBiases[curBias][optionIndex] /* rho2_ACS*/ + deltaTau_acs_local;
+
+							if(leakType == ANT_LEAK_LINEAR_DECREASE)
+							{
+								//go left leaking
+								for(int opt = optionIndex - 1; opt >= 0 && opt > optionIndex - leakRange_options; opt--)
+									pheromoneBiases[curBias][opt] = pheromoneBiases[curBias][opt] /* rho2_ACS*/ + deltaTau_acs_local * (1 - (optionIndex - opt)/leakRange_options);
+								//go right leaking
+								for(int opt = optionIndex + 1; opt < numWeightOptions && opt < optionIndex + leakRange_options; opt++)
+									pheromoneBiases[curBias][opt] = pheromoneBiases[curBias][opt] /* rho2_ACS*/ + deltaTau_acs_local * (1 - (opt - optionIndex)/leakRange_options);
+							}
+						}
 						curBias++;
 					}
 				}
@@ -2762,6 +3231,17 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 		*
 		******************************/
 
+		uint best = 0;
+		for(int i = 1; i < population; i++)
+		{
+			if(antfit[i] < antfit[best])
+				best = i;
+		}
+
+		PHER_MAX = 1/(rho * antfit[best]);
+		PHER_MIN = 0.25 * PHER_MAX / numWeightOptions;
+		printf("Pher range [%lf, %lf]\n", PHER_MIN, PHER_MAX);
+
 		vector<Net*> uants;
 		vector<double> deltaTau;
 		if(pheromone_update_type == ANT_UPDATE_SIMPLE)
@@ -2773,14 +3253,17 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 			}
 		}
 		else if(pheromone_update_type == ANT_UPDATE_BEST || pheromone_update_type == ANT_UPDATE_FANT
-			|| pheromone_update_type == ANT_UPDATE_ACS_GLOBAL)
+			|| pheromone_update_type == ANT_UPDATE_ACS)
 		{
-			uint best = 0;
+			/*uint best = 0;
 			for(int i = 1; i < population; i++)
 			{
 				if(antfit[i] < antfit[best])
 					best = i;
 			}
+
+			PHER_MAX = 1/(rho * antfit[best]);
+			PHER_MIN = 0.5 * PHER_MAX / numWeightOptions;*/
 
 			if(pheromone_update_type == ANT_UPDATE_BEST)
 			{
@@ -2797,7 +3280,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 					deltaTau.push_back(w2);
 				}
 			}
-			else if(pheromone_update_type == ANT_UPDATE_ACS_GLOBAL)
+			else if(pheromone_update_type == ANT_UPDATE_ACS) // this does the global part
 			{
 				if(bestNet != nullptr)
 				{
@@ -2861,6 +3344,30 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 				}
 			}
 
+		}
+
+		if(limitPheromone)
+		{	
+			//weights
+			for(int w = 0; w < numWeights; w++)
+			{
+				for(int optionIndex = 0; optionIndex < numWeightOptions; optionIndex++)
+					if(pheromoneWeights[w][optionIndex] < PHER_MIN)
+						pheromoneWeights[w][optionIndex] = PHER_MIN;
+					else if(pheromoneWeights[w][optionIndex] > PHER_MAX)
+						pheromoneWeights[w][optionIndex] = PHER_MAX;
+			}
+
+			//biases
+			for(int b = 0; b < numBiases; b++)
+			{
+				for(int optionIndex = 0; optionIndex < numWeightOptions; optionIndex++)
+					if(pheromoneBiases[b][optionIndex] < PHER_MIN)
+						pheromoneBiases[b][optionIndex] = PHER_MIN;
+					else if(pheromoneBiases[b][optionIndex] > PHER_MAX)
+						pheromoneBiases[b][optionIndex] = PHER_MAX;
+			}
+		
 		}
 		// if(pheromone_update_type == ANT_UPDATE_SIMPLE)
 		// {
@@ -3071,6 +3578,14 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 	} //end iterations	
 }
 
+
+/*****************************
+*
+* DO NOT USE
+* Fancy implementation of training structure and weights of CNN by DE. Never finished, doesn't work.
+* Public
+*
+*****************************/
 //If you use DETrain, only the input size and location of maxpools matter
 void Net::DETrain(int generations, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
@@ -3271,6 +3786,14 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 
 }
 
+/*****************************
+*
+* Trains CNNs using Differential Evolution. 
+* Doesn't work as well as backprop or AntTrain
+* @parameter dataBatchSize int If positive, that many examples per generation. If negative, all examples per generation (preferred).
+* Public
+*
+*****************************/
 void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
 	double mutationMax = 0.1, mutationMin = 0.1;
@@ -4977,6 +5500,8 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 	if(trainingData.size() != trueVals.size())
 		return false;
 
+	printf("Adding %lu training data of size %lu x %lu x %lu\n", trainingData.size(), trainingData[0].size(), trainingData[0][0].size(), trainingData[0][0][0].size());
+
 	int inputSize = __neuronSizes[0];
 
 	for(int t = 0; t < trainingData.size(); t++)
@@ -4994,7 +5519,7 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 				}
 	}
 
-	__numClasses = __trueVals.size();
+	// __numClasses = __trueVals.size();
 	return true;
 }
 
