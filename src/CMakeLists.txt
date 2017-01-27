@@ -54,6 +54,9 @@ target_link_libraries(ImageSplitter ${OpenCV_LIBS})
 add_executable (ImageFileCreator ImageFileCreator.cpp)
 target_link_libraries(ImageFileCreator ${OpenCV_LIBS})
 
+add_executable (MNIST_test MNIST_test.cpp)
+target_link_libraries (MNIST_test ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
+
 add_executable (TrainingImageFileCreator TrainingImageFileCreator.cpp)
 target_link_libraries(TrainingImageFileCreator ${OpenCV_LIBS})
 
