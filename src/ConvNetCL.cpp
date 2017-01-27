@@ -4438,6 +4438,14 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 	}
 }
 
+/*****************************
+*
+* DO NOT USE
+* Meant to be used with DETrain_sameSize to create and run trial vectors concurrently
+* Has weird bug in it that will slow down system the longer it runs. The slow down is persistant until machine restart.
+* Private
+*
+*****************************/
 void Net::trial_thread(int netIndex, vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem** prevNeurons, 
 	cl_mem** neurons, const vector<cl_mem>& layerNeeds, const vector<cl_mem>& clWeights, const vector<cl_mem>& clBiases, 
 	const vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP)
@@ -4490,6 +4498,12 @@ void Net::trial_thread(int netIndex, vector<Net*>* nets, double netfit, Net* tri
 	}
 }
 
+/*****************************
+*
+* Builds all the CNN kernels into a Kernels object for specified device.
+* Private
+*
+*****************************/
 void Net::buildKernels(Kernels& k, int device)
 {
 	cl_int error;
@@ -4530,6 +4544,12 @@ void Net::buildKernels(Kernels& k, int device)
 	k.divideEqualsKernel = clCreateKernel(CNTraining, "divideEquals", &error); CheckError(error);
 }
 
+/*****************************
+*
+* Releases all kernels in a given Kernels object. MUST be called when done in order to prevent memory leak
+* Private
+*
+*****************************/
 void Net::releaseKernels(Kernels& k)
 {
 	clReleaseKernel(k.reluKernelF);
@@ -4561,6 +4581,14 @@ void Net::releaseKernels(Kernels& k)
 	clReleaseKernel(k.divideEqualsKernel);
 }
 
+/*****************************
+*
+* Creates a number of new Net objects equivalent to *this except having different weights. Meant for DETrain.
+* The size of the input vector is how many nets it will make. 
+* new is called, so function user should call delete when done with Nets to prevent memory leak.
+* Private
+*
+*****************************/
 void Net::setupEquivalentNets(vector<Net*>& nets)
 {
 	// printf("setupEquivalentNets\n");
@@ -4589,6 +4617,15 @@ void Net::setupEquivalentNets(vector<Net*>& nets)
 	// printf("end setupEquivalentNets\n");
 }
 
+/*****************************
+*
+* Probably don't use unless doing stuff with DETrain (not sameSize one)
+* Creates a number of Net objects with different structure and weights than *this. Created Nets will be mappable to *this.
+* The size of the input vector is how many nets will be made.
+* new is called, so you (or calling function) should call delete yourself
+* Private
+*
+*****************************/
 void Net::setupRandomNets(vector<Net*>& nets)
 {
 	vector<MaxPoolLayer*> maxs;
@@ -4631,6 +4668,15 @@ void Net::setupRandomNets(vector<Net*>& nets)
 	}
 }
 
+/*****************************
+*
+* Gets fitness (Mean Squared Error (MSE)) of the net prediction on one training data
+* @param prediction The output of the CNN (in same format as __confidences[i] for the ith output)
+* @param trueVal The actual output (index of true class or the true numeric value being estimated)
+* @param net The Net object associated with the prediction. Was used for testing, not needed for MSE.
+* Private
+*
+*****************************/
 double Net::getFitness(vector<double>& prediction, double trueVal, Net* net)
 {
 	//minimize weights (for testing)
@@ -4664,6 +4710,14 @@ double Net::getFitness(vector<double>& prediction, double trueVal, Net* net)
 	return sum*sum;
 }
 
+/*****************************
+*
+* NOTE: This method might not contain newer Target selection methods.
+* Sets the target selection method needed for DETrain_sameSize. For options see ConvNetCL.h under //defines for DE
+* Returns true if the method number is valid, false otherwise
+* Private
+*
+*****************************/
 bool Net::setDETargetSelectionMethod(int method)
 {
 	if(method == DE_RAND || method == DE_BEST)
@@ -4674,6 +4728,15 @@ bool Net::setDETargetSelectionMethod(int method)
 	return false;
 }
 
+/*****************************
+*
+* Returns the index of target vector to be used based on the fitness of the nets
+* @param method The target selection method to be used.
+* @param fits The fitness of the nets being used. Is a parallel vector to nets in DETrain_sameSize
+* @param curNet Index of the current net that the target vector will be used against
+* Private
+*
+*****************************/
 int Net::getTargetVector(int method, const vector<double>& fits, int curNet)
 {
 	if(method == DE_BEST)
@@ -4703,6 +4766,16 @@ int Net::getTargetVector(int method, const vector<double>& fits, int curNet)
 	}
 }
 
+/*****************************
+*
+* Gets the 3 needed helper vectors for mutation in DETrain_sameSize and puts them into the helpers parameter
+* @param nets Vector of Nets being used.
+* @param target Index of target vector as gotten from getTargetVectors(...)
+* @param curNet Index of current net helpers are being got for
+* @param helpers Vector of Net* that the helper found will go into.
+* Private
+*
+*****************************/
 void Net::getHelperVectors(const vector<Net*>& nets, int target, int curNet, vector<Net*>& helpers)
 {
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
@@ -4740,6 +4813,17 @@ void Net::getHelperVectors(const vector<Net*>& nets, int target, int curNet, vec
 	// printf("indexes %d %d %d\n", target, index1, index2);
 }
 
+/*****************************
+*
+* Maps Conv Layers to each other between different (or same) structured Nets.
+* Used with Nets created by setupEquivalentNets() and/or setupRandomNets()
+* @param orig Net* of original net
+* @param layerNum The layer number of the layer to be mapped (0 is input layer, 1 is first hidden layer, etc)
+* @param dest Net* of net to be mapped to
+* @return int The layer number in the dest net that the layerNum layer in the orig net maps to
+* Private
+*
+*****************************/
 int Net::mapConvLayer(Net* orig, int layerNum, Net* dest)
 {
 	//find relative location in original net
@@ -4779,7 +4863,19 @@ int Net::mapConvLayer(Net* orig, int layerNum, Net* dest)
 	return i;
 }
 
-//n is from DE/x/n/z
+/*****************************
+*
+* Makes and returns a donor vector for DETrain_sameSize.
+* @param mutType The mutation type to be used (defines from the ConvNetCL.h)
+* @param nets Vector of Net* containing nets from the current generation. const
+* @param netfit Vector of doubles parallel to nets that contain fitnesses of nets from current generation. const
+* @param curIndex Index of currently used net in nets
+* @param n number of vectors to use for mutation. From DE/x/n/z
+* @param scaleFactor The scaling factor, beta, that the mutation will be scaled by.
+* @return A pointer to the donor vector made. Must be deleted by user to prevent memory leaks.
+* Private
+*
+*****************************/
 Net* Net::makeDonor(int mutType, const vector<Net*>& nets, const vector<double>& netfit, int curIndex, int n, double scaleFactor)
 {
 	if(mutType == DE_BEST)
