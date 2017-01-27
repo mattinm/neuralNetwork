@@ -79,7 +79,7 @@ std::string getTime(std::time_t tim)
 
 std::string tolower(std::string str)
 {
-	std::transform(str.begin(), str.end(), str.begin(), std::tolower);
+	std::transform(str.begin(), str.end(), str.begin(), ::tolower);
 	return str;
 }
 
@@ -160,10 +160,9 @@ void squareElements3DVector(imVector& vect)
 	}
 }
 
-template<typename T, typename A, typename B, typename C>
-void convert1DArrayTo3DVector(const T *array, int width, int height, int depth, std::vector<std::vector<std::vector<T, C>, B>, A> &dest)
+void convert1DArrayTo3DVector(const double *array, int width, int height, int depth, imVector &dest)
 {
-	resize3DVector<T>(vect, width, height, depth)
+	resize3DVector(dest, width, height, depth);
 	
 	// TODO: speed this up with foreach / iterator
 	for(int i=0; i < width; ++i) {

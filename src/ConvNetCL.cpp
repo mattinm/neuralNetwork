@@ -2313,7 +2313,7 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 
 		endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%  " << secondsToString(endtime-starttime) << " seconds" << endl;
+	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
@@ -2479,7 +2479,7 @@ void Net::train(int epochs)
  	 	endtime = time(NULL);
  	 	//beginning of this line is at the top of the epoch loop
  	 	double accuracy = 100.0 * numCorrect/trueVals.size();
- 	 	printf("Accuracy on training data: %d out of %lu. %lf%% %s\n", numCorrect, trueVals.size(), accuracy,secondsToString(endtime-starttime).c_str());
+ 	 	printf("Accuracy on training data: %d out of %lu. %lf%% %s\n", numCorrect, trueVals.size(), accuracy,convnet::secondsToString(endtime-starttime).c_str());
  	 	if(__testData.size() != 0)
  	 	{
  	 		starttime = time(NULL);
@@ -2520,7 +2520,7 @@ void Net::train(int epochs)
  		 	else //is classifier
  		 	{
  	 			testAccuracy = testCorrect/(double)__testData.size() * 100.0;
- 	 			printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,secondsToString(endtime-starttime).c_str());
+ 	 			printf("Accuracy on test data: %d out of %lu. %lf%% %s\n",testCorrect,__testData.size(), testAccuracy,convnet::secondsToString(endtime-starttime).c_str());
  	 		}
  
 
@@ -3197,7 +3197,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 					//increase w1?
 				}
 			}
-			printf("End EPOCH %u ITERATION %u - Time: %s\n", epoch,iteration,secondsToString(time(NULL) - epochStartTime).c_str());
+			printf("End EPOCH %u ITERATION %u - Time: %s\n", epoch,iteration,convnet::secondsToString(time(NULL) - epochStartTime).c_str());
 			printf("%cAll time best: Acc: %7.3lf, Error: %9.3lf, epoch %u\n", better,100.0*bestCorrect/trainingData.size(),bestFit,bestEpoch);
 			printf( " Current Best : Acc: %7.3lf, Error: %9.3lf, Ant %d\n", 100.0*antCorrect[curBestF]/trainingData.size(),antfit[curBestF],curBestF);
 			printf("---------------------------------------------------------------\n");
@@ -3971,7 +3971,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 			else
 			{
 				curGen++;
-				printf("Time for a generation: %s\n", secondsToString(time(NULL) - genstarttime).c_str());
+				printf("Time for a generation: %s\n", convnet::secondsToString(time(NULL) - genstarttime).c_str());
 			}
 			printf("---------------------------------------------------------------\n");
 			time_t starttime = time(NULL);
@@ -4053,7 +4053,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 				}
 			printf("End Gen %4d. Best accuracy is: Net %d, %lf, Error %lf\n", curGen, best, 100.0*netCorrect[best]/trainingData.size(),netfit[best]);
 			printf("              Best error is:    Net %d, %lf, Error %lf |", bestErrorIndex, 100.0*netCorrect[bestErrorIndex]/trainingData.size(),netfit[bestErrorIndex]);
-			printf("Time to run all training over all indivs: %s\n", secondsToString(time(NULL)-starttime).c_str());
+			printf("Time to run all training over all indivs: %s\n", convnet::secondsToString(time(NULL)-starttime).c_str());
 			printf("---------------------------------------------------------------\n");
 
 			if(curGen == generations)
@@ -4078,7 +4078,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 		if(curTrainDataIndex % 1000 == 0 && curTrainDataIndex != 0)
 		{
 			printf("Training Data %d of %lu. Gen %d | ", curTrainDataIndex, trainingData.size(),curGen);
-			printf("Time for 1000: %s\n", secondsToString(time(NULL)-starttime).c_str());
+			printf("Time for 1000: %s\n", convnet::secondsToString(time(NULL)-starttime).c_str());
 			starttime = time(NULL);
 		}
 		else if(curTrainDataIndex == 0)
@@ -6049,7 +6049,7 @@ void Net::loadWeightsFromHolder(WeightHolder& holder)
 bool Net::stringToDims(string str, int* dims)
 {
 	//should look like 32x32x3 or 32 x 32 x 3
-	str = tolower(str);
+	str = convnet::tolower(str);
 	str.erase(remove(str.begin(), str.end(), ' '), str.end());
 	stringstream tokens(str);
 	string item;
@@ -6336,7 +6336,7 @@ bool Net::load(const char* filename)
 		file.close();
 		return true;
 	}
-	else if(tolower(line) == "net_config")
+	else if(convnet::tolower(line) == "net_config")
 	{
 		int lineNum = 1;
 		bool haveInput = false;
@@ -6375,13 +6375,13 @@ bool Net::load(const char* filename)
 			// cout << "line: " << line << endl;
 			// cout << "items size: " << items.size() << endl;
 
-			items[0] = tolower(items[0]);
+			items[0] = convnet::tolower(items[0]);
 
 			if(items[0] == "global_activ")
 			{
-				if(tolower(items[1]) == "leaky_relu")
+				if(convnet::tolower(items[1]) == "leaky_relu")
 					setActivType(LEAKY_RELU);
-				else if(tolower(items[1]) == "relu")
+				else if(convnet::tolower(items[1]) == "relu")
 					setActivType(RELU);
 				else
 				{
@@ -6391,9 +6391,9 @@ bool Net::load(const char* filename)
 			}
 			else if(items[0] == "auto_activ")
 			{
-				if(tolower(items[1]) == "false")
+				if(convnet::tolower(items[1]) == "false")
 					setAutoActivLayer(false);
-				else if(tolower(items[1]) == "true")
+				else if(convnet::tolower(items[1]) == "true")
 					setAutoActivLayer(true);
 				else
 				{
@@ -6424,7 +6424,7 @@ bool Net::load(const char* filename)
 				int dimIndex;
 				for(int i = 1; i < items.size(); i++)
 				{
-					items[i] = tolower(items[i]);
+					items[i] = convnet::tolower(items[i]);
 					// cout << "lowered items[i]: " << items[i] << endl;
 					if(items[i].find("numfil=") != string::npos)
 						numFil = stoi(items[i].substr(items[i].find('=')+1));
@@ -6489,7 +6489,7 @@ bool Net::load(const char* filename)
 			}
 			else if(items[0] == "activ")
 			{
-				string type = tolower(items[1]);
+				string type = convnet::tolower(items[1]);
 				int activType;
 				if(type == "relu")
 					activType = RELU;
@@ -6511,7 +6511,7 @@ bool Net::load(const char* filename)
 				int stride = -1, pool = -1, dimIndex;
 				for(int i = 1; i < items.size(); i++)
 				{
-					items[i] = tolower(items[i]);
+					items[i] = convnet::tolower(items[i]);
 					if(items[i].find("stride=") != string::npos)
 						stride = stoi(items[i].substr(items[i].find('=')+1));
 					else if(items[i].find("pool=") != string::npos)
@@ -6571,7 +6571,7 @@ bool Net::load(const char* filename)
 				}
 				for(int i = 1; i < items.size(); i++)
 				{
-					items[i] = tolower(items[i]);
+					items[i] = convnet::tolower(items[i]);
 					if(items[i].find('x') != string::npos)
 					{
 						bool goodDims = stringToDims(items[i],dims);
