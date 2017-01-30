@@ -162,6 +162,77 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 	return trueVal;
 }
 
+double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel, int numLabelCounts)
+{
+	//get 1 image
+	resize3DVector(dest,x,y,z);
+	// printf("resize as %d x %d x %d\n", x,y,z);
+	for(int i=0; i < x; i++)
+	{
+		for(int j=0; j < y; j++)
+		{
+			for(int k=0; k < z; k++)
+			{
+				if(sizeByteData == 1)
+					dest[i][j][k] = (double)readUChar(in);
+				else if(sizeByteData == -1)
+					dest[i][j][k] = (double)readChar(in);
+				else if(sizeByteData == 2)
+					dest[i][j][k] = (double)readUShort(in);
+				else if(sizeByteData == -2)
+					dest[i][j][k] = (double)readShort(in);
+				else if(sizeByteData == 4)
+					dest[i][j][k] = (double)readUInt(in);
+				else if(sizeByteData == -4)
+					dest[i][j][k] = (double)readInt(in);
+				else if(sizeByteData == 5)
+					dest[i][j][k] = (double)readFloat(in);
+				else if(sizeByteData == 6)
+					dest[i][j][k] = readDouble(in);
+				else
+				{
+					cout << "Unknown sizeByte for data: " << sizeByteData << ". Exiting" << endl;
+					exit(0);
+				}
+			}
+		}
+	}
+
+	//return the trueVal
+	double retVal = 0;
+	for(int i = 1; i <= numLabelCounts; i++)
+	{
+		double count = 0;
+		if(sizeByteLabel == 1)
+			count = (double)readUChar(trueval_in);
+		else if(sizeByteLabel == -1)
+			count = (double)readChar(trueval_in);
+		else if(sizeByteLabel == 2)
+			count = (double)readUShort(trueval_in);
+		else if(sizeByteLabel == -2)
+			count = (double)readShort(trueval_in);
+		else if(sizeByteLabel == 4)
+			count = (double)readUInt(trueval_in);
+		else if(sizeByteLabel == -4)
+			count = (double)readInt(trueval_in);
+		else if(sizeByteLabel == 5)
+			count = (double)readFloat(trueval_in);
+		else if(sizeByteLabel == 6)
+			count = readDouble(trueval_in);
+		else
+		{
+			cout << "Unknown sizeByte for data: " << sizeByteLabel << ". Exiting" << endl;
+			exit(0);
+		}
+		if(count > 0)
+			retVal = i;
+	}
+
+	
+	// printf("trueVal: %lf\n", trueVal);
+	return retVal;
+}
+
 //this function parses the magic number at the beginning of an idx file and therefore
 //SHOULD ONLY BY USED AT THE BEGINNING OF AN IDX FILE
 //this also advance the ifstream cursor past the magic number
@@ -181,33 +252,81 @@ int main(int argc, char** argv)
 	if(argc < 3)
 	{
 		// printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional) -DEType\n");
-		printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -ant(optional)\n");
+		printf("Use as: \n");
+		printf("  REQUIRED FIRST - ./ConvNetTrainerCL_idx path/to/NetConfig.txt saveName.txt\n");
+		printf("  In any order at end:\n");
+		printf("		-device=<int>                           OpenCL Device to run on. Optional w/default 0.\n");
+		printf("		-train_data=path/to/train/data.idx      Path to training data\n");
+		printf("		-train_label=path/to/train/labels.idx   Path to training labels\n");
+		printf("		-test_data=path/to/test/data.idx        Path to test data\n");
+		printf("		-test_label=path/to/test/labels.idx     Path to test labels\n");
 		return 0;
 	}
 	int device = 0;
-	// bool useDE = false;
-	bool useAnt = false;
-	// int detype = 0;
-	int dataBatchSize = atoi(argv[3]);
-	if(argc >= 5)
-		device = atoi(argv[4]);
-	// if(argc >= 6 && string(argv[5]) == "-DE")
-	// {
-	// 	useDE = true;
-	// 	detype = atoi(argv[6]);
-	// }
-	if(argc >= 6 && string(argv[5]) == "-ant")
+	int cmd_train_count = 0;
+	int cmd_test_count = 0;
+	string train_data_path, test_data_path, train_label_path, test_label_path;
+	char * netConfig_path = argv[1];
+	char * saveName = argv[2];
+	for(int i = 3; i < argc; i++)
 	{
-		useAnt = true;
+		string arg = string(argv[i]);
+		if(arg.find("-device=") != string::npos)
+			device = stoi(arg.substr(arg.find('=')+1));
+		else if(arg.find("-train_data=") != string::npos)
+		{
+			train_data_path = arg.substr(arg.find('=')+1);
+			cmd_train_count++;
+		}
+		else if(arg.find("-train_label=") != string::npos)
+		{
+			train_label_path = arg.substr(arg.find('=')+1);
+			cmd_train_count++;
+		}
+		else if(arg.find("-test_data=") != string::npos)
+		{
+			test_data_path = arg.substr(arg.find('=')+1);
+			cmd_test_count++;
+		}
+		else if(arg.find("-test_label=") != string::npos)
+		{
+			test_label_path = arg.substr(arg.find('=')+1);
+			cmd_test_count++;
+		}
 	}
+
+	if(cmd_train_count < 2)
+	{
+		printf("Training data and/or label paths are needed\n");
+		return 0;
+	}
+	else if(cmd_train_count > 2)
+	{
+		printf("You appear to have put in more than 1 set of training data, which is not currently supported. Exiting.\n");
+		return 0;
+	}
+
+	if(cmd_test_count == 1)
+	{
+		printf("You appear to have specified either the test labels or test data paths, but not both\n");
+		return 0;
+	}
+	else if(cmd_test_count > 2)
+	{
+		printf("You appear to have put in more than 1 set of test data, which is not currently supported. Exiting.\n");
+		return 0;
+	}
+
+
+	
 
 	/**************************
 	*
 	* get all training metadata and set up for reading in images
 	*
 	**************************/
-	ifstream training_label_in("train-labels.idx1-ubyte");
-	ifstream training_data_in("train-images.idx3-ubyte");
+	ifstream training_label_in(train_label_path.c_str());
+	ifstream training_data_in(train_data_path.c_str());
 
 	//NOTE: the numDims includes the number of images, so x amount of rgb images would have a numDims of 4
 	int train_data_dataType, train_data_numDims, train_label_dataType, train_label_numDims;
@@ -232,55 +351,65 @@ int main(int argc, char** argv)
 	for(int i = 0; i < train_data_numDims - 1; i++)
 		trainDims[i] = readBigEndianInt(training_data_in);
 
+	vector<int> train_label_dims(train_label_numDims);
+	for(int i = 0; i < train_label_numDims - 1; i++)
+		train_label_dims[i] = readBigEndianInt(training_label_in);
+
 	/**************************
 	*
 	* get all test metadata and set up for reading in images
 	*
 	**************************/
 
-	ifstream test_label_in("t10k-labels.idx1-ubyte");
-	ifstream test_data_in("t10k-images.idx3-ubyte");
-	int test_data_dataType, test_data_numDims, test_label_dataType, test_label_numDims;
-	magic(test_label_in, test_label_dataType, test_label_numDims);
-	magic(test_data_in, test_data_dataType, test_data_numDims);
-
-	int test_data_convType = convertDataType(test_data_dataType);
-	int test_label_convType = convertDataType(test_label_dataType);
-
-	int numTest = readBigEndianInt(test_label_in);
-	if(readBigEndianInt(test_data_in) != numTest)
+	int numTest = 0, test_data_convType, test_label_convType;
+	ifstream test_label_in, test_data_in;
+	vector<int> testDims(3,1), test_label_dims;
+	if(cmd_test_count > 0)
 	{
-		printf("The test data and label files don't have the same amount of items\n");
-		return 0;
+		test_label_in.open(test_label_path.c_str());
+		test_data_in.open(test_data_path.c_str());
+		int test_data_dataType, test_data_numDims, test_label_dataType, test_label_numDims;
+		magic(test_label_in, test_label_dataType, test_label_numDims);
+		magic(test_data_in, test_data_dataType, test_data_numDims);
+
+		test_data_convType = convertDataType(test_data_dataType);
+		test_label_convType = convertDataType(test_label_dataType);
+
+		numTest = readBigEndianInt(test_label_in);
+		if(readBigEndianInt(test_data_in) != numTest)
+		{
+			printf("The test data and label files don't have the same amount of items\n");
+			return 0;
+		}
+		if(test_data_numDims - 1 > 3)
+		{
+			printf("Can only handle at most 3 dimensions in the test data right now. Sorry.\n");
+			return 0;
+		}
+		for(int i = 0; i < test_data_numDims - 1; i++)
+			testDims[i] = readBigEndianInt(test_data_in);
+
+		test_label_dims.resize(test_label_numDims);
+		for(int i = 0; i < test_label_numDims - 1; i++)
+			test_label_dims[i] = readBigEndianInt(test_label_in);
 	}
-	vector<int> testDims(3,1);
-	if(test_data_numDims - 1 > 3)
-	{
-		printf("Can only handle at most 3 dimensions in the test data right now. Sorry.\n");
-		return 0;
-	}
-	for(int i = 0; i < test_data_numDims - 1; i++)
-		testDims[i] = readBigEndianInt(test_data_in);
 
 	printf("numTrain %d numTest %d\n", numTraining, numTest);
 	printf("Train are %d x %d x %d\n", trainDims[0],trainDims[1],trainDims[2]);
-	printf("Test are %d x %d x %d\n", testDims[0],testDims[1],testDims[2]);
-	printf("Converted train data: %d label: %d\n", train_data_convType,train_label_convType);
-	printf("Converted test data: %d label: %d\n", test_data_convType,test_label_convType);
+	if(cmd_test_count > 0)
+		printf("Test are %d x %d x %d\n", testDims[0],testDims[1],testDims[2]);
 
 	vector<imVector> training_data(numTraining), test_data(numTest);
 	vector<double> training_true(numTraining), test_true(numTest);
 
 	for(int i = 0; i < numTraining; i++)
 	{
-		training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
+		training_true[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
 	}
-	int quicksize = 1000;
-	test_true.resize(quicksize);
-	test_data.resize(quicksize);
-	for(int i = 0; i < quicksize; i++)
+
+	for(int i = 0; i < numTest; i++)
 	{
-		test_true[i] = getNextImage(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType);
+		test_true[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
 	}
 
 	training_label_in.close();
@@ -289,12 +418,9 @@ int main(int argc, char** argv)
 	test_data_in.close();
 
 
-	Net net(argv[1]);
-	// net.save("testnetsave.txt");
-	// printf("saved\n");
-	// return 0;
+	Net net(netConfig_path);
 	net.preprocessCollectively();
-	net.setSaveName(argv[2]);
+	net.setSaveName(saveName);
 	net.setTrainingType(TRAIN_AS_IS);
 	net.setDevice(device);
 	// net.set_learningRate(0);
@@ -304,14 +430,10 @@ int main(int argc, char** argv)
 		cout << "Something went wrong making the net. Exiting." << endl;
 		return 0;
 	}
-	//net.addTrainingData(training_data,training_true);
-	net.addTrainingData(test_data,test_true);
-	if(useAnt)
-		net.antTrain(10000, 10, dataBatchSize);
-	// else if(useDE)
-	// 	net.DETrain_sameSize(detype,1000,dataBatchSize);
-	else
-		net.train();
+	net.addTrainingData(training_data,training_true);
+	net.printTrainingDistribution();
+
+	net.train();
 
 	net.addData(test_data);
 

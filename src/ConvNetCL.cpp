@@ -771,9 +771,34 @@ bool Net::finalize()
 			//running
 		const char* foptions = "-cl-mad-enable";
 		const cl_device_id* deviceToBuild = &(__deviceIds[q]);
-		CNForward = CreateProgram(LoadKernel("../kernels/ConvNetForward_kernel.cl"), __context, RUNNING_PROGRAM);
+		string CNForwardPath;
+		if(fileExists("ConvNetForward_kernel.cl"))
+			CNForwardPath = "ConvNetForward_kernel.cl";
+		else if(fileExists("../kernels/ConvNetForward_kernel.cl"))
+			CNForwardPath = "../kernels/ConvNetForward_kernel.cl";
+		else if(fileExists("..\\..\\..\\kernels\\ConvNetForward_kernel.cl"))
+			CNForwardPath = "..\\..\\..\\kernels\\ConvNetForward_kernel.cl";
+		else
+		{
+			printf("Cannot find ConvNetForward_kernel.cl\n");
+			return false;
+		}
+
+		CNForward = CreateProgram(LoadKernel(CNForwardPath.c_str()), __context, RUNNING_PROGRAM);
 		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, foptions, nullptr, nullptr));
 		//training
+		string CNTraining_kernel;
+		if(fileExists("ConvNetTraining_kernel.cl"))
+			CNTraining_kernel = "ConvNetTraining_kernel.cl";
+		else if(fileExists("../kernels/ConvNetTraining_kernel.cl"))
+			CNTraining_kernel = "../kernels/ConvNetTraining_kernel.cl";
+		else if(fileExists("..\\..\\..\\kernels\\ConvNetTraining_kernel.cl"))
+			CNTraining_kernel = "..\\..\\..\\kernels\\ConvNetTraining_kernel.cl";
+		else
+		{
+			printf("Cannot find ConvNetForward_kernel.cl\n");
+			return false;
+		}
 		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
 

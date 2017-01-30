@@ -21,6 +21,9 @@ endif ()
 add_executable (ConvNetTrainerCL ConvNetTrainerCL.cpp)
 target_link_libraries(ConvNetTrainerCL ${OpenCL_LIBRARIES} ConvNetCL)
 
+add_executable (ConvNetTrainerCL_idx ConvNetTrainerCL_idx.cpp)
+target_link_libraries(ConvNetTrainerCL_idx ${OpenCL_LIBRARIES} ConvNetCL)
+
 #add_executable (ConvNetContinuanceCL ConvNetContinuanceCL.cpp)
 #target_link_libraries(ConvNetContinuanceCL ${OpenCL_LIBRARIES} ConvNetCL)
 

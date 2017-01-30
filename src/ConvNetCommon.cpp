@@ -9,6 +9,12 @@ namespace convnet {
 
 bool getNextImage(std::ifstream& in, imVector& dest, short x, short y, short z, short sizeByte, double *trueVal = nullptr);
 
+bool fileExists(std::string path)
+{
+	std::ifstream file(path);
+	return (bool)file;
+}
+
 std::string secondsToString(std::time_t seconds)
 {
 	std::time_t secs = seconds%60;

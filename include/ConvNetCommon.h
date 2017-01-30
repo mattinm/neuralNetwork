@@ -65,6 +65,14 @@ std::string getTime(std::time_t tim);
 std::string tolower(std::string str);
 
 /**
+ * \func fileExists
+ * \param str The path to the file to check existence of
+ * \return Whether the file exists
+ * \brief Checks whether a file exists
+ */
+bool fileExists(std::string path);
+
+/**
  * \func readVariable
  * \param in The input stream from which to read
  * \return The value of the variable read in
