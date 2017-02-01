@@ -275,7 +275,7 @@ int main(int argc, char** argv)
 	{
 		training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
 	}
-	int quicksize = 1000;
+	int quicksize = 10000;
 	test_true.resize(quicksize);
 	test_data.resize(quicksize);
 	for(int i = 0; i < quicksize; i++)
@@ -306,6 +306,7 @@ int main(int argc, char** argv)
 	}
 	//net.addTrainingData(training_data,training_true);
 	net.addTrainingData(test_data,test_true);
+	net.printTrainingDistribution();
 	if(useAnt)
 		net.antTrain(10000, 10, dataBatchSize);
 	// else if(useDE)

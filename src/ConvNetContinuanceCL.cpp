@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 		cout << "\nOptional arguments (must come after required args, everything before equals sign is case sensitive):\n";
 		cout << "   outname=<outname.txt>    Sets the name for the outputted trained CNN. If not specified new weights will not be saved.\n";
 		cout << "   testSet=<name.txt>       A binary training file to be used as a test/validation set. Never trained on.\n";
-		cout << "   epochs=<#epochs>         Number of epochs to train for. Defaults to 1.\n";
+		cout << "   epochs=<#epochs>         Number of epochs to train for. Defaults to \"as many as needed\".\n";
 		cout << "   device=<device#>         Which OpenCL device on to use. Integer. Defaults to GPU supporting doubles if present, else defaults to CPU.\n";
 		cout << "   -train_as_is             Causes CNN to train using all images for every epoch. On by default. Can only use one train method at a time\n";
 		cout << "   -train_equal_prop        Causes CNN to train using equal amounts of each class for each epoch. For classes with larger amounts of images,\n";

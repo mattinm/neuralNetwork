@@ -295,10 +295,14 @@ int main(int argc, char** argv)
 		}
 	}
 
-	if(cmd_train_count < 2)
+	if(cmd_train_count == 1)
 	{
-		printf("Training data and/or label paths are needed\n");
+		printf("Training data AND label paths are needed\n");
 		return 0;
+	}
+	else if(cmd_train_count == 0)
+	{
+		printf("NO TRAINING WILL BE DONE, ONLY TESTING\n");
 	}
 	else if(cmd_train_count > 2)
 	{
@@ -325,35 +329,40 @@ int main(int argc, char** argv)
 	* get all training metadata and set up for reading in images
 	*
 	**************************/
-	ifstream training_label_in(train_label_path.c_str());
-	ifstream training_data_in(train_data_path.c_str());
-
-	//NOTE: the numDims includes the number of images, so x amount of rgb images would have a numDims of 4
-	int train_data_dataType, train_data_numDims, train_label_dataType, train_label_numDims;
-	magic(training_label_in, train_label_dataType, train_label_numDims);
-	magic(training_data_in, train_data_dataType, train_data_numDims);
-
-	int train_data_convType = convertDataType(train_data_dataType);
-	int train_label_convType = convertDataType(train_label_dataType);
-
-	int numTraining = readBigEndianInt(training_label_in); //number of items in label
-	if(readBigEndianInt(training_data_in) != numTraining)
+	int numTraining = 0, train_data_convType, train_label_convType;
+	ifstream training_label_in, training_data_in;
+	vector<int> trainDims(3,1), train_label_dims;
+	if(cmd_train_count > 0)
 	{
-		printf("The training data and label files don't have the same amount of items");
-		return 0;
-	}
-	vector<int> trainDims(3,1);
-	if(train_data_numDims - 1 > 3)
-	{
-		printf("Can only handle at most 3 dimensions in the training data right now. Sorry.\n");
-		return 0;
-	}
-	for(int i = 0; i < train_data_numDims - 1; i++)
-		trainDims[i] = readBigEndianInt(training_data_in);
+		training_label_in.open(train_label_path.c_str());
+		training_data_in.open(train_data_path.c_str());
 
-	vector<int> train_label_dims(train_label_numDims);
-	for(int i = 0; i < train_label_numDims - 1; i++)
-		train_label_dims[i] = readBigEndianInt(training_label_in);
+		//NOTE: the numDims includes the number of images, so x amount of rgb images would have a numDims of 4
+		int train_data_dataType, train_data_numDims, train_label_dataType, train_label_numDims;
+		magic(training_label_in, train_label_dataType, train_label_numDims);
+		magic(training_data_in, train_data_dataType, train_data_numDims);
+
+		train_data_convType = convertDataType(train_data_dataType);
+		train_label_convType = convertDataType(train_label_dataType);
+
+		numTraining = readBigEndianInt(training_label_in); //number of items in label
+		if(readBigEndianInt(training_data_in) != numTraining)
+		{
+			printf("The training data and label files don't have the same amount of items");
+			return 0;
+		}
+		if(train_data_numDims - 1 > 3)
+		{
+			printf("Can only handle at most 3 dimensions in the training data right now. Sorry.\n");
+			return 0;
+		}
+		for(int i = 0; i < train_data_numDims - 1; i++)
+			trainDims[i] = readBigEndianInt(training_data_in);
+
+		train_label_dims.resize(train_label_numDims);
+		for(int i = 0; i < train_label_numDims - 1; i++)
+			train_label_dims[i] = readBigEndianInt(training_label_in);
+	}
 
 	/**************************
 	*
@@ -418,10 +427,32 @@ int main(int argc, char** argv)
 	test_data_in.close();
 
 
+	vector<int> numcolorimages(3,0);
+	vector<int> numtotalbyclass(3,0);
+	for(int i = 0; i < numTraining; i++)
+	{
+		int colorFound = 0;
+		for(int j = 0; j < training_data[i].size(); j++)
+			for(int k = 0; k < training_data[i][j].size(); k++)
+				for(int l = 0; l < training_data[i][j][k].size(); l++)
+					if(training_data[i][j][k][l] != 0)
+					{
+						colorFound = 1;
+					}
+		numcolorimages[training_true[i]] += colorFound;
+		numtotalbyclass[training_true[i]]++;
+	}
+	for(int i = 0; i < 3; i++)
+		printf("Num color images class %d is %d of %d. %lf%%\n", i, numcolorimages[i], numtotalbyclass[i], 100. * numcolorimages[i]/numtotalbyclass[i]);
+
+
+
+
 	Net net(netConfig_path);
 	net.preprocessCollectively();
 	net.setSaveName(saveName);
 	net.setTrainingType(TRAIN_AS_IS);
+	// net.setTrainingType(TRAIN_EQUAL_PROP);
 	net.setDevice(device);
 	// net.set_learningRate(0);
 	if(!net.finalize())
@@ -430,28 +461,43 @@ int main(int argc, char** argv)
 		cout << "Something went wrong making the net. Exiting." << endl;
 		return 0;
 	}
-	net.addTrainingData(training_data,training_true);
-	net.printTrainingDistribution();
-
-	net.train();
-
-	net.addData(test_data);
-
-	net.run();
-
-	vector<int> predictions;
-
-	net.getCalculatedClasses(predictions);
-
-	int numCorrect = 0;
-
-	for(int i = 0; i < predictions.size(); i++)
+	if(cmd_train_count > 0)
 	{
-		if(predictions[i] == test_true[i])
-			numCorrect++;
-	}
+		net.addTrainingData(training_data,training_true);
+		net.printTrainingDistribution();
 
-	printf("Results on test data: %lf%%\n", 100.0 * numCorrect/predictions.size());
+		net.train();
+	}
+	if(cmd_test_count > 0)
+	{
+		net.addData(test_data);
+
+		net.run();
+
+		vector<int> predictions;
+
+		net.getCalculatedClasses(predictions);
+
+		int numCorrect = 0;
+		vector<int> numCorrectClass(net.getNumClasses(),0);
+		vector<int> numTotalClass(net.getNumClasses(),0);
+
+		for(int i = 0; i < predictions.size(); i++)
+		{
+			if(predictions[i] == test_true[i])
+			{
+				numCorrect++;
+				numCorrectClass[test_true[i]]++;
+			}
+			numTotalClass[test_true[i]]++;
+		}
+
+		printf("Results on test data: %lf%%\n", 100.0 * numCorrect/predictions.size());
+		for(int i = 0; i < numCorrectClass.size(); i++)
+		{
+			printf("    Class %d: %d out of %d, %lf%%\n",i, numCorrectClass[i],numTotalClass[i],100.*numCorrectClass[i]/numTotalClass[i]);
+		}
+	}
 
 
 	return 0;

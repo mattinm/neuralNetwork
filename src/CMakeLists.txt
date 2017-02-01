@@ -18,6 +18,9 @@ endif ()
 ###### MAKE EXECUTABLES
 ######
 
+add_executable (BlobCounter BlobCounter.cpp)
+target_link_libraries(BlobCounter ${OpenCV_LIBS})
+
 add_executable (ConvNetTrainerCL ConvNetTrainerCL.cpp)
 target_link_libraries(ConvNetTrainerCL ${OpenCL_LIBRARIES} ConvNetCL)
 
@@ -34,8 +37,8 @@ add_executable (ConvNetFullImageDriverCL ConvNetFullImageDriverCL.cpp)
 target_link_libraries(ConvNetFullImageDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
 # TODO: pthread
-#add_executable (ConvNetFullImageDriverParallelCL ConvNetFullImageDriverParallelCL.cpp)
-#target_link_libraries(ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
+add_executable (ConvNetFullImageDriverParallelCL ConvNetFullImageDriverParallelCL.cpp)
+target_link_libraries(ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
 add_executable (ConvNetVideoDriverCL ConvNetVideoDriverCL.cpp)
 target_link_libraries(ConvNetVideoDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
