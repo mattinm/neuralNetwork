@@ -4,11 +4,15 @@
 #include <vector>
 #include <iostream>
 
+// #include "opencv2/imgproc/imgproc.hpp" //used for showing images being read in from IDX
+// #include "opencv2/highgui/highgui.hpp"
+
 using namespace std;
+using namespace cv;
 
 typedef vector<vector<vector<double> > > imVector;
 
-
+int imcount = 0;
 /**********************
  *	Helper Functions
  ***********************/
@@ -171,7 +175,8 @@ double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 	{
 		for(int j=0; j < y; j++)
 		{
-			for(int k=0; k < z; k++)
+			//for(int k=0; k < z; k++)
+			for(int k = z-1; k >=0; k--) //need to read in rgb idx as bgr b/c that's how opencv does it.
 			{
 				if(sizeByteData == 1)
 					dest[i][j][k] = (double)readUChar(in);
@@ -224,9 +229,31 @@ double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 			cout << "Unknown sizeByte for data: " << sizeByteLabel << ". Exiting" << endl;
 			exit(0);
 		}
-		if(count > 0)
+		if(count > 0)// && i==1) // second half restricts to white geese
 			retVal = i;
 	}
+
+
+	//show image and trueVal
+	// if(true)
+	// {
+	// 	Mat show(x,y,CV_8UC3);
+	// 	for(int i = 0; i < x; i++)
+	// 	{
+	// 		for(int j = 0; j < y; j++)
+	// 		{
+	// 			Vec3b& outPix = show.at<Vec3b>(i,j);
+	// 			outPix[0] = dest[i][j][2];
+	// 			outPix[1] = dest[i][j][1];
+	// 			outPix[2] = dest[i][j][0];
+	// 		}
+	// 	}
+	// 	char name[10];
+	// 	sprintf(name,"%d,%d",(int)retVal,imcount);
+	// 	imshow(name,show);
+	// 	waitKey(0);
+	// 	imcount++;
+	// }
 
 	
 	// printf("trueVal: %lf\n", trueVal);
@@ -403,6 +430,8 @@ int main(int argc, char** argv)
 			test_label_dims[i] = readBigEndianInt(test_label_in);
 	}
 
+	
+
 	printf("numTrain %d numTest %d\n", numTraining, numTest);
 	printf("Train are %d x %d x %d\n", trainDims[0],trainDims[1],trainDims[2]);
 	if(cmd_test_count > 0)
@@ -419,6 +448,18 @@ int main(int argc, char** argv)
 	for(int i = 0; i < numTest; i++)
 	{
 		test_true[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
+	}
+
+
+	readChar(training_label_in);
+	if(training_label_in.eof())
+	//if(readChar(training_label_in) == EOF)
+	{
+		printf("EOF\n");
+	}
+	else 
+	{
+		printf("Not EOF\n");
 	}
 
 	training_label_in.close();

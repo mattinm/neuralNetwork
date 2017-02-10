@@ -265,16 +265,16 @@ public: 	// functions
 	//functions dealing with data
 		//training
 		bool addTrainingData(const std::vector<convnet::imVector>& trainingData, const std::vector<double>& trueVals);
-		bool addTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals);
+		bool addTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals, bool rgb=false);
         //bool setTrainingDataShallow(double** images, double* trueVals, unsigned long numImages);
 		bool setTrainingData(const std::vector<convnet::imVector>& trainingData, const std::vector<double>& trueVals);
-		bool setTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals);
+		bool setTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals, bool rgb=false);
 		void clearTrainingData();
 		bool addTestData(const std::vector<convnet::imVector>& testData, const std::vector<double>& trueVals);
-		bool addTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals);
+		bool addTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals, bool rgb=false);
         //bool setTestDataShallow(double** images, double* trueVals,
 		bool setTestData(const std::vector<convnet::imVector>& testData, const std::vector<double>& trueVals);
-		bool setTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals);
+		bool setTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals, bool rgb=false);
 		void clearTestData();
 		bool setTrainingType(int type);
         void printTrainingDistribution() const;
@@ -282,9 +282,9 @@ public: 	// functions
 
 		//running
 		void addData(const std::vector<convnet::imVector>& data);
-		void addData(const std::vector<cv::Mat>& data);
+		void addData(const std::vector<cv::Mat>& data, bool rgb=false);
 		void setData(const std::vector<convnet::imVector>& data);
-		void setData(const std::vector<cv::Mat>& data);
+		void setData(const std::vector<cv::Mat>& data, bool rgb=false);
 		void clearData();
 
 	int getNumClasses() const;
@@ -304,6 +304,7 @@ public: 	// functions
 
 	//running
 	void run();
+	void run_parallel();
 	void getCalculatedClasses(std::vector<int>& dest) const;
 	void getConfidences(std::vector<std::vector<double> >& confidences) const;
 
@@ -367,6 +368,8 @@ private:	// functions
 	void feedForward(std::vector<cl_mem>& layerNeeds);
 	void feedForward(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
  		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
+	void feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
+	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxForward();
 	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);

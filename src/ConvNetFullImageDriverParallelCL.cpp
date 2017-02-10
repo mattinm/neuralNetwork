@@ -39,6 +39,8 @@ int curFrame = 0;
 int curRow = 0;
 int curSubmittedFrame = 0;
 
+bool rgb=false;
+
 typedef vector<vector<vector<double> > > imVector;
 
 char *inPath;
@@ -61,6 +63,7 @@ int inputWidth, inputHeight;
 int __rows, __cols;
 
 bool done = false;
+bool __separate_outputs = false;
 
 string secondsToString(time_t seconds)
 {
@@ -199,6 +202,7 @@ void breakUpRow(int row, int device)
 	//set them as the data in the net
 	nets[device]->setData(imageRow);
 	nets[device]->run();
+	// nets[device]->run_parallel();
 	nets[device]->getConfidences(confidences); //gets the confidence for each category for each image
 
 	int curImage = 0;
@@ -300,57 +304,101 @@ void breakUpImage(const char* imageName)
 		}
 	}
 
-	//make the output Mats
-	vector<Mat*> outputMats(numClasses);
-	for(int k = 0; k < numClasses; k++)
+
+	if(__separate_outputs)
 	{
-		outputMats[k] = new Mat(__rows,__cols,CV_8UC3);
-	}
-	//calculate what output images should look like
-	for(int k = 0; k < numClasses; k++)
-	{
-		for(int i=0; i < __rows; i++)
+		//make the output Mats
+		vector<Mat*> outputMats(numClasses);
+		for(int k = 0; k < numClasses; k++)
 		{
-			for(int j=0; j < __cols; j++)
+			outputMats[k] = new Mat(__rows,__cols,CV_8UC3);
+		}
+		//calculate what output images should look like
+		for(int k = 0; k < numClasses; k++)
+		{
+			for(int i=0; i < __rows; i++)
 			{
-				//write the pixel
-				Vec3b& outPix = outputMats[k]->at<Vec3b>(i,j);
-				if(allElementsEquals(fullImages[0][i][j]))
+				for(int j=0; j < __cols; j++)
 				{
-					outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
-				}
-				else
-				{
-					double pix = 255 * fullImages[0][i][j][k];
-					outPix[0] = pix;  // blue
-					outPix[1] = pix;  //green
-					outPix[2] = pix;  // red
+					//write the pixel
+					Vec3b& outPix = outputMats[k]->at<Vec3b>(i,j);
+					if(allElementsEquals(fullImages[0][i][j]))
+					{
+						outPix[0] = 0; outPix[1] = 255; outPix[2] = 0; // green
+					}
+					else
+					{
+						double pix = 255 * fullImages[0][i][j][k];
+						outPix[0] = pix;  // blue
+						outPix[1] = pix;  //green
+						outPix[2] = pix;  // red
+					}
 				}
 			}
 		}
+
+		//output the mats
+		char outName[500];
+		string origName(imageName);
+		size_t dot = origName.rfind('.');
+		const string noExtension = origName.substr(0,dot);
+		const string extension = origName.substr(dot+1);
+
+		for(int k = 0; k < numClasses; k++)
+		{
+			sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+			// if(infos.size() > k)
+			// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+			// else
+			// 	sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
+			printf("Writing %s\n", outName);
+			imwrite(outName,*(outputMats[k]));
+		}
+
+		//cleanup memory
+		for(int m = 0; m < numClasses; m++)
+			delete outputMats[m];
 	}
-
-	//output the mats
-	char outName[500];
-	string origName(imageName);
-	size_t dot = origName.rfind('.');
-	const string noExtension = origName.substr(0,dot);
-	const string extension = origName.substr(dot+1);
-
-	for(int k = 0; k < numClasses; k++)
+	else
 	{
-		sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
-		// if(infos.size() > k)
-		// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
-		// else
-		// 	sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
-		printf("Writing %s\n", outName);
-		imwrite(outName,*(outputMats[k]));
-	}
+		unsigned long depth = fullImages[0][0][0].size();
+		Mat outputMat(__rows, __cols, CV_8UC3);
+		for(int k = 0; k < numClasses; k++)
+		{
+			for(int i=0; i < __rows; i++)
+			{
+				for(int j=0; j < __cols; j++)
+				{
+					//write the pixel
+					Vec3b& outPix = outputMat.  at<Vec3b>(i,j);
+					if(allElementsEquals(fullImages[0][i][j]))
+					{
+						outPix[0] = 0; outPix[1] = 0; outPix[2] = 0; // black
+					}
+					else
+					{
+						double pix = 255 * fullImages[0][i][j][k];
+						outPix[0] = 255 * fullImages[0][i][j][0];  // blue
+						outPix[2] = 255 * fullImages[0][i][j][1];  // red
+						if(depth > 2)
+							outPix[1] = 255 * fullImages[0][i][j][2];
+						else
+							outPix[1] = 0;
+					}
+				}
+			}
+		}
 
-	//cleanup memory
-	for(int m = 0; m < numClasses; m++)
-		delete outputMats[m];
+		char outName[500];
+		string origName(imageName);
+		size_t dot = origName.rfind('.');
+		const char *noExtension = origName.substr(0,dot).c_str();
+		const char *extension = origName.substr(dot).c_str();
+
+		sprintf(outName,"%s_prediction%s",noExtension,extension);
+		printf("Writing %s\n", outName);
+		imwrite(outName, outputMat);
+	}
 }
 
 int checkExtensions(char* filename)
@@ -372,6 +420,8 @@ int main(int argc, char** argv)
 		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt ImageOrFolderPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
 		printf("   stride=<int>        Stride across image. Defaults to 1.\n");
+		printf("   -separate_outputs   Puts the prediction for each class in a separate image. Default for Nets with more than 3 classes.\n");
+		printf("   -rgb                Has ConvNetCL read in the Mats as RGB instead of OpenCV standard BGR.\n");
 		return -1;
 	}
 	time_t starttime, endtime;
@@ -384,6 +434,10 @@ int main(int argc, char** argv)
 			string arg(argv[i]);
 			if(arg.find("stride=") != string::npos)
 				stride = stoi(arg.substr(arg.find("=")+1));
+			else if(arg.find("-separate_outputs") != string::npos)
+				__separate_outputs = true;
+			else if(arg.find("-rgb") != string::npos)
+				rgb = true;
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
@@ -479,6 +533,8 @@ int main(int argc, char** argv)
 	inputHeight = nets[0]->getInputHeight();
 	inputWidth = nets[0]->getInputWidth();
 	numClasses = nets[0]->getNumClasses();
+	if(numClasses > 3)
+		__separate_outputs = true;
 
 	nets[0]->getClassNames(infos);
 
