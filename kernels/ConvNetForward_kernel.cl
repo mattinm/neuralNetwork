@@ -1,7 +1,29 @@
 #define RELU_CAP 5000.0
 #define LEAKY_RELU_CONST .01
 
+#define iterations 50
+
 // DO NOT CHANGE THESE DEFAULTS VALUES. IF YOU MUST, MAKE THEM THE SAME LENGTH IN CHARACTERS
+
+double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell
+    bool is_negative = z < 0;
+    if (is_negative) z = -z;
+
+    // exp(x) = sum (k = 0 to inf) z^k/k!
+    double result = 1.0 + z;
+
+    double prev = z;
+    for (short k = 2; k < iterations; k++) {
+        prev *= (z / k);
+        result += prev;
+    }
+
+    if (is_negative) {
+        return 1.0 / result;
+    } else {
+        return result;
+    }
+}
 
 //numthreads should be size of neurons and prevNeurons (should be same)
 __kernel void relu(__global double* prevNeurons, __global double* neurons)
@@ -170,7 +192,7 @@ __kernel void softmax(__global double *prevNeurons, __global double *neurons,
 	double denominator)
 {
 	int i = get_global_id(0);
-	neurons[i] = exp(prevNeurons[i])/denominator;
+	neurons[i] = exact_exp(prevNeurons[i])/denominator;
 }
 
 __kernel void softmax_allCL(__global double *prevNeurons, __global double *neurons,
@@ -236,7 +258,7 @@ __kernel void vectorESum(__global double* source, int size, __global double* den
 		return;
 	double sum = 0;
 	for(int i=0; i < size; i++)
-		sum += exp(source[i]);
+		sum += exact_exp(source[i]);
 	*denom = sum;
 }
 
