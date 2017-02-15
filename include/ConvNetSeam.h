@@ -48,4 +48,7 @@ void seamcarve_cleanup();
 void seamcarve_setDevice(int deviceNum);
 void seamcarve_setDevice(cl_device_id device, cl_platform_id platform);
 
+bool seamcarve_v_cpu(int numSeams, const cv::Mat& source, cv::Mat& dest);
+bool seamcarve_h_cpu(int numSeams, const cv::Mat& source, cv::Mat& dest);
+
 #endif /* defined(____ConvNetSeam__)*/

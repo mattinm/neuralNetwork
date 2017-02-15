@@ -7,11 +7,13 @@ if (BUILD_DYNAMIC)
     #add_library (ConvNet SHARED ConvNet.cpp ConvNetCommon.cpp)
     add_library (ConvNetEvent SHARED ConvNetEvent.cpp ConvNetCommon.cpp)
     add_library (ConvNetSeam SHARED ConvNetSeam.cpp ConvNetCommon.cpp)
+    add_library (Seamcarver SHARED Seamcarver.cpp)
 else ()
     add_library (ConvNetCL STATIC ConvNetCL.cpp ConvNetCommon.cpp)
     #add_library (ConvNet STATIC ConvNet.cpp ConvNetCommon.cpp)
     add_library (ConvNetEvent STATIC ConvNetEvent.cpp ConvNetCommon.cpp)
     add_library (ConvNetSeam STATIC ConvNetSeam.cpp ConvNetCommon.cpp)
+    add_library (Seamcarver STATIC Seamcarver.cpp)
 endif ()
 
 ######
@@ -62,6 +64,9 @@ target_link_libraries(ImageFileCreator ${OpenCV_LIBS})
 
 add_executable (MNIST_test MNIST_test.cpp)
 target_link_libraries (MNIST_test ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
+
+add_executable (Overlay Overlay.cpp)
+target_link_libraries(Overlay ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable (TrainingImageFileCreator TrainingImageFileCreator.cpp)
 target_link_libraries(TrainingImageFileCreator ${OpenCV_LIBS})

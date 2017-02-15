@@ -9,7 +9,8 @@ curFrame, framenum, classIndex are ints
 */
 //ConvNet
 #include <ConvNetCL.h>
-#include <ConvNetSeam.h>
+// #include <ConvNetSeam.h>
+#include <Seamcarver.h>
 #include <ConvNetEvent.h>
 
 //OpenCV
@@ -24,6 +25,7 @@ curFrame, framenum, classIndex are ints
 #include <sstream>
 #include <random>
 #include <time.h>
+#include <thread>
 
 //BOINC
 #ifdef _BOINC_APP_
@@ -63,6 +65,8 @@ DoneFrame::DoneFrame(int framenum, int classIndex, vector<double>& confidences)
 vector<DoneFrame> doneFrames;
 int curFrame = 0;
 int numClasses;
+
+bool firstGot = false; 
 
 //BOINC FUNCTIONS
 std::string getBoincFilename(std::string filename) throw(std::runtime_error) {
@@ -124,6 +128,7 @@ bool readCheckpoint()
 		doneFrames.push_back(DoneFrame(framenum, classIndex,curConf));
 	}
 	check.close();
+	firstGot = true;
 	return true;
 }
 
@@ -132,7 +137,7 @@ bool readCheckpoint()
 bool getNextFrame(VideoCapture& video, Mat& frame, int& framenum, int jump = 1)
 {
 	// firstGot should regulate itself so it'll reset when a video runs out of frames
-	static bool firstGot = false; 
+	
 	bool moreFrames = true;
 	if(firstGot) // not first frame
 	{
@@ -168,6 +173,65 @@ bool getNextFrame(VideoCapture& video, Mat& frame, int& framenum, int jump = 1)
 		framenum++;
 	}
 	return moreFrames;
+}
+
+bool preprocessFrame(Mat frame, Mat* dest, cv::Size cvSize, int inputSize, int frameWidth, int frameHeight, int scaleType, Seamcarver* carver)
+{
+	int vseams = frameWidth  - inputSize;
+	int hseams = frameHeight - inputSize;
+	int numSeams = frameWidth - frameHeight;
+	if(scaleType == DISTORT_DOWN) // straight scale to size. Distort if necessary
+	{
+		resize(frame,*dest,cvSize);
+	}
+	else if(scaleType == RANDOM_CROP)
+	{
+		default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+		uniform_int_distribution<int> disI(0,frameHeight - inputSize);
+		uniform_int_distribution<int> disJ(0,frameWidth - inputSize);
+		int si = disI(gen);
+		int sj = disJ(gen);
+		Mat temp(frame,Range(si,si+inputSize),Range(sj,sj+inputSize));
+		*dest = temp;
+	}
+	else if(scaleType == SCALE_DOWN) // seamcarve to square. Scale to size
+	{
+		Mat temp;
+		if(numSeams > 0) //width > height. landscape
+		{
+			//vertical seams, fast
+			//seamcarve_v_cpu(numSeams,frame,temp);//bring us to square
+			carver->carve_v(frame,numSeams,temp);
+			resize(temp, *dest,cvSize);
+			// printf("resized\n");
+		}
+		else // height > width. portrait
+		{
+			//horizontal seams, fast
+			// seamcarve_hf_cpu(-numSeams, frame, temp);
+			carver->carve_h(frame,numSeams,temp);
+			resize(temp, *dest,cvSize);
+		}
+	}
+	else if(scaleType == CARVE_DOWN_VTH || scaleType == CARVE_DOWN_HTV || scaleType == CARVE_DOWN_BOTH_SCALED) // seamcarve in both directions down to size. No normal scaling
+	{
+		// seamcarve_both_vth_cpu(vseams, hseams, frame, *dest);
+		printf("The current scaleType is deprecated and no longer supported.");
+		return false;
+	}
+	// else if(scaleType == CARVE_DOWN_HTV)
+		// seamcarve_both_htv_cpu(hseams, vseams, frame, *dest);
+	else if(scaleType == CARVE_DOWN_BOTH_RAW)
+		// seamcarve_both_raw_cpu(vseams, hseams, frame, *dest);
+		carver->carve_b(frame,vseams,hseams,*dest);
+	// else if(scaleType == CARVE_DOWN_BOTH_SCALED)
+		// seamcarve_both_scaled_cpu(vseams, hseams, frame, *dest);
+	else
+	{
+		printf("Unknown scaleType %d\n", scaleType);
+		return false;
+	}
+	return true;
 }
 
 int main(int argc, char** argv)
@@ -267,14 +331,17 @@ int main(int argc, char** argv)
 	boinc_init_options(&options);
 	boinc_init();
 
-	retval = boinc_get_opencl_ids(argc, argv, -1, &cldevice, &platform);
-    if (retval) {
-        fprintf(stderr, 
-            "Error: boinc_get_opencl_ids() failed with error %d\n", 
-            retval
-        );
-        return 1;
-    }
+	if(!boinc_is_standalone())
+	{
+		retval = boinc_get_opencl_ids(argc, argv, -1, &cldevice, &platform);
+	    if (retval) {
+	        fprintf(stderr, 
+	            "Error: boinc_get_opencl_ids() failed with error %d\n", 
+	            retval
+	        );
+	        return 1;
+	    }
+	}
 
 	#endif
 
@@ -286,7 +353,10 @@ int main(int argc, char** argv)
 	Net net(resolved_cnn.c_str());
 	
 	#ifdef _BOINC_APP_
-		net.setDevice(cldevice,platform);
+		if(!boinc_is_standalone())
+			net.setDevice(cldevice,platform);
+		else
+			net.setDevice(device);
 	#else
 		net.setDevice(device);
 	#endif
@@ -297,7 +367,7 @@ int main(int argc, char** argv)
 		#endif
 		return -1;
 	}
-	seamcarve_setDevice(device);
+	// seamcarve_setDevice(device);
 
 	// int inputHeight = net.getInputHeight();
 	int inputWidth = net.getInputWidth();
@@ -339,82 +409,99 @@ int main(int argc, char** argv)
 	int frameWidth = video.get(CV_CAP_PROP_FRAME_WIDTH);
 	int frameHeight = video.get(CV_CAP_PROP_FRAME_HEIGHT);
 	//used for random crop
-	default_random_engine gen(time(NULL));
-	uniform_int_distribution<int> disI(0,frameHeight - inputSize);
-	uniform_int_distribution<int> disJ(0,frameWidth - inputSize);
+	// default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+	// uniform_int_distribution<int> disI(0,frameHeight - inputSize);
+	// uniform_int_distribution<int> disJ(0,frameWidth - inputSize);
 
 	//used for seamcarving
 	int vseams = frameWidth  - inputSize;
 	int hseams = frameHeight - inputSize;
 	int numSeams = frameWidth - frameHeight;
+	vector<thread> thr(batchSize);
+	vector<Seamcarver> carvers(batchSize);
 
 	while(cont)
 	{
 		#ifdef _BOINC_APP_
 		boinc_fraction_done(video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
-		if(boinc_time_to_checkpoint())
+		// if(boinc_time_to_checkpoint())
 		{
 			writeCheckpoint();
 			boinc_checkpoint_completed();
 		}
+		printf("Percent done: %lf\n", video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
 		#else
 		printf("Percent done: %lf\n", video.get(CV_CAP_PROP_POS_AVI_RATIO) * 100.0);
 		#endif
 		//get next batchSize of preprocessed images
-		vector<Mat> currentFrames;
+		vector<Mat> currentFrames(batchSize);
 		vector<int> currentFramenums;
-		for(int i = 0; i < batchSize; i++)
+		vector<Mat> rawFrames(batchSize);
+		int i;
+		for(i = 0; i < batchSize; i++)
 		{
-			if(!getNextFrame(video,frame,curFrame,jump))
+			// if(!getNextFrame(video,frame,curFrame,jump))
+			if(!getNextFrame(video,rawFrames[i],curFrame,jump))
 			{
 				cont = false;
 				break;
 			}
-			Mat tempMat;
-			if(scaleType == DISTORT_DOWN) // straight scale to size. Distort if necessary
-			{
-				resize(frame,tempMat,cvSize);
-			}
-			else if(scaleType == RANDOM_CROP)
-			{
-				int si = disI(gen);
-				int sj = disJ(gen);
-				Mat temp(frame,Range(si,si+inputSize),Range(sj,sj+inputSize));
-				tempMat = temp;
-			}
-			else if(scaleType == SCALE_DOWN) // seamcarve to square. Scale to size
-			{
-				Mat temp;
-				if(numSeams > 0) //width > height. landscape
-				{
-					//vertical seams, fast
-					seamcarve_vf(numSeams,frame,temp);//bring us to square
-					resize(temp, tempMat,cvSize);
-				}
-				else // height > width. portrait
-				{
-					//horizontal seams, fast
-					seamcarve_hf(-numSeams, frame, temp);
-					resize(temp, tempMat,cvSize);
-				}
-			}
-			else if(scaleType == CARVE_DOWN_VTH) // seamcarve in both directions down to size. No normal scaling
-				seamcarve_both_vth(vseams, hseams, frame, tempMat);
-			else if(scaleType == CARVE_DOWN_HTV)
-				seamcarve_both_htv(hseams, vseams, frame, tempMat);
-			else if(scaleType == CARVE_DOWN_BOTH_RAW)
-				seamcarve_both_raw(vseams, hseams, frame, tempMat);
-			else if(scaleType == CARVE_DOWN_BOTH_SCALED)
-				seamcarve_both_scaled(vseams, hseams, frame, tempMat);
-			else
-			{
-				printf("Unknown scaleType %d\n", scaleType);
-				return 0;
-			}
-			currentFrames.push_back(tempMat);
+			// Mat tempMat;
+			// currentFrames.push_back(tempMat);
 			currentFramenums.push_back(curFrame);
+			Mat* ptr = &(currentFrames[i]);
+			Seamcarver* sptr = &(carvers[i]);
+			thr[i] = thread([=] {preprocessFrame(rawFrames[i],ptr,cvSize,inputSize,frameWidth,frameHeight,scaleType,sptr);});
+			// if(scaleType == DISTORT_DOWN) // straight scale to size. Distort if necessary
+			// {
+			// 	resize(frame,tempMat,cvSize);
+			// }
+			// else if(scaleType == RANDOM_CROP)
+			// {
+			// 	int si = disI(gen);
+			// 	int sj = disJ(gen);
+			// 	Mat temp(frame,Range(si,si+inputSize),Range(sj,sj+inputSize));
+			// 	tempMat = temp;
+			// }
+			// else if(scaleType == SCALE_DOWN) // seamcarve to square. Scale to size
+			// {
+			// 	Mat temp;
+			// 	if(numSeams > 0) //width > height. landscape
+			// 	{
+			// 		//vertical seams, fast
+			// 		seamcarve_vf_cpu(numSeams,frame,temp);//bring us to square
+			// 		resize(temp, tempMat,cvSize);
+			// 	}
+			// 	else // height > width. portrait
+			// 	{
+			// 		//horizontal seams, fast
+			// 		seamcarve_hf_cpu(-numSeams, frame, temp);
+			// 		resize(temp, tempMat,cvSize);
+			// 	}
+			// }
+			// else if(scaleType == CARVE_DOWN_VTH) // seamcarve in both directions down to size. No normal scaling
+			// 	seamcarve_both_vth_cpu(vseams, hseams, frame, tempMat);
+			// else if(scaleType == CARVE_DOWN_HTV)
+			// 	seamcarve_both_htv_cpu(hseams, vseams, frame, tempMat);
+			// else if(scaleType == CARVE_DOWN_BOTH_RAW)
+			// 	seamcarve_both_raw_cpu(vseams, hseams, frame, tempMat);
+			// else if(scaleType == CARVE_DOWN_BOTH_SCALED)
+			// 	seamcarve_both_scaled_cpu(vseams, hseams, frame, tempMat);
+			// else
+			// {
+			// 	printf("Unknown scaleType %d\n", scaleType);
+			// 	return 0;
+			// }
+			// currentFrames.push_back(tempMat);
+			// currentFramenums.push_back(curFrame);
 
 		}
+		// printf("joining\n");
+		for(int j = 0; j < i; j++)
+			thr[j].join();
+		// printf("done joining\n");
+		if( i < batchSize )
+			currentFrames.resize(i);
 
 		// for(int i = 0; i < currentFramenums.size(); i++)
 		// {
