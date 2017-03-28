@@ -60,6 +60,13 @@ IF(NOT OpenCL_FOUND)
     message (FATAL_ERROR "Unable to find OpenCL.")
 ENDIF ()
 
+find_package( MySQL )
+IF(NOT MYSQL_FOUND )
+	message("Unable to find MySQL.")
+ENDIF()
+
+include_directories(${MYSQL_INCLUDE_DIR})
+
 include_directories(${OpenCL_INCLUDE_DIRS})
 message(“OpenCL include LIBS: ${OpenCL_LIBRARIES})
 

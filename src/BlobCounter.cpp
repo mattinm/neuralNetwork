@@ -3,6 +3,7 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/opencv.hpp"
 #include <vector>
+#include <string>
 
 using namespace cv;
 using namespace std;
@@ -18,6 +19,12 @@ int main(int argc, char** argv)
 	for(int i = 1; i < argc; i++)
 	{
 		Mat im = imread(argv[i], 1);
+
+		string imname = argv[i];
+		imname = imname.substr(imname.rfind('/')+1);
+		int startprediction = imname.find("_prediction");
+		int lastDot = imname.rfind('.');
+		imname.erase(startprediction,lastDot - startprediction);
 		// imshow("orig",im);
 		// waitKey(0);
 
@@ -39,30 +46,49 @@ int main(int argc, char** argv)
 		inRange(hsv_im, Scalar(0,50,50),Scalar(30,255,255),low);
 		inRange(hsv_im, Scalar(130,50,50),Scalar(179,255,255),high);
 
-		Mat comb;
-		addWeighted(low, 1., high, 1., 0., comb);
+		Mat redOnly;
+		addWeighted(low, 1., high, 1., 0., redOnly);
+		bitwise_not(redOnly,redOnly);
 
-		// imshow("converted",comb);
-		// waitKey(0);
+		Mat greenOnly;
+		inRange(hsv_im, Scalar(45,50,50),Scalar(75,255,255),greenOnly);
+		bitwise_not(greenOnly,greenOnly);
+
+		imshow("redOnly",redOnly);
+		waitKey(0);
+
+		imshow("greenOnly",greenOnly);
+		waitKey(0);
 
 		SimpleBlobDetector::Params params;
-		params.filterByColor = 1;
-		params.blobColor = 255;
-		// params.filterByInertia = 1;
-		// params.minInertiaRatio = .5;
+		params.filterByColor = true;
+		params.blobColor = 0;
+		params.filterByInertia = false;
+		// params.minInertiaRatio = 0;
 		// params.maxInertiaRatio = 1;
-		params.filterByArea = 1;
+		params.filterByArea = false;
 		params.minArea = 10;
-		params.maxArea = 324;
+		params.maxArea = 300;
+
+		params.filterByCircularity = false;
+		params.filterByConvexity = false;
 		
 		SimpleBlobDetector detector(params);
-		vector<KeyPoint> keypoints;
-		detector.detect(comb, keypoints);
-		printf("%s: count %lu\n", argv[i], keypoints.size());
+		vector<KeyPoint> redkeypoints, greenkeypoints;
+		detector.detect(redOnly, redkeypoints);
+		detector.detect(greenOnly, greenkeypoints);
 
-		// Mat im_with_keypoints;
-		// drawKeypoints(im, keypoints, im_with_keypoints, Scalar(255,255,255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-		// imshow("keypoints",im_with_keypoints);
+		//image name, whiteCount, blueCount
+		printf("%s,%lu,%lu\n", imname.c_str(), redkeypoints.size(),greenkeypoints.size());
+
+		Mat im_with_keypoints;
+		drawKeypoints(im, redkeypoints, im_with_keypoints, Scalar(255,255,255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+		imshow("redkeypoints",im_with_keypoints);
+		waitKey(0);
+
+		// Mat im_with_keypoints2;
+		// drawKeypoints(im, greenkeypoints, im_with_keypoints2, Scalar(255,255,255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+		// imshow("greenkeypoints",im_with_keypoints2);
 		// waitKey(0);
 	}
 }
