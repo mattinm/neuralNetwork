@@ -5840,6 +5840,7 @@ void Net::initVelocities(vector<cl_mem>& velocities)
 //running
 void Net::addData(const vector<imVector>& data)
 {
+	printf("Adding %lu data of size %lu x %lu x %lu\n", data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size());
 	for(int d = 0; d < data.size(); d++)
 	{
 		__data.resize(__data.size() + 1);
@@ -5850,7 +5851,7 @@ void Net::addData(const vector<imVector>& data)
 				for(int k=0; k < data[d][i][j].size(); k++)
 					__data.back()[dat++] = data[d][i][j][k];
 	}
-	__confidences.resize(__data.size());
+	__confidences.resize(__confidences.size() + __data.size());
 	__dataPreprocessed = false;
 }
 
@@ -5890,13 +5891,14 @@ void Net::addData(const vector<Mat>& data, bool rgb)
 		//printf("\n");
 	}
 	// printf("__data[0][0] = %lf\n",__data[0][0]);
-	__confidences.resize(__data.size());
+	__confidences.resize(__confidences.size() + __data.size());
 	__dataPreprocessed = false;
 }
 
 void Net::clearData()
 {
 	__data.resize(0);
+	__confidences.resize(0);
 }
 
 void Net::setData(const vector<imVector>& data)

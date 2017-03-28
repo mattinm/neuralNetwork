@@ -18,18 +18,22 @@ Seamcarver::~Seamcarver()
 
 int Seamcarver::POSITION(int x, int y)
 {
+	if(((y * window_width) + x) >= window_size || ((y * window_width) + x) < 0)
+		printf("carve position overflow\n");
 	return ((y * window_width) + x);
 }
 
 int Seamcarver::POSITION(int x, int y, int z)
 {
+	if(((y * window_width * 3) + x*3) + z >= window_size*3 || ((y * window_width * 3) + x*3) + z < 0)
+		printf("carve position3 overflow\n");
 	return ((y * window_width * 3) + x*3) + z;
 }
 
 void Seamcarver::init(const cv::Mat& source)
 {
 	if(source.empty())
-		printf("empty mat\n");
+		printf("empty mat given to seamcarver\n");
 	window_width = source.cols;
 	window_height = source.rows;
 	window_size = window_width * window_height;
@@ -42,7 +46,7 @@ void Seamcarver::init(const cv::Mat& source)
 void Seamcarver::makeMem()
 {
 
-	if(window_width < owidth && window_height < oheight)
+	if(window_width <= owidth && window_height <= oheight)
 		return;
 	if(owidth != -1)
 	{
@@ -53,6 +57,9 @@ void Seamcarver::makeMem()
 		owidth = window_width;
 		oheight = window_height;
 	}
+	// printf("making mem\n");
+
+	// printf("make Mem w %d h %d s %d\n", window_width, window_height, window_size);
 	
 	image = new int[window_size * 3];
 	vdirs = new char[window_size]; // 0 is right, 1 is down-right, -1 is up-right
@@ -63,12 +70,16 @@ void Seamcarver::makeMem()
 	hcosts = new float[window_size];
 	vseam = new int[window_height];
 	hseam = new int[window_width];
+	if(image == nullptr || vdirs == nullptr || hdirs == nullptr || greyscale == nullptr || vals == nullptr || vcosts == nullptr || hcosts == nullptr
+		|| vseam == nullptr || hseam == nullptr)
+		printf("nullptr in make mem!\n");
 }
 
 void Seamcarver::destroyMem()
 {
 	if(owidth != -1)
 	{
+		// printf("destroyMem\n");
 		delete image;
 		delete vdirs;
 		delete hdirs;
@@ -123,8 +134,17 @@ void Seamcarver::calcGradient()
 
 bool Seamcarver::carve_v(const cv::Mat& source, int numSeams, cv::Mat& dest)
 {
-	if(source.cols <= numSeams) //if asked to carve more than possible, don't
+	// printf("start carve\n");
+	if(source.empty())
+	{
+		printf("carve_v source empty\n");
 		return false;
+	}
+	if(source.cols <= numSeams) //if asked to carve more than possible, don't
+	{
+		printf("carve failed\n");
+		return false;
+	}
 
 	init(source);
 
@@ -218,7 +238,7 @@ bool Seamcarver::carve_v(const cv::Mat& source, int numSeams, cv::Mat& dest)
         }//end calc costs and dirs
 
         //calc seam to remove
-        float min_val = 20000000;
+        float min_val = 200000000;
         for(int x = 0; x < window_width - count; x++)
         {
         	//printf("vcosts[%d] = %f\n", x,vcosts[POSITION(x,0)]);
@@ -268,6 +288,7 @@ bool Seamcarver::carve_v(const cv::Mat& source, int numSeams, cv::Mat& dest)
 		}
 	}
 
+	// printf("end carve\n");
 
 	return true;
 }

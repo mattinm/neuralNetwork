@@ -4,13 +4,14 @@
 #include <vector>
 #include <iostream>
 
-// #include "opencv2/imgproc/imgproc.hpp" //used for showing images being read in from IDX
-// #include "opencv2/highgui/highgui.hpp"
+#include "opencv2/imgproc/imgproc.hpp" //used for showing images being read in from IDX
+#include "opencv2/highgui/highgui.hpp"
 
 using namespace std;
 using namespace cv;
 
 typedef vector<vector<vector<double> > > imVector;
+bool showImages = false;
 
 int imcount = 0;
 /**********************
@@ -162,6 +163,28 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 		cout << "Unknown sizeByte for data: " << sizeByteLabel << ". Exiting" << endl;
 		exit(0);
 	}
+
+	//show image and trueVal
+	if(showImages && imcount % 100 == 0)
+	{
+		Mat show(x,y,CV_8UC3);
+		for(int i = 0; i < x; i++)
+		{
+			for(int j = 0; j < y; j++)
+			{
+				Vec3b& outPix = show.at<Vec3b>(i,j);
+				outPix[0] = dest[i][j][0];
+				outPix[1] = dest[i][j][1];
+				outPix[2] = dest[i][j][2];
+			}
+		}
+		char name[10];
+		sprintf(name,"%d",(int)trueVal,imcount);
+		imshow(name,show);
+		waitKey(0);
+		printf("Count: %d true: %lf\n",imcount, trueVal);
+	}
+	imcount++;
 	// printf("trueVal: %lf\n", trueVal);
 	return trueVal;
 }
@@ -229,31 +252,31 @@ double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 			cout << "Unknown sizeByte for data: " << sizeByteLabel << ". Exiting" << endl;
 			exit(0);
 		}
-		if(count > 0)// && i==1) // second half restricts to white geese
+		if(count > 0 && i==2) // i==1 restricts to white geese, i==2 restricts to blue geese
 			retVal = i;
 	}
 
 
 	//show image and trueVal
-	// if(true)
-	// {
-	// 	Mat show(x,y,CV_8UC3);
-	// 	for(int i = 0; i < x; i++)
-	// 	{
-	// 		for(int j = 0; j < y; j++)
-	// 		{
-	// 			Vec3b& outPix = show.at<Vec3b>(i,j);
-	// 			outPix[0] = dest[i][j][2];
-	// 			outPix[1] = dest[i][j][1];
-	// 			outPix[2] = dest[i][j][0];
-	// 		}
-	// 	}
-	// 	char name[10];
-	// 	sprintf(name,"%d,%d",(int)retVal,imcount);
-	// 	imshow(name,show);
-	// 	waitKey(0);
-	// 	imcount++;
-	// }
+	if(showImages)
+	{
+		Mat show(x,y,CV_8UC3);
+		for(int i = 0; i < x; i++)
+		{
+			for(int j = 0; j < y; j++)
+			{
+				Vec3b& outPix = show.at<Vec3b>(i,j);
+				outPix[0] = dest[i][j][0];
+				outPix[1] = dest[i][j][1];
+				outPix[2] = dest[i][j][2];
+			}
+		}
+		char name[10];
+		sprintf(name,"%d,%d",(int)retVal,imcount);
+		imshow(name,show);
+		waitKey(0);
+		imcount++;
+	}
 
 	
 	// printf("trueVal: %lf\n", trueVal);
@@ -287,14 +310,18 @@ int main(int argc, char** argv)
 		printf("		-train_label=path/to/train/labels.idx   Path to training labels\n");
 		printf("		-test_data=path/to/test/data.idx        Path to test data\n");
 		printf("		-test_label=path/to/test/labels.idx     Path to test labels\n");
+		printf("        -byCount                                IDXs are Marshall's with the counts instead of labels\n");
+		printf("        -showImages                             Shows each image as read in. For image verification purposes.\n");
 		return 0;
 	}
+	printf("ConvNetTrainerCL_idx\n");
 	int device = 0;
 	int cmd_train_count = 0;
 	int cmd_test_count = 0;
 	string train_data_path, test_data_path, train_label_path, test_label_path;
 	char * netConfig_path = argv[1];
 	char * saveName = argv[2];
+	bool byCount = false;
 	for(int i = 3; i < argc; i++)
 	{
 		string arg = string(argv[i]);
@@ -319,6 +346,14 @@ int main(int argc, char** argv)
 		{
 			test_label_path = arg.substr(arg.find('=')+1);
 			cmd_test_count++;
+		}
+		else if(arg.find("-byCount") != string::npos)
+			byCount = true;
+		else if(arg.find("-showImages") != string::npos)
+			showImages = true;
+		else
+		{
+			printf("Unknown arg '%s'. Exiting.\n", argv[i]);
 		}
 	}
 
@@ -361,6 +396,7 @@ int main(int argc, char** argv)
 	vector<int> trainDims(3,1), train_label_dims;
 	if(cmd_train_count > 0)
 	{
+		printf("Getting training metadata\n");
 		training_label_in.open(train_label_path.c_str());
 		training_data_in.open(train_data_path.c_str());
 
@@ -396,12 +432,12 @@ int main(int argc, char** argv)
 	* get all test metadata and set up for reading in images
 	*
 	**************************/
-
 	int numTest = 0, test_data_convType, test_label_convType;
 	ifstream test_label_in, test_data_in;
 	vector<int> testDims(3,1), test_label_dims;
 	if(cmd_test_count > 0)
 	{
+		printf("Getting testing metadata\n");
 		test_label_in.open(test_label_path.c_str());
 		test_data_in.open(test_data_path.c_str());
 		int test_data_dataType, test_data_numDims, test_label_dataType, test_label_numDims;
@@ -430,6 +466,26 @@ int main(int argc, char** argv)
 			test_label_dims[i] = readBigEndianInt(test_label_in);
 	}
 
+
+	/**************************
+	*
+	* set up net
+	*
+	**************************/
+	Net net(netConfig_path);
+	net.preprocessCollectively();
+	net.setSaveName(saveName);
+	net.setTrainingType(TRAIN_AS_IS);
+	// net.setTrainingType(TRAIN_EQUAL_PROP);
+	net.setDevice(device);
+	// net.set_learningRate(0);
+	if(!net.finalize())
+	{
+		cout << net.getErrorLog() << endl;
+		cout << "Something went wrong making the net. Exiting." << endl;
+		return 0;
+	}
+
 	
 
 	printf("numTrain %d numTest %d\n", numTraining, numTest);
@@ -437,18 +493,49 @@ int main(int argc, char** argv)
 	if(cmd_test_count > 0)
 		printf("Test are %d x %d x %d\n", testDims[0],testDims[1],testDims[2]);
 
-	vector<imVector> training_data(numTraining), test_data(numTest);
-	vector<double> training_true(numTraining), test_true(numTest);
-
-	for(int i = 0; i < numTraining; i++)
+	int maxSize = 10000; //max number of items read before adding to net. prevents having too many duplicate items when reading in.
+	vector<imVector> training_data(maxSize), test_data(maxSize);
+	vector<double> training_true(maxSize), test_true(numTest);
+	int i, j;
+	for(i = 0, j = 0; j < numTraining; i++, j++)
 	{
-		training_true[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
+		if(byCount)
+			training_true[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
+		else
+			training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i], trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
+		if(i % maxSize == 0 && i != 0)
+		{
+			net.addTrainingData(training_data,training_true);
+			// training_data.clear();
+			// training_true.clear();
+			i = 0;
+		}
 	}
+	//add leftover data
+	training_data.resize(i);
+	training_true.resize(i);
+	net.addTrainingData(training_data, training_true);
 
-	for(int i = 0; i < numTest; i++)
+	training_data.resize(0); training_data.shrink_to_fit();
+	training_true.resize(0); training_true.shrink_to_fit();
+
+	for(i = 0, j= 0; j < numTest; i++, j++) // i and j declared above the training portion
 	{
-		test_true[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
+		if(byCount)
+			test_true[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
+		else
+			test_true[i] = getNextImage(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType);
+		if(i % maxSize == 0 && i != 0)
+		{
+			net.addData(test_data);
+			// test_data.clear();
+			i = 0;
+		}
 	}
+	test_data.resize(i);
+	net.addData(test_data);
+
+	test_data.resize(0); test_data.shrink_to_fit();
 
 
 	readChar(training_label_in);
@@ -468,50 +555,36 @@ int main(int argc, char** argv)
 	test_data_in.close();
 
 
-	vector<int> numcolorimages(3,0);
-	vector<int> numtotalbyclass(3,0);
-	for(int i = 0; i < numTraining; i++)
-	{
-		int colorFound = 0;
-		for(int j = 0; j < training_data[i].size(); j++)
-			for(int k = 0; k < training_data[i][j].size(); k++)
-				for(int l = 0; l < training_data[i][j][k].size(); l++)
-					if(training_data[i][j][k][l] != 0)
-					{
-						colorFound = 1;
-					}
-		numcolorimages[training_true[i]] += colorFound;
-		numtotalbyclass[training_true[i]]++;
-	}
-	for(int i = 0; i < 3; i++)
-		printf("Num color images class %d is %d of %d. %lf%%\n", i, numcolorimages[i], numtotalbyclass[i], 100. * numcolorimages[i]/numtotalbyclass[i]);
+	// vector<int> numcolorimages(3,0);
+	// vector<int> numtotalbyclass(3,0);
+	// for(int i = 0; i < numTraining; i++)
+	// {
+	// 	int colorFound = 0;
+	// 	for(int j = 0; j < training_data[i].size(); j++)
+	// 		for(int k = 0; k < training_data[i][j].size(); k++)
+	// 			for(int l = 0; l < training_data[i][j][k].size(); l++)
+	// 				if(training_data[i][j][k][l] != 0)
+	// 				{
+	// 					colorFound = 1;
+	// 				}
+	// 	numcolorimages[training_true[i]] += colorFound;
+	// 	numtotalbyclass[training_true[i]]++;
+	// }
+	// for(int i = 0; i < 3; i++)
+	// 	printf("Num color images class %d is %d of %d. %lf%%\n", i, numcolorimages[i], numtotalbyclass[i], 100. * numcolorimages[i]/numtotalbyclass[i]);
 
 
 
-
-	Net net(netConfig_path);
-	net.preprocessCollectively();
-	net.setSaveName(saveName);
-	net.setTrainingType(TRAIN_AS_IS);
-	// net.setTrainingType(TRAIN_EQUAL_PROP);
-	net.setDevice(device);
-	// net.set_learningRate(0);
-	if(!net.finalize())
-	{
-		cout << net.getErrorLog() << endl;
-		cout << "Something went wrong making the net. Exiting." << endl;
-		return 0;
-	}
 	if(cmd_train_count > 0)
 	{
-		net.addTrainingData(training_data,training_true);
+		//net.addTrainingData(training_data,training_true);
 		net.printTrainingDistribution();
 
 		net.train();
 	}
 	if(cmd_test_count > 0)
 	{
-		net.addData(test_data);
+		//net.addData(test_data);
 
 		net.run();
 

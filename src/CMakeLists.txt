@@ -27,7 +27,7 @@ add_executable (ConvNetTrainerCL ConvNetTrainerCL.cpp)
 target_link_libraries(ConvNetTrainerCL ${OpenCL_LIBRARIES} ConvNetCL)
 
 add_executable (ConvNetTrainerCL_idx ConvNetTrainerCL_idx.cpp)
-target_link_libraries(ConvNetTrainerCL_idx ${OpenCL_LIBRARIES} ConvNetCL )#${OpenCV_LIBS})
+target_link_libraries(ConvNetTrainerCL_idx ${OpenCL_LIBRARIES} ConvNetCL ${OpenCV_LIBS})
 
 #add_executable (ConvNetContinuanceCL ConvNetContinuanceCL.cpp)
 #target_link_libraries(ConvNetContinuanceCL ${OpenCL_LIBRARIES} ConvNetCL)
@@ -53,6 +53,9 @@ target_link_libraries(ConvNetVideoDriverCL ${OpenCV_LIBS} ${OpenCL_LIBRARIES} Co
 #add_executable (ConvNetVideoDriverParallelCL_multiNet ConvNetVideoDriverParallelCL_multiNet.cpp)
 #target_link_libraries(ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
+add_executable(CNNtoObserver_comparator CNNtoObserver_comparator.cpp)
+target_link_libraries(CNNtoObserver_comparator ConvNetEvent ${OpenCV_LIBS})
+
 add_executable (kernelBuilder kernelBuilder.cpp)
 target_link_libraries(kernelBuilder ${OpenCL_LIBRARIES})
 
@@ -76,3 +79,10 @@ target_link_libraries(ImageSplitterFileCreator ${OpenCV_LIBS})
 
 add_executable (TrainingImageSplitterFileCreator TrainingImageSplitterFileCreator.cpp)
 target_link_libraries(TrainingImageSplitterFileCreator ${OpenCV_LIBS})
+
+IF(MYSQL_FOUND)
+	add_executable(ConvNetSeam_ToIDX ConvNetSeam_ToIDX.cpp)
+	target_link_libraries(ConvNetSeam_ToIDX ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetEvent Seamcarver ${MYSQL_LIBRARIES})
+ELSE()
+	MESSAGE("Not building ConvNetSeam_ToIDX due to MySQL not found")
+ENDIF()

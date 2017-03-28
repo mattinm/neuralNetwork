@@ -22,7 +22,7 @@ void getClasses(int classLevel, std::vector<int>& dest)
 	}
 	else 
 	{
-		printf("Class level not currently supported\n");
+		printf("Class level number '%d'not currently supported\n",classLevel);
 		exit(0);
 	}
 }
@@ -42,6 +42,7 @@ bool Event::equals(const Event &other)
 
 Event::Event(std::string type, long starttime, long endtime)
 {
+	// printf("Adding event %ld %ld\n", starttime, endtime);
 	this->type = type;
 	this->starttime = starttime;
 	this->endtime = endtime;
@@ -51,6 +52,7 @@ Event::Event(std::string type, long starttime, long endtime)
 		this->isOvernight = false;
 	this->starttime_string = getTime(starttime);
 	this->endtime_string = getTime(endtime);
+	// printf("End Adding event %ld %ld\n", this->starttime, this->endtime);
 }
 
 Event::Event(std::string event)
@@ -71,7 +73,7 @@ Event::Event(const Event& other)
 {
 	type = other.type;
 	starttime = other.starttime;
-	endtime = other.starttime;
+	endtime = other.endtime;
 	isOvernight = other.isOvernight;
 	starttime_string = other.starttime_string;
 	endtime_string = other.endtime_string;
@@ -168,9 +170,14 @@ void Observations::addEvent(std::string type, std::string starttime, std::string
 
 void Observations::getEvents(int tim, std::vector<Event>& dest)
 {
+	// printf("in get events: tim %d\n", tim);
+	// printf("obs: %s",this->toString().c_str());
+
 	dest.clear();
 	//seconds in a day = 3600 * 24 = 86400
 	tim %= 86400; //make sure we are within a valid time for a day
+
+	// printf("time is %s\n",convnet::getTime(tim).c_str());
 	for(unsigned int i = 0; i < events.size(); i++)
 	{
 		//check if time is within event time. if so add to dest
@@ -181,8 +188,14 @@ void Observations::getEvents(int tim, std::vector<Event>& dest)
 		}
 		else
 		{
+			// printf("Event %d: %ld <= %d <= %ld\n %s",i,events[i].starttime, tim, events[i].endtime,events[i].toString().c_str());
+
+
 			if(events[i].starttime <= tim && tim  <= events[i].endtime)
+			{
+				// printf("push_back\n");
 				dest.push_back(events[i]);
+			}
 		}
 	}
 }

@@ -55,7 +55,7 @@ std::time_t getTime(std::string tim)
 	t += std::stoi(tim.substr(tim.rfind(':')+1)); // seconds
 	t += 60 * std::stoi(tim.substr(tim.find(':')+1, 2)); //minutes
 	t += 3600 * std::stoi(tim.substr(0,2)); //hours
-
+	// printf("gt str->s %s -> %ld\n", tim.c_str(), t);
 	return t;
 }
 
@@ -80,6 +80,7 @@ std::string getTime(std::time_t tim)
 	s << seconds;
 	
 	std::string out = s.str();
+	// printf("gt s->str %ld -> %s\n", tim, out.c_str()); // need to get tim before /= it
 	return out;
 }
 
