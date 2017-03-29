@@ -246,3 +246,18 @@ ModelManifest.xml
 
 # Temp files
 *.swp
+
+.DS_Store
+[Bb]uild*/
+ConfigFiles/
+Data/
+Data
+ImageBinaries/
+NetConfigs/
+Screenshots/
+Z_BadSrc/
+wildlife_db_info
+msi_locations.bin
+*.old*
+CNNs/
+mosaic_test_images/

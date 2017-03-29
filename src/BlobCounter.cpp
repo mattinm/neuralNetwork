@@ -72,11 +72,20 @@ int main(int argc, char** argv)
 
 		params.filterByCircularity = false;
 		params.filterByConvexity = false;
-		
-		SimpleBlobDetector detector(params);
+
 		vector<KeyPoint> redkeypoints, greenkeypoints;
+		#if CV_MAJOR_VERSION < 3
+		SimpleBlobDetector detector(params);
 		detector.detect(redOnly, redkeypoints);
 		detector.detect(greenOnly, greenkeypoints);
+		#else
+		Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
+		detector->detect(redOnly, redkeypoints);
+		detector->detect(greenOnly, greenkeypoints);
+		#endif
+
+		
+		
 
 		//image name, whiteCount, blueCount
 		printf("%s,%lu,%lu\n", imname.c_str(), redkeypoints.size(),greenkeypoints.size());

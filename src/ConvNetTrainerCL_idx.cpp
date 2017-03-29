@@ -179,7 +179,7 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 			}
 		}
 		char name[10];
-		sprintf(name,"%d",(int)trueVal,imcount);
+		sprintf(name,"%d",(int)trueVal);
 		imshow(name,show);
 		waitKey(0);
 		printf("Count: %d true: %lf\n",imcount, trueVal);
