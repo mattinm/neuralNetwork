@@ -9,6 +9,11 @@
 #include "ConvNetCommon.h"
 #include <cassert>
 
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+
 // #define FLAG_SHOW_MATCHED_BOXES //when not commmented will show image of each msi showing matched and unmatched boxes
 // #define FLAG_SHOW_BLACKOUT_BOXES //when not commmented will show image of each msi showing blacked out boxes after the blackout stage
 
@@ -83,6 +88,7 @@ struct MSI
 	//for the species_id != BACKGROUND, it is the misclassified ratio
 	//for the species_id == BACKGROUND, it is the correctly classified ratio
 	unordered_map<int,float> bmr; 
+	string original_image_path = "";
 
 	MSI();
 	MSI(int msi, int numBoxes);
@@ -132,6 +138,79 @@ int getMSI(string filename)
 	int nextUnderscore = filename.find("_",startMSIIndex);
 	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
 	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
+}
+
+void readInOriginalFilenames(const string& original_image_folder)
+{
+	bool isDirectory;
+	struct stat s;
+	unordered_map<int, string> filenamesByMSI;
+	if(stat(original_image_folder.c_str(),&s) == 0)
+	{
+		if(s.st_mode & S_IFDIR) // directory
+			isDirectory = true;
+		else if (s.st_mode & S_IFREG) // file
+			isDirectory = false;
+		else
+		{
+			printf("We're not sure what the file you inputted for --original_image_folder was.\nExiting\n");
+			exit(-1);
+		}
+		if(!isDirectory)
+		{
+			printf("The --original_image_folder should be a directory but it doesn't appear to be.\nExiting\n");
+			exit(-1);
+		}
+
+		DIR *directory;
+		struct dirent *file;
+		if((directory = opendir(original_image_folder.c_str())))// != NULL)
+		{
+			string pathName = original_image_folder;
+			if(pathName.rfind("/") != pathName.length()-1)
+				pathName.append(1,'/');
+			char inPathandName[500];
+			while((file = readdir(directory)))// != NULL)
+			{
+				if(strcmp(file->d_name, ".") != 0 && strcmp(file->d_name, "..") != 0)
+				{
+					sprintf(inPathandName,"%s%s",pathName.c_str(),file->d_name);
+					string ipan(inPathandName);
+					if(ipan.find("_prediction") == string::npos)
+					{
+						filenamesByMSI[getMSI(ipan)] = ipan;
+					}
+				}
+			}
+			//cout << "closing directory" << endl;
+			closedir(directory);
+			//cout << "directory closed" << endl;
+		}
+		else
+		{
+			printf("directory problems dealing with --original_image_folder ??? Bye.\n");
+			exit(-1);
+		}
+
+		for(auto it = locations.begin(); it != locations.end(); it++)
+		{
+			if(filenamesByMSI.find(it->first) != filenamesByMSI.end()) // if we found the MSI in filenamesByMSI
+				locations[it->first].original_image_path = filenamesByMSI[it->first];
+
+			//only worry if the original_image_path doesn't exist when looking for it
+
+			// else
+			// {
+			// 	printf("Unable to find original image for MSI %d\n", it->first);
+			// 	exit(-1);
+			// }
+		}
+	}
+	else
+	{
+		printf("Error getting status of folder for --original_image_folder.\nExiting\n");
+		exit(-1);
+	}
 }
 
 int getMaxIndex(const Vec3b& pix)
@@ -242,15 +321,17 @@ int main(int argc, char** argv)
 {
 	if(argc < 2)
 	{
-		printf("Usage: ./CNNtoObserver_comparator  obsfile image1 image2 ...\n");
+		printf("Usage: ./CNNtoObserver_comparator obsfile image1 image2 ...\n");
 		printf("  Optional args MUST come before required args\n");
-		printf("  --idx_name=<string> A base name (no extension) for IDX output files. Actual files will be baseName_data.idx and baseName_label.idxn");
-		printf("  --idx_size=<int>    The size in pixels of the width/height for the output IDX. All output images will be square.\n");
-		printf("  --exclude=<int>     The species_id of the species to exclude from calculations and the output IDX. Can be used multiple times.\n");
+		printf("  --idx_name=<string>               A base name (no extension) for IDX output files. Actual files will be baseName_data.idx and baseName_label.idxn");
+		printf("  --idx_size=<int>                  The size in pixels of the width/height for the output IDX. All output images will be square.\n");
+		printf("  --exclude=<int>                   The species_id of the species to exclude from calculations and the output IDX. Can be used multiple times.\n");
+		printf("  --original_image_folder=<string>  The path to the folder holding the original images that have the MSI in their name in the form \"msi#\".\n");
 		return 0;
 	}
 	int32_t idx_size = -1;
 	string outName = "";
+	string original_image_folder = "";
 	bool doOutput = false;
 	ofstream out;
 	int a = 1;
@@ -272,9 +353,9 @@ int main(int argc, char** argv)
 			}
 		}
 		else if(arg.find("--exclude=") != string::npos)
-		{
 			exclude[stoi(arg.substr(arg.find('=')+1))] = 1;
-		}
+		else if(arg.find("--original_image_folder=") != string::npos)
+			original_image_folder = arg.substr(arg.find('=')+1);
 		else
 		{
 			printf("Unknown arg '%s'. Exiting.\n", argv[a]);
@@ -294,6 +375,12 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	if(doOutput && original_image_folder == "") //both idx_size and outName are guaranteed specified at this point
+	{
+		printf("Need to specify --original_image_folder to get output idx file.\n");
+		return 0;
+	}
+
 	//read in observations to global map
 	if(a >= argc)
 	{
@@ -301,6 +388,12 @@ int main(int argc, char** argv)
 		return 0;
 	}
 	readFile(argv[a++]);
+
+	//if doing output we need to get the original image locations for the MSIs
+	if(doOutput)
+	{
+		readInOriginalFilenames(original_image_folder);
+	}
 
 	// for(auto it = locations.begin(); it != locations.end(); it++)
 	// {
@@ -313,15 +406,32 @@ int main(int argc, char** argv)
 	// resizeWindow("image",600,600);
 
 	int bgStride = idx_size / 2;
-	int fgStride = 1000;
+	int fgStride = 1000;\
+
+	bool origDoOutput = doOutput;
 
 	for(; a < argc; a++)
 	{
+		doOutput = origDoOutput; // in case we turn it off because we can't find the original image
+
 		string filename(argv[a]);
 		int msi = getMSI(filename); //got the msi
 		Mat im = imread(argv[a],1); //got the image
 		int numBoxes = locations[msi].boxes.size();
 		printf("Doing msi %5d: size %4d x %4d (w x h). Num obs: %3d\n", msi,im.cols,im.rows,numBoxes);
+
+		Mat orig_im;
+		if(doOutput)
+		{
+			string &orig_path = locations[msi].original_image_path;
+			if(orig_path == "")
+			{
+				printf("UNABLE TO FIND ORIGINAL IMAGE FOR MSI %d. SKIPPING THIS MSI FOR IDX OUTPUT\n", msi);
+				doOutput = false;
+			}
+			else //we know where the original is
+				orig_im = imread(orig_path.c_str());
+		}
 
 		//make a copy to draw on
 		#ifdef FLAG_SHOW_MATCHED_BOXES
@@ -452,7 +562,7 @@ int main(int argc, char** argv)
 						}
 					}
 					                //im(rowRange,colRange) upper boundary not included (hence the +1)
-					Mat forTraining = im(Range(fy,fey + 1),Range(fx,fex + 1));
+					Mat forTraining = orig_im(Range(fy,fey + 1),Range(fx,fex + 1));
 
 					// printf("adding missed positive species %d: size %d x %d\n", box.species_id,forTraining.cols,forTraining.rows);
 
@@ -580,7 +690,7 @@ int main(int argc, char** argv)
 					if(exclude.find(cacluatedSpecies) == exclude.end()) //exclude always includes BG
 					{
 						// printf("box: y %d ey %d x %d ex %d\n", y,y+idx_size,x,x+idx_size);
-						Mat forTraining = im(Range(y, y + idx_size),Range(x, x + idx_size));
+						Mat forTraining = orig_im(Range(y, y + idx_size),Range(x, x + idx_size));
 	
 						//need to put image and true val in forTrainingVariable vector
 						OutImage fixedImage;
@@ -599,11 +709,9 @@ int main(int argc, char** argv)
 		printf("For training variable size %lu\n", forTrainingVariable.size());
 		for(OutImage &image : forTrainingVariable)
 		{
-			// bool pushed = false;
 			for(int y = 0; y < image.mat.rows - idx_size; y += fgStride)
 				for(int x = 0; x < image.mat.cols - idx_size; x += fgStride)
 				{
-					// pushed = true;
 					Mat forTraining = image.mat(Range(y, y + idx_size),Range(x, x + idx_size));
 	
 					//need to put image and true val in forTrainingVariable vector
@@ -612,11 +720,6 @@ int main(int argc, char** argv)
 					fixedImage.species_id = image.species_id;
 					forTrainingFixed.push_back(fixedImage);
 				}
-			// if(!pushed)
-			// {
-			// 	printf("  !!!!!!!!!!! not pushed\n");
-			// 	printf(" cols %d rows %d xcap %d ycap %d\n", image.mat.cols,image.mat.rows,image.mat.cols - idx_size,image.mat.cols - idx_size);
-			// }
 
 			image.mat.release(); // release memory to try to keep mem usage lower
 		}

@@ -536,7 +536,7 @@ int main(int argc, char** argv)
 		int curStartTime = video_start_time + startFrame / fps;
 		int curEndTime   = video_start_time + endFrame / fps;
 
-		obs.addEvent(net.getClassForTrueVal(curClassIndex), curStartTime, curEndTime);
+		obs.addEvent(net.getNameForIndex(curClassIndex), curStartTime, curEndTime);
 	}
 
 	/*

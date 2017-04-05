@@ -94,7 +94,7 @@ Net::Net(const Net &other) // Copy constructor
 
 		//data and related members
 		//__numClasses set in addTrainingData
-		this->__classes = other.__classes;
+		// this->__classes = other.__classes;
 		this->__useMomentum = other.__useMomentum;
 		this->__stuffBuilt = false;
 
@@ -234,7 +234,7 @@ Net& Net::operator=(const Net& other)
 
 		//data and related members
 		//__numClasses set in addTrainingData
-		this->__classes = other.__classes;
+		// this->__classes = other.__classes;
 		this->__useMomentum = other.__useMomentum;
 		this->__stuffBuilt = false;
 
@@ -734,6 +734,18 @@ bool Net::finalize()
 	{
 		__errorLog += "NET_TOO_SMALL_ERROR: There must be at least one hidden layer.\n";
 		returnVal = false;
+	}
+
+	//make sure if using TRAIN_RATIO we have good ratio vals for all classes
+	if(__trainingType == TRAIN_RATIO)
+	{
+		for(int i = 0; i < __trainRatioAmounts.size(); i++)
+			if(__trainRatioAmounts[i] < 0) // 0 is valid. It just means don't include any of this class
+			{
+				__errorLog += "INVALID_RATIOS_ERROR: There is a ratio of TRAIN_RATIO that is negative.\n";
+				returnVal = false;
+				break;
+			}
 	}
 
 	//if we are going to return false, do it now. else set up OpenCL
@@ -2658,7 +2670,7 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	 		{
 	 			for(int im = 0; im < __confidences[c].size(); im++)
 	 				curError += __confidences[c][im];
-		 		if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
+		 		if(getMaxElementIndex(__confidences[c]) == __testTrueIndexes[c])
 		 			testCorrect++;
 		 	}
 	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
@@ -2830,18 +2842,18 @@ void Net::train(int epochs)
  	 				curError += __confidences[c][im];
  	 			if(isApproximator)
  	 			{
- 	 				double absError = abs(__testTrueVals[c] - __confidences[c][0]);
+ 	 				double absError = abs(__testTrueIndexes[c] - __confidences[c][0]);
  	 				testError += absError;
  	 				if(absError > maxError)
  	 				{
  	 					maxError = absError;
- 	 					was = __testTrueVals[c];
+ 	 					was = __testTrueIndexes[c];
  	 					found  = __confidences[c][0];
  	 				}
  	 			}
  	 			else //is classifier
  	 			{
- 		 			if(getMaxElementIndex(__confidences[c]) == __testTrueVals[c])
+ 		 			if(getMaxElementIndex(__confidences[c]) == __testTrueIndexes[c])
  		 				testCorrect++;
  		 		}
  		 	}
@@ -3918,7 +3930,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 *
 *****************************/
 //If you use DETrain, only the input size and location of maxpools matter
-void Net::DETrain(int generations, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
+/*void Net::DETrain(int generations, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
 	printf("DE training\n");
 
@@ -4070,8 +4082,8 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 				nets[i]->__trainingData.resize(1);
 				nets[i]->__trainingData[0].resize(1);
 				nets[i]->__trainingData[0][0] = trainingData[curTrainDataIndex];
-				nets[i]->__trueVals.clear();
-				nets[i]->__trueVals.push_back(trueVals[curTrainDataIndex]);
+				nets[i]->__trueNames.clear();
+				nets[i]->__trueNames.push_back(trueVals[curTrainDataIndex]);
 				nets[i]->train(1);
 				nets[i]->__trainingData.clear(); //don't want to delete the pointer
 				//no need to copy the fitness b/c won't matter next time anyway
@@ -4115,7 +4127,7 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 		}
 	}
 
-}
+}*/
 
 /*****************************
 *
@@ -4125,7 +4137,7 @@ void Net::DETrain(int generations, int population, double mutationScale, int cro
 * Public
 *
 *****************************/
-void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
+/*void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population, double mutationScale, int crossMethod, double crossProb, bool BP)
 {
 	double mutationMax = 0.1, mutationMin = 0.1;
 	double crossMax = 0.8, crossMin = 0.1;
@@ -4292,11 +4304,11 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
  	bool firstTime = true;
 	while(curGen <= generations)
 	{
-		/******************************
+		******************************
 		*
 		*  END OF AN EPOCH/GENERATION
 		*
-		******************************/
+		******************************//*
 		if(curTrainDataIndex == trainingData.size() || curGen == generations || firstTime)
 		// if(true)
 		{
@@ -4403,11 +4415,11 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 
 		}
 
-		/******************************
+		******************************
 		*
 		*  START OF DE TRAINING PER IMAGE
 		*
-		******************************/
+		******************************//*
 
 		if(curTrainDataIndex % 1000 == 0 && curTrainDataIndex != 0)
 		{
@@ -4468,11 +4480,11 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 			i+=myclBatchSize;
 		}
 
-		/******************************
+		******************************
 		*
 		*  GETTING DONOR AND TRIAL VECTORS SEQUENTIALLY
 		*
-		******************************/
+		******************************//*
 		double mutationCurrent = mutationMin + (mutationMax - mutationMin)*(generations - curGen)/generations;
 		crossProb = crossMin + (crossMax - crossMin) * (generations - curGen)/generations;
 		if(mutationType != DE_QUIN_AND_SUGANTHAN)
@@ -4709,11 +4721,11 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 
 
 
-		/******************************
+		******************************
 		 *
 		 *  RUNNING TRIAL VECTORS CONCURRENTLY
 		 *
-		 ******************************/
+		 ******************************//*
 		// for(int i = 0; i < nets.size();)
 		// {
 		// 	//threaded
@@ -4767,7 +4779,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 		clReleaseMemObject(denoms[i]);
 		releaseKernels(kerns[i]);
 	}
-}
+}*/
 
 /*****************************
 *
@@ -4777,7 +4789,7 @@ void Net::DETrain_sameSize(int mutationType, int generations, int dataBatchSize,
 * Private
 *
 *****************************/
-void Net::trial_thread(int netIndex, vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem** prevNeurons, 
+/*void Net::trial_thread(int netIndex, vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem** prevNeurons, 
 	cl_mem** neurons, const vector<cl_mem>& layerNeeds, const vector<cl_mem>& clWeights, const vector<cl_mem>& clBiases, 
 	const vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP)
 {
@@ -4827,7 +4839,7 @@ void Net::trial_thread(int netIndex, vector<Net*>* nets, double netfit, Net* tri
 		// printf("parent better\n");
 		delete trial;
 	}
-}
+}*/
 
 /*****************************
 *
@@ -5662,7 +5674,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 			for(int i = 0; i < __trainingData[t].size(); i++) // for all training images in the class
 			{
 				trainingData[oldSize + i] = __trainingData[t][i];
-				trueVals[oldSize + i] = __trueVals[t];
+				trueVals[oldSize + i] = getTrueValIndex(__trueNames[t]);
 			}
 		}
 		//printf("Sizes! data %lu, true %lu\n",trainingData.size(), trueVals.size());
@@ -5691,11 +5703,84 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 			for(int i = 0; i < __smallestClassSize; i++) // image. take the first __smallestClassSize amount of images
 			{
 				trainingData[index] = __trainingData[t][i];
-				trueVals[index] = __trueVals[t];
+				trueVals[index] = getTrueValIndex(__trueNames[t]);
 				index++;
 			}
 		}
 		//shuffle trainingData to mix up the classes
+		shuffleTrainingData(trainingData,trueVals,2);
+	}
+	else if(__trainingType == TRAIN_RATIO)
+	{
+		if(trainingData.size() == 0) //first time through. find the smallest class size
+		{
+			__smallestClassSize = __trainingData[0].size();
+			__smallestClassIndex = 0;
+			for(int t = 1; t < __trainingData.size(); t++)
+				if(__trainingData[t].size() < __smallestClassSize)
+				{
+					__smallestClassSize = __trainingData[t].size();
+					__smallestClassIndex = t;
+				}
+
+			int smallestClassRatio = __trainRatioAmounts[__smallestClassIndex];
+
+			//make the smallestClassSize even divisible by the trainRatioAmount
+			__smallestClassSize -= __smallestClassSize % smallestClassRatio; // if evenly divisible already, then minus 0
+
+			bool good;
+			int totalSize;
+			__trainActualAmounts.resize(__trainRatioAmounts.size());
+			do // if all goes well, this will only run once. If we ask for a ratio we can't do with the amount of data we have
+			{  // then we try again with a smaller __smallestClassSize
+				good = true;
+				totalSize = 0;
+				for(int t = 0; t < __trainingData.size(); t++ ) // for each class
+				{
+					//check if enough data for ratio based on __smallestClassSize
+					int classAmount = (int)(__smallestClassSize * __trainRatioAmounts[t]/(double)smallestClassRatio);
+					if(classAmount > __trainingData[t].size())
+					{
+						//this means we need more data than we have. Adjust accordingly
+						__smallestClassSize = (int)(__trainingData[t].size() * (double)smallestClassRatio/__trainRatioAmounts[t]);
+
+						//make the new smallestClassSize even divisible by the trainRatioAmount
+						__smallestClassSize -= __smallestClassSize % smallestClassRatio; // if evenly divisible already, then minus 0
+						
+						//need to loop again
+						good = false;
+						break;
+					}
+
+					//add size 
+					totalSize += classAmount;
+					__trainActualAmounts[t] = classAmount;
+				}
+
+			} while(!good);
+		
+			trainingData.clear();
+			trueVals.clear();
+			trainingData.resize(totalSize);
+			trueVals.resize(totalSize);
+		} //end if(trainingData.size() == 0) //first time through. find the smallest class size
+
+		//shuffle all the data
+		for(int t = 0; t < __trainingData.size(); t++)
+			shuffleData(__trainingData[t],2);
+
+		//put the right amount of data in to be trained on
+		int i = 0;
+		for(int c = 0; c < __trainingData.size(); c++) // c is for class
+		{
+			for(int j = 0; j < __trainActualAmounts.size(); j++)
+			{
+				trainingData[i] = __trainingData[c][j];
+				trueVals[i] = getTrueValIndex(__trueNames[c]);
+				i++;
+			}
+		}
+
 		shuffleTrainingData(trainingData,trueVals,2);
 	}
 }
@@ -5747,11 +5832,38 @@ void Net::shuffleTrainingData(vector<vector<double>* >& trainingData, vector<dou
 	}
 }
 
-bool Net::setTrainingType(int type)
+bool Net::setTrainingType(int type, const vector<string>& params)
 {
-	if(type < 0 || 1 < type)
+	if(type < 0 || 2 < type) // good up to TRAIN_RATIO
 		return false;
 	__trainingType = type;
+	if(type == TRAIN_RATIO) // need params[0] "name1:name2:..." params[1] "ratio1:ratio2:..."
+	{
+		if(params.size() != 2)
+		{
+			printf("To use net.setTrainingType(TRAIN_RATIO) you need a second paramater 'params' \n");
+			printf("   that is a vector of strings of size 2 with params[0] =\"className1:className2:...\"\n");
+			printf("   and params[1] \"ratio1:ratio2:...\"\n");
+			return false;
+		}
+
+		vector<string> names = convnet::split(params[0],':');
+		vector<string> string_ratios = convnet::split(params[1],':');
+
+		if(names.size() != string_ratios.size())
+		{
+			printf("The 2 elements of setTrainingType 2nd paramater must be of contain the same number of \n");
+			printf("   colon (:) delimited sub-elements. i.e. [0] -> name1:name2, [1] -> ratio1:ratio2\n");
+			printf("   Not [0] -> name1:name2, [1] -> ratio1:ratio2:ratio3\n");
+			return false;
+		}
+
+		for(int i = 0; i < names.size(); i++)
+		{
+			int index = getTrueValIndex(names[i], true); // this also takes care of resizing __trainRatioAmounts if needed
+			__trainRatioAmounts[index] = stoi(string_ratios[i]);
+		}
+	}
 	return true;
 }
 
@@ -5914,26 +6026,26 @@ void Net::setData(const vector<Mat>& data, bool rgb)
 	addData(data,rgb);
 }
 
-void Net::setClassNames(vector<string> names, vector<int> trueVals)
-{
-	printf("Setting Class Names.\n");
-	__classes.resize(names.size());
-	for(int i = 0; i < __classes.size(); i++)
-	{
-		__classes[i].name = names[i];
-		__classes[i].trueVal = trueVals[i];
+// void Net::setClassNames(vector<string> names, vector<int> trueVals)
+// {
+// 	printf("Setting Class Names.\n");
+// 	__classes.resize(names.size());
+// 	for(int i = 0; i < __classes.size(); i++)
+// 	{
+// 		__classes[i].name = names[i];
+// 		__classes[i].trueVal = trueVals[i];
 
-		printf("Class %d, %s\n", __classes[i].trueVal, __classes[i].name.c_str());
-	}
-}
+// 		printf("Class %d, %s\n", __classes[i].trueVal, __classes[i].name.c_str());
+// 	}
+// }
 
-void Net::getClassNames(vector<ClassInfo>& infos) const
+void Net::getClassNames(vector<string>& infos) const
 {
-	infos = __classes;
+	infos = __trueNames;
 }
 
 //training
-bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<double>& trueVals)
+bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<string>& trueVals)
 {
 	if(trainingData.size() != trueVals.size())
 		return false;
@@ -5957,11 +6069,11 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<dou
 				}
 	}
 
-	// __numClasses = __trueVals.size();
+	// __numClasses = __trueNames.size();
 	return true;
 }
 
-bool Net::addTrainingData(const vector<Mat>& trainingData, const vector<double>& trueVals, bool rgb)
+bool Net::addTrainingData(const vector<Mat>& trainingData, const vector<string>& trueVals, bool rgb)
 {
 	printf("add train mat: ");
 	if(trainingData.size() != trueVals.size())
@@ -6001,10 +6113,10 @@ void Net::clearTrainingData()
 		for(int j = 0; j < __trainingData[i].size(); j++)
 			delete __trainingData[i][j];
 	__trainingData.resize(0);
-	__trueVals.resize(0);
+	__trueNames.resize(0);
 }
 
-bool Net::setTrainingData(const vector<imVector>& trainingData, const vector<double>& trueVals)
+bool Net::setTrainingData(const vector<imVector>& trainingData, const vector<string>& trueVals)
 {
 	if(trainingData.size() != trueVals.size())
 		return false;
@@ -6012,7 +6124,7 @@ bool Net::setTrainingData(const vector<imVector>& trainingData, const vector<dou
 	return addTrainingData(trainingData,trueVals);
 }
 
-bool Net::setTrainingData(const vector<Mat>& trainingData, const vector<double>& trueVals, bool rgb)
+bool Net::setTrainingData(const vector<Mat>& trainingData, const vector<string>& trueVals, bool rgb)
 {
 	if(trainingData.size() != trueVals.size())
 		return false;
@@ -6020,33 +6132,55 @@ bool Net::setTrainingData(const vector<Mat>& trainingData, const vector<double>&
 	return addTrainingData(trainingData, trueVals,rgb);
 }
 
-int Net::getTrueValIndex(double trueVal)
+void Net::setTrueNameIndex(const string& name, int index)
 {
-	for(int i=0; i < __trueVals.size(); i++)
-		if(__trueVals[i] == trueVal)
+	if(index >= __trueNames.size())
+		__trueNames.resize(index+1);
+
+	__trueNames[index] = name;
+}
+
+int Net::getIndexFromName(const string &name) const
+{
+	for(int i=0; i < __trueNames.size(); i++)
+		if(__trueNames[i] == name)
+			return i;
+	return -1;
+}
+
+int Net::getTrueValIndex(const string& trueName, bool allowAppend)
+{
+	for(int i=0; i < __trueNames.size(); i++)
+		if(__trueNames[i] == trueName)
 			return i;
 
+	if(!allowAppend)
+	{
+		printf("Trying to use a class name that doesn't exist.\n");
+		exit(-1);
+	}
 	
-	__trueVals.push_back(trueVal);
-	int newSize = __trueVals.size();
+	__trueNames.push_back(trueName);
+	int newSize = __trueNames.size();
 	__trainingData.resize(newSize);
+	__trainRatioAmounts.resize(newSize,-1);
 	return newSize-1;
 }
 
-bool Net::addTestData(const vector<imVector>& testData, const vector<double>& trueVals)
+bool Net::addTestData(const vector<imVector>& testData, const vector<string>& trueNames)
 {
-	if(testData.size() != trueVals.size())
+	if(testData.size() != trueNames.size())
 		return false;
 	int oldSize = __testData.size();
 	__testData.resize(oldSize + testData.size());
-	__testTrueVals.resize(oldSize + testData.size());
+	__testTrueIndexes.resize(oldSize + testData.size());
 	int curIndex;
 	for(int t=0; t< testData.size(); t++)
 	{
 		curIndex = oldSize + t;
 		__testData[curIndex].resize(__neuronSizes[0]);
 		int dat = 0;
-		__testTrueVals[curIndex] = trueVals[t];
+		__testTrueIndexes[curIndex] = getTrueValIndex(trueNames[t],false);
 		for(int i=0; i < testData[t].size(); i++)
 			for(int j=0; j < testData[t][i].size(); j++)
 				for(int k=0; k < testData[t][i][j].size(); k++)
@@ -6055,21 +6189,21 @@ bool Net::addTestData(const vector<imVector>& testData, const vector<double>& tr
 	return true;
 }
 
-bool Net::addTestData(const vector<Mat>& testData, const vector<double>& trueVals, bool rgb)
+bool Net::addTestData(const vector<Mat>& testData, const vector<string>& trueNames, bool rgb)
 {
 	printf("add test mat\n");
-	if(testData.size() != trueVals.size())
+	if(testData.size() != trueNames.size())
 		return false;
 	int oldSize = __testData.size();
 	__testData.resize(oldSize + testData.size());
-	__testTrueVals.resize(oldSize + testData.size());
+	__testTrueIndexes.resize(oldSize + testData.size());
 	int curIndex;
 	for(int t = 0; t < testData.size(); t++)
 	{
 		curIndex = oldSize + t;
 		__testData[curIndex].resize(__neuronSizes[0]);
 		int dat = 0;
-		__testTrueVals[curIndex] = trueVals[t];
+		__testTrueIndexes[curIndex] = getTrueValIndex(trueNames[t],false);
 		for(int i = 0; i < testData[t].rows; i++)
 			for(int j = 0; j < testData[t].cols; j++)
 			{
@@ -6094,23 +6228,23 @@ bool Net::addTestData(const vector<Mat>& testData, const vector<double>& trueVal
 void Net::clearTestData()
 {
 	__testData.resize(0);
-	__testTrueVals.resize(0);
+	__testTrueIndexes.resize(0);
 }
 
-bool Net::setTestData(const vector<imVector>& testData, const vector<double>& trueVals)
+bool Net::setTestData(const vector<imVector>& testData, const vector<string>& trueNames)
 {
-	if(testData.size() != trueVals.size())
+	if(testData.size() != trueNames.size())
 		return false;
 	clearTestData();
-	return addTestData(testData, trueVals);
+	return addTestData(testData, trueNames);
 }
 
-bool Net::setTestData(const vector<Mat>& testData, const vector<double>& trueVals, bool rgb)
+bool Net::setTestData(const vector<Mat>& testData, const vector<string>& trueNames, bool rgb)
 {
-	if(testData.size() != trueVals.size())
+	if(testData.size() != trueNames.size())
 		return false;
 	clearTestData();
-	return addTestData(testData, trueVals, rgb);
+	return addTestData(testData, trueNames, rgb);
 }
 
 int Net::getNumClasses() const
@@ -6321,11 +6455,10 @@ void Net::preprocessTrainingDataCollective()
 	__trainingDataPreprocessed = true;
 }
 
-string Net::getClassForTrueVal(int trueVal) const
+string Net::getNameForIndex(int index) const
 {
-	for(int i = 0; i < __classes.size(); i++)
-		if(__classes[i].trueVal == trueVal)
-			return __classes[i].name;
+	if(0 <= index && index < __trueNames.size())
+		return __trueNames[index];
 	return "";
 }
 
@@ -6340,7 +6473,7 @@ void Net::printTrainingDistribution() const
     
     for(int i = 0; i < __trainingData.size(); i++)
     {
-        printf("True val: %.0lf %s   Amount %lu.   %.4lf%%\n", __trueVals[i], getClassForTrueVal(__trueVals[i]).c_str(), __trainingData[i].size(), __trainingData[i].size()/numImages * 100.0);
+        printf("True val: %d %s   Amount %lu.   %.4lf%%\n", i, __trueNames[i].c_str(), __trainingData[i].size(), __trainingData[i].size()/numImages * 100.0);
     }
 }
 
@@ -6348,9 +6481,9 @@ void Net::printTestDistribution() const
 {
 	unordered_map<double, int> trueMap;
 
-	for(int i = 0; i < __testTrueVals.size(); i++)
+	for(int i = 0; i < __testTrueIndexes.size(); i++)
 	{
-		double val = __testTrueVals[i];
+		double val = __testTrueIndexes[i];
 		unordered_map<double, int>::const_iterator got = trueMap.find(val);
 		if(got == trueMap.end()) // not found
 			trueMap[val] = 1;
@@ -6523,15 +6656,14 @@ bool Net::load(const char* filename)
 			{
 				while(true)
 				{
-					ClassInfo info;
 					getline(file,line); lineNum++; //this should get the trueVal
 					if(line.find("END_CLASSES") != string::npos)
 						break;
-					info.trueVal = stoi(line);
+					int index = stoi(line);
 					getline(file,line); lineNum++;
-					info.name = line;
+					string name = line;
 
-					__classes.push_back(info);
+					setTrueNameIndex(name,index);
 				}
 			}
 			else
@@ -7020,11 +7152,11 @@ bool Net::save(const char* filename)
 	out += "TRAINING_SIZE="; out += data; out += '\n';
 
 	out  += "CLASSES\n";
-	for(int c = 0; c < __classes.size(); c++)
+	for(int c = 0; c < __trueNames.size(); c++)
 	{
-		sprintf(data, "%d\n", __classes[c].trueVal);
+		sprintf(data, "%d\n", c); //index
 		out  += data;
-		sprintf(data, "%s\n", __classes[c].name.c_str());
+		sprintf(data, "%s\n", __trueNames[c].c_str()); //name
 		out  += data;
 	}
 	out += "END_CLASSES\n";

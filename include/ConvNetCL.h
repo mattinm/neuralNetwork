@@ -40,6 +40,7 @@
 //defines for training types
 #define TRAIN_AS_IS 0
 #define TRAIN_EQUAL_PROP 1
+#define TRAIN_RATIO 2 // params needed 
 
 //defines for programs
 #define TRAINING_PROGRAM 0
@@ -72,10 +73,10 @@
 
 class Net{
 public:     // structs
-	struct ClassInfo{
-		std::string name = "";
-		int trueVal = -1;
-	};
+	// struct ClassInfo{
+	// 	std::string name = "";
+	// 	int trueVal = -1;
+	// };
 private: 	// structs
 	struct Layer{
 		int layerType = ABSTRACT_LAYER;
@@ -177,7 +178,7 @@ private: 	// members
 
 	//data and related members
 	int __numClasses = 0;
-	std::vector<ClassInfo> __classes;
+	// std::vector<ClassInfo> __classes;
 		//training
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
@@ -186,13 +187,14 @@ private: 	// members
 		double __stddev = 0;
 		unsigned long __trainingSize = 0;
 		bool __isTraining = false;
-		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<pointers-to-flattenedImages> >
-		std::vector<double> __trueVals; // parallel vector of true values for __trainingData
+		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<pointers_to_flattenedImages> >
+		std::vector<std::string> __trueNames; // parallel vector of class names for __trainingData
 		std::vector<std::vector<double> > __testData;
-		std::vector<double> __testTrueVals;
+		std::vector<double> __testTrueIndexes; // parallel vector to __testData that has the trueVal indexes for the data
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
 		int __smallestClassSize;
+		int __smallestClassIndex;
 		std::string __saveName;
 		bool __saveNet = false;
 		//running
@@ -200,6 +202,9 @@ private: 	// members
 		std::vector<std::vector<double> > __data; // list of<flattened images>
 		std::vector<std::vector<double> > *__dataPointer;
 		std::vector<std::vector<double> > __confidences; // image<list of confidences for each class<confidence> > 
+
+		std::vector<int> __trainRatioAmounts;
+		std::vector<int> __trainActualAmounts;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -264,19 +269,19 @@ public: 	// functions
 
 	//functions dealing with data
 		//training
-		bool addTrainingData(const std::vector<convnet::imVector>& trainingData, const std::vector<double>& trueVals);
-		bool addTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals, bool rgb=false);
+		bool addTrainingData(const std::vector<convnet::imVector>& trainingData, const std::vector<std::string>& trueNames);
+		bool addTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<std::string>& trueNames, bool rgb=false);
         //bool setTrainingDataShallow(double** images, double* trueVals, unsigned long numImages);
-		bool setTrainingData(const std::vector<convnet::imVector>& trainingData, const std::vector<double>& trueVals);
-		bool setTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<double>& trueVals, bool rgb=false);
+		bool setTrainingData(const std::vector<convnet::imVector>& trainingData, const std::vector<std::string>& trueNames);
+		bool setTrainingData(const std::vector<cv::Mat>& trainingData, const std::vector<std::string>& trueNames, bool rgb=false);
 		void clearTrainingData();
-		bool addTestData(const std::vector<convnet::imVector>& testData, const std::vector<double>& trueVals);
-		bool addTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals, bool rgb=false);
+		bool addTestData(const std::vector<convnet::imVector>& testData, const std::vector<std::string>& trueNames);
+		bool addTestData(const std::vector<cv::Mat>& testData, const std::vector<std::string>& trueNames, bool rgb=false);
         //bool setTestDataShallow(double** images, double* trueVals,
-		bool setTestData(const std::vector<convnet::imVector>& testData, const std::vector<double>& trueVals);
-		bool setTestData(const std::vector<cv::Mat>& testData, const std::vector<double>& trueVals, bool rgb=false);
+		bool setTestData(const std::vector<convnet::imVector>& testData, const std::vector<std::string>& trueNames);
+		bool setTestData(const std::vector<cv::Mat>& testData, const std::vector<std::string>& trueNames, bool rgb=false);
 		void clearTestData();
-		bool setTrainingType(int type);
+		bool setTrainingType(int type, const std::vector<std::string>& params = std::vector<std::string>());
         void printTrainingDistribution() const;
         void printTestDistribution() const;
 
@@ -288,9 +293,9 @@ public: 	// functions
 		void clearData();
 
 	int getNumClasses() const;
-	void setClassNames(std::vector<std::string> names, std::vector<int> trueVals);
-	void getClassNames(std::vector<ClassInfo>& infos) const;
-	std::string getClassForTrueVal(int trueVal) const;
+	// void setClassNames(std::vector<std::string> names, std::vector<int> trueVals);
+	void getClassNames(std::vector<std::string>& names) const;
+	std::string getNameForIndex(int index) const;
 
 	//sets for hyperparameters
 	bool set_learningRate(double rate);
@@ -301,6 +306,8 @@ public: 	// functions
 	bool set_MAX_NORM_CAP(double cap);
 	void preprocessIndividually();
 	void preprocessCollectively();
+
+	int getIndexFromName(const std::string& name) const;
 
 	//running
 	void run();
@@ -345,7 +352,8 @@ private:	// functions
 	void initWeights(ConvLayer* conv, const std::string& weights);
 
 	//functions dealing with data
-	int getTrueValIndex(double trueVal);
+	void setTrueNameIndex(const std::string& name, int index);
+	int getTrueValIndex(const std::string& trueVal, bool allowAppends = true);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
 	int getMaxElementIndex(const std::vector<int>& vect) const;
 	void preprocessDataIndividual();

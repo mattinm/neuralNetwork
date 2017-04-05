@@ -104,7 +104,7 @@ int convertDataType(int dataType)
 	return convert;
 }
 
-double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel)
+string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel)
 {
 	//get 1 image
 	resize3DVector(dest,x,y,z);
@@ -164,6 +164,8 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 		exit(0);
 	}
 
+	string retval = to_string(trueVal);
+
 	//show image and trueVal
 	if(showImages && imcount % 100 == 0)
 	{
@@ -186,10 +188,10 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 	}
 	imcount++;
 	// printf("trueVal: %lf\n", trueVal);
-	return trueVal;
+	return retval;
 }
 
-double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel, int numLabelCounts)
+string getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel, int numLabelCounts)
 {
 	//get 1 image
 	resize3DVector(dest,x,y,z);
@@ -227,7 +229,7 @@ double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 	}
 
 	//return the trueVal
-	double retVal = 0;
+	string retVal = "-1"; // background
 	for(int i = 1; i <= numLabelCounts; i++)
 	{
 		double count = 0;
@@ -252,8 +254,10 @@ double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 			cout << "Unknown sizeByte for data: " << sizeByteLabel << ". Exiting" << endl;
 			exit(0);
 		}
-		if(count > 0 && i==2) // i==1 restricts to white geese, i==2 restricts to blue geese
-			retVal = i;
+		if(count > 0 && i ==1 ) // i==1 restricts to white geese, i==2 restricts to blue geese
+			retVal = "2";
+		else if(count > 0 && i == 2)
+			retVal = "1000000";
 	}
 
 
@@ -272,7 +276,7 @@ double getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 			}
 		}
 		char name[10];
-		sprintf(name,"%d,%d",(int)retVal,imcount);
+		sprintf(name,"%s,%d",retVal.c_str(),imcount);
 		imshow(name,show);
 		waitKey(0);
 		imcount++;
@@ -495,36 +499,36 @@ int main(int argc, char** argv)
 
 	int maxSize = 10000; //max number of items read before adding to net. prevents having too many duplicate items when reading in.
 	vector<imVector> training_data(maxSize), test_data(maxSize);
-	vector<double> training_true(maxSize), test_true(numTest);
+	vector<string> training_names(maxSize), test_names(numTest);
 	int i, j;
 	for(i = 0, j = 0; j < numTraining; i++, j++)
 	{
 		if(byCount)
-			training_true[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
+			training_names[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
 		else
-			training_true[i] = getNextImage(training_data_in, training_label_in, training_data[i], trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
+			training_names[i] = getNextImage(training_data_in, training_label_in, training_data[i], trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
 		if(i % maxSize == 0 && i != 0)
 		{
-			net.addTrainingData(training_data,training_true);
+			net.addTrainingData(training_data,training_names);
 			// training_data.clear();
-			// training_true.clear();
+			// training_names.clear();
 			i = 0;
 		}
 	}
 	//add leftover data
 	training_data.resize(i);
-	training_true.resize(i);
-	net.addTrainingData(training_data, training_true);
+	training_names.resize(i);
+	net.addTrainingData(training_data, training_names);
 
 	training_data.resize(0); training_data.shrink_to_fit();
-	training_true.resize(0); training_true.shrink_to_fit();
+	training_names.resize(0); training_names.shrink_to_fit();
 
 	for(i = 0, j= 0; j < numTest; i++, j++) // i and j declared above the training portion
 	{
 		if(byCount)
-			test_true[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
+			test_names[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
 		else
-			test_true[i] = getNextImage(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType);
+			test_names[i] = getNextImage(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType);
 		if(i % maxSize == 0 && i != 0)
 		{
 			net.addData(test_data);
@@ -567,8 +571,8 @@ int main(int argc, char** argv)
 	// 				{
 	// 					colorFound = 1;
 	// 				}
-	// 	numcolorimages[training_true[i]] += colorFound;
-	// 	numtotalbyclass[training_true[i]]++;
+	// 	numcolorimages[training_names[i]] += colorFound;
+	// 	numtotalbyclass[training_names[i]]++;
 	// }
 	// for(int i = 0; i < 3; i++)
 	// 	printf("Num color images class %d is %d of %d. %lf%%\n", i, numcolorimages[i], numtotalbyclass[i], 100. * numcolorimages[i]/numtotalbyclass[i]);
@@ -577,7 +581,7 @@ int main(int argc, char** argv)
 
 	if(cmd_train_count > 0)
 	{
-		//net.addTrainingData(training_data,training_true);
+		//net.addTrainingData(training_data,training_names);
 		net.printTrainingDistribution();
 
 		net.train();
@@ -598,12 +602,13 @@ int main(int argc, char** argv)
 
 		for(int i = 0; i < predictions.size(); i++)
 		{
-			if(predictions[i] == test_true[i])
+			int trueIndex = net.getIndexFromName(test_names[i]);
+			if(predictions[i] == trueIndex)
 			{
 				numCorrect++;
-				numCorrectClass[test_true[i]]++;
+				numCorrectClass[trueIndex]++;
 			}
-			numTotalClass[test_true[i]]++;
+			numTotalClass[trueIndex]++;
 		}
 
 		printf("Results on test data: %lf%%\n", 100.0 * numCorrect/predictions.size());

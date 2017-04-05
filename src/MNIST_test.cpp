@@ -99,7 +99,7 @@ int convertDataType(int dataType)
 	return convert;
 }
 
-double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel)
+string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, int y, int z, int sizeByteData, int sizeByteLabel)
 {
 	//get 1 image
 	resize3DVector(dest,x,y,z);
@@ -159,7 +159,7 @@ double getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 		exit(0);
 	}
 	// printf("trueVal: %lf\n", trueVal);
-	return trueVal;
+	return to_string(trueVal);
 }
 
 //this function parses the magic number at the beginning of an idx file and therefore
@@ -269,7 +269,7 @@ int main(int argc, char** argv)
 	printf("Converted test data: %d label: %d\n", test_data_convType,test_label_convType);
 
 	vector<imVector> training_data(numTraining), test_data(numTest);
-	vector<double> training_true(numTraining), test_true(numTest);
+	vector<string> training_true(numTraining), test_true(numTest);
 
 	for(int i = 0; i < numTraining; i++)
 	{
@@ -326,7 +326,7 @@ int main(int argc, char** argv)
 
 	for(int i = 0; i < predictions.size(); i++)
 	{
-		if(predictions[i] == test_true[i])
+		if(predictions[i] == net.getIndexFromName(test_true[i]))
 			numCorrect++;
 	}
 

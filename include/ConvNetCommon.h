@@ -27,6 +27,12 @@
 
 namespace convnet {
 
+
+//functions needed to split a string on a char delimiter
+template<typename Out>
+void split(const std::string &s, char delim, Out result);
+std::vector<std::string> split(const std::string &s, char delim);
+
 // \typedef imVector
 // \brief A triple-vector of doubles used for training
 typedef std::vector<std::vector<std::vector<double>>> imVector;

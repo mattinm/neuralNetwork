@@ -57,7 +57,7 @@ vector<bool> deviceActive;
 
 char* __netName;
 
-vector<Net::ClassInfo> infos;
+vector<string> class_names;
 
 int inputWidth, inputHeight;
 int __rows, __cols;
@@ -241,14 +241,15 @@ void __parallelImageRowProcessor(int device)
 
 string getNameForVal(int trueVal)
 {
-	for(int i = 0; i < infos.size(); i++)
-	{
-		if(infos[i].trueVal == trueVal)
-			return infos[i].name;
-	}
-	char buf[100];
-	sprintf(buf,"class%d",trueVal);
-	return string(buf);
+	// for(int i = 0; i < infos.size(); i++)
+	// {
+	// 	if(infos[i].trueVal == trueVal)
+	// 		return infos[i].name;
+	// }
+	// char buf[100];
+	// sprintf(buf,"class%d",trueVal);
+	// return string(buf);
+	return class_names[trueVal];
 }
 
 
@@ -536,7 +537,7 @@ int main(int argc, char** argv)
 	if(numClasses > 3)
 		__separate_outputs = true;
 
-	nets[0]->getClassNames(infos);
+	nets[0]->getClassNames(class_names);
 
 	printf("Getting devices\n");
 	//get the ones that work
