@@ -24,6 +24,8 @@
 #include <thread>
 #include <unordered_map>
 
+// #define _DEBUG 0 //uncomment for some print statements to help with debugging
+
 // 	includes brought in from ConvNetCL.h
 //
 // #include <vector>	
@@ -924,6 +926,10 @@ bool Net::finalize()
 
 
 	__isFinalized = true;
+
+	#ifdef _DEBUG
+	printf("finalize passed\n");
+	#endif
 	return true;
 }
 
@@ -1772,7 +1778,9 @@ void Net::feedForward(vector<cl_mem>& layerNeeds)
 	cl_mem* temp;
 	for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
 	{
-		//printf("Layer %d, type %d\n", i, __layers[i]->layerType);
+		#ifdef _DEBUG
+		printf("Layer %d, type %d\n", i, __layers[i]->layerType);
+		#endif
 		if(__layers[i]->layerType == CONV_LAYER)
 		{
 			ConvLayer* conv = (ConvLayer*)__layers[i];
@@ -2754,17 +2762,21 @@ void Net::train(int epochs)
 		cout << "Epoch: ";
 	 	cout << setw(epSize) << e;
 	 	cout << ". ";
-	 	// printf("Epoch: %d",e);
 
 		getTrainingData(trainingData, trueVals); // this gets the training data for this epoch
-		// printf("Training size = %lu\n",trainingData.size());
-		
+
+		#ifdef _DEBUG
+		printf("Training size = %lu\n",trainingData.size());
+		#endif
+
 		int numCorrect = 0;
 		double totalError = 0;
 
 	 	for(int r = 0; r < trainingData.size(); r++)
 	 	{
-	 		// printf("Starting image %d\n",r);
+	 		#ifdef _DEBUG
+	 		printf("Starting image %d\n",r);
+	 		#endif
 	 		//put in the next image
 	 		CheckError(clEnqueueWriteBuffer(queue, (*prevNeurons), CL_TRUE, 0,
 					sizeof(double) * __neuronSizes[0],
@@ -2774,10 +2786,16 @@ void Net::train(int epochs)
 			////////////////////////////
 			// start forwardprop
 			////////////////////////////
+			#ifdef _DEBUG
+			printf("Starting feed forward.\n");
+			#endif
 			feedForward(layerNeeds); //output goes into prevNeurons
 			if(usesSoftmax)
 			{
-				// cout << "softmax forward" << endl;
+				#ifdef _DEBUG
+				cout << "softmax forward" << endl;
+				#endif
+
 				softmaxForward();
 
 				//get the output and see if it was right
@@ -2815,7 +2833,9 @@ void Net::train(int epochs)
 			////////////////////////////
 			if(usesSoftmax)
 			{
-				// printf("softmax back\n");
+				#ifdef _DEBUG
+				printf("softmax back\n");
+				#endif
 				softmaxBackprop(trueVals[r]);
 			}
 			// printf("rest back\n");
@@ -5714,14 +5734,20 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 	{
 		if(trainingData.size() == 0) //first time through. find the smallest class size
 		{
-			__smallestClassSize = __trainingData[0].size();
-			__smallestClassIndex = 0;
-			for(int t = 1; t < __trainingData.size(); t++)
-				if(__trainingData[t].size() < __smallestClassSize)
+			__smallestClassSize = -1;
+			__smallestClassIndex = -1;
+			for(int t = 0; t < __trainingData.size(); t++)
+				if(__trainingData[t].size() < __smallestClassSize && __trainRatioAmounts[t] != 0)
 				{
 					__smallestClassSize = __trainingData[t].size();
 					__smallestClassIndex = t;
 				}
+
+			if(__smallestClassIndex == (unsigned int)-1)
+			{
+				printf("It seems that all train ratio amounts are 0? Exiting.\n");
+				exit(-1);
+			}
 
 			int smallestClassRatio = __trainRatioAmounts[__smallestClassIndex];
 
@@ -5773,7 +5799,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 		int i = 0;
 		for(int c = 0; c < __trainingData.size(); c++) // c is for class
 		{
-			for(int j = 0; j < __trainActualAmounts.size(); j++)
+			for(int j = 0; j < __trainActualAmounts[c]; j++)
 			{
 				trainingData[i] = __trainingData[c][j];
 				trueVals[i] = getTrueValIndex(__trueNames[c]);
@@ -5808,8 +5834,13 @@ void Net::shuffleTrainingData(vector<vector<double>* >& trainingData, vector<dou
 {
 	//if debugging, don't shuffle
 	//return;
+	// printf("start shuffle\n");
 	if(times < 1)
 		return;
+	if(trainingData.size() != trueVals.size())
+	{
+		printf("In shuffle. Inconsistent sizes %lu vs %lu\n",trainingData.size(),trueVals.size());
+	}
 	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	uniform_int_distribution<int> distr(0,trainingData.size()-1);
 	vector<double>* temp;
@@ -5830,6 +5861,7 @@ void Net::shuffleTrainingData(vector<vector<double>* >& trainingData, vector<dou
 			trueVals[swapIndex] 	= tempTrue;
 		}
 	}
+	// printf("end shuffle\n");
 }
 
 bool Net::setTrainingType(int type, const vector<string>& params)
@@ -5846,7 +5878,7 @@ bool Net::setTrainingType(int type, const vector<string>& params)
 			printf("   and params[1] \"ratio1:ratio2:...\"\n");
 			return false;
 		}
-
+		printf("splititng\n");
 		vector<string> names = convnet::split(params[0],':');
 		vector<string> string_ratios = convnet::split(params[1],':');
 
@@ -5858,12 +5890,16 @@ bool Net::setTrainingType(int type, const vector<string>& params)
 			return false;
 		}
 
+		printf("start for\n");
 		for(int i = 0; i < names.size(); i++)
 		{
+			printf("for - %d\n", i);
 			int index = getTrueValIndex(names[i], true); // this also takes care of resizing __trainRatioAmounts if needed
+			printf("class name %s index %d ratio %s\n", names[i].c_str(),index,string_ratios[i].c_str());
 			__trainRatioAmounts[index] = stoi(string_ratios[i]);
 		}
 	}
+	printf("end setTrainingType\n");
 	return true;
 }
 
@@ -6052,14 +6088,18 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<str
 
 	printf("Adding %lu training data of size %lu x %lu x %lu\n", trainingData.size(), trainingData[0].size(), trainingData[0][0].size(), trainingData[0][0][0].size());
 
+	// printf("sizes %lu & %lu\n", trainingData.size(),trueVals.size());
 	int inputSize = __neuronSizes[0];
 
 	for(int t = 0; t < trainingData.size(); t++)
 	{
+		// printf("data item %d\n",t);
 		//if the trueVal does not yet have an index, this will resize the private class vectors and give it one.
 		int trueIndex = getTrueValIndex(trueVals[t]);
+		// printf("name => true index - %s => %d\n", trueVals[t].c_str(),trueIndex);
 
 		__trainingData[trueIndex].push_back(new vector<double>(inputSize));
+		// printf("input size is %d\n",inputSize);
 		int dat = 0;
 		for(int i=0; i < trainingData[t].size(); i++)
 			for(int j=0; j < trainingData[t][i].size(); j++)
@@ -6068,6 +6108,10 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<str
 					(__trainingData[trueIndex].back())->at(dat++) = trainingData[t][i][j][k];
 				}
 	}
+
+	#ifdef _DEBUG
+	printf("done adding training data\n");
+	#endif
 
 	// __numClasses = __trueNames.size();
 	return true;
@@ -6135,7 +6179,12 @@ bool Net::setTrainingData(const vector<Mat>& trainingData, const vector<string>&
 void Net::setTrueNameIndex(const string& name, int index)
 {
 	if(index >= __trueNames.size())
+	{
 		__trueNames.resize(index+1);
+		__trainingData.resize(__trueNames.size());
+		__trainRatioAmounts.resize(__trueNames.size(),0);
+
+	}
 
 	__trueNames[index] = name;
 }
@@ -6143,8 +6192,10 @@ void Net::setTrueNameIndex(const string& name, int index)
 int Net::getIndexFromName(const string &name) const
 {
 	for(int i=0; i < __trueNames.size(); i++)
+	{
 		if(__trueNames[i] == name)
 			return i;
+	}
 	return -1;
 }
 
@@ -6163,7 +6214,7 @@ int Net::getTrueValIndex(const string& trueName, bool allowAppend)
 	__trueNames.push_back(trueName);
 	int newSize = __trueNames.size();
 	__trainingData.resize(newSize);
-	__trainRatioAmounts.resize(newSize,-1);
+	__trainRatioAmounts.resize(newSize,0);
 	return newSize-1;
 }
 

@@ -193,8 +193,8 @@ private: 	// members
 		std::vector<double> __testTrueIndexes; // parallel vector to __testData that has the trueVal indexes for the data
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
-		int __smallestClassSize;
-		int __smallestClassIndex;
+		unsigned int __smallestClassSize = -1;
+		unsigned int __smallestClassIndex = -1;
 		std::string __saveName;
 		bool __saveNet = false;
 		//running

@@ -115,6 +115,11 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 		{
 			for(int k=0; k < z; k++)
 			{
+				if(in.eof())
+				{
+					printf("early end of data file!\n");
+					exit(-1);
+				}
 				if(sizeByteData == 1)
 					dest[i][j][k] = (double)readUChar(in);
 				else if(sizeByteData == -1)
@@ -138,6 +143,12 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 				}
 			}
 		}
+	}
+
+	if(trueval_in.eof())
+	{
+		printf("early end of label file!\n");
+		exit(-1);
 	}
 
 	//return the trueVal
@@ -164,10 +175,11 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 		exit(0);
 	}
 
-	string retval = to_string(trueVal);
+	string retval = to_string((long)trueVal);
+	// cout << retval << endl;
 
 	//show image and trueVal
-	if(showImages && imcount % 100 == 0)
+	if(showImages)
 	{
 		Mat show(x,y,CV_8UC3);
 		for(int i = 0; i < x; i++)
@@ -309,16 +321,22 @@ int main(int argc, char** argv)
 		printf("Use as: \n");
 		printf("  REQUIRED FIRST - ./ConvNetTrainerCL_idx path/to/NetConfig.txt saveName.txt\n");
 		printf("  In any order at end:\n");
-		printf("		-device=<int>                           OpenCL Device to run on. Optional w/default 0.\n");
-		printf("		-train_data=path/to/train/data.idx      Path to training data\n");
-		printf("		-train_label=path/to/train/labels.idx   Path to training labels\n");
-		printf("		-test_data=path/to/test/data.idx        Path to test data\n");
-		printf("		-test_label=path/to/test/labels.idx     Path to test labels\n");
+		printf("        -device=<int>                           OpenCL Device to run on. Optional w/default 0.\n");
+		printf("        -train_data=path/to/train/data.idx      Path to training data\n");
+		printf("        -train_label=path/to/train/labels.idx   Path to training labels\n");
+		printf("        -test_data=path/to/test/data.idx        Path to test data\n");
+		printf("        -test_label=path/to/test/labels.idx     Path to test labels\n");
 		printf("        -byCount                                IDXs are Marshall's with the counts instead of labels\n");
 		printf("        -showImages                             Shows each image as read in. For image verification purposes.\n");
+		printf("        -epochs=<int>                           Amount of epochs to train for. Default: until it isn't getting better.\n");
+		printf("    GROUP: All or none. Note: the amount of colon (:) separted values must be the same for both args.\n");
+		printf("        -trainRatio_classes=name1:name2:...     The class names for the train ratio.\n");
+		printf("        -trainRatio_amounts=int1:int2:...        The amounts for the train ratio.\n");
+		printf("    END GROUP\n");
 		return 0;
 	}
 	printf("ConvNetTrainerCL_idx\n");
+	int epochs = -1;
 	int device = 0;
 	int cmd_train_count = 0;
 	int cmd_test_count = 0;
@@ -326,6 +344,7 @@ int main(int argc, char** argv)
 	char * netConfig_path = argv[1];
 	char * saveName = argv[2];
 	bool byCount = false;
+	string train_ratio_classes = "", train_ratio_amounts = "";
 	for(int i = 3; i < argc; i++)
 	{
 		string arg = string(argv[i]);
@@ -355,6 +374,12 @@ int main(int argc, char** argv)
 			byCount = true;
 		else if(arg.find("-showImages") != string::npos)
 			showImages = true;
+		else if(arg.find("-epochs=") != string::npos)
+			epochs = stoi(arg.substr(arg.find('=')+1));
+		else if(arg.find("-trainRatio_classes") != string::npos)
+			train_ratio_classes = arg.substr(arg.find('=')+1);
+		else if(arg.find("-trainRatio_amounts") != string::npos)
+			train_ratio_amounts = arg.substr(arg.find('=')+1);
 		else
 		{
 			printf("Unknown arg '%s'. Exiting.\n", argv[i]);
@@ -388,7 +413,16 @@ int main(int argc, char** argv)
 	}
 
 
-	
+	if(train_ratio_classes == "" && train_ratio_amounts != "")
+	{
+		printf("If you have -trainRatio_amounts you need -trainRatio_classes\n");
+		return 0;
+	}
+	else if(train_ratio_classes != "" && train_ratio_amounts == "")
+	{
+		printf("If you have -trainRatio_classes you need -trainRatio_amounts\n");
+		return 0;
+	}
 
 	/**************************
 	*
@@ -479,7 +513,18 @@ int main(int argc, char** argv)
 	Net net(netConfig_path);
 	net.preprocessCollectively();
 	net.setSaveName(saveName);
-	net.setTrainingType(TRAIN_AS_IS);
+	if(train_ratio_amounts != "")
+	{
+		printf("train_ratio\n");
+		if(!net.setTrainingType(TRAIN_RATIO, vector<string>({train_ratio_classes,train_ratio_amounts}))) //if setTrainingType fails
+		{
+			return 0;
+		}
+		else
+			printf("Training ratios set.\n");
+	}
+	else
+		net.setTrainingType(TRAIN_AS_IS);
 	// net.setTrainingType(TRAIN_EQUAL_PROP);
 	net.setDevice(device);
 	// net.set_learningRate(0);
@@ -518,10 +563,13 @@ int main(int argc, char** argv)
 	//add leftover data
 	training_data.resize(i);
 	training_names.resize(i);
-	net.addTrainingData(training_data, training_names);
+	if(i > 0)
+		net.addTrainingData(training_data, training_names);
 
 	training_data.resize(0); training_data.shrink_to_fit();
 	training_names.resize(0); training_names.shrink_to_fit();
+
+	printf("done adding training data\n");
 
 	for(i = 0, j= 0; j < numTest; i++, j++) // i and j declared above the training portion
 	{
@@ -537,7 +585,8 @@ int main(int argc, char** argv)
 		}
 	}
 	test_data.resize(i);
-	net.addData(test_data);
+	if(i > 0)
+		net.addData(test_data);
 
 	test_data.resize(0); test_data.shrink_to_fit();
 
@@ -577,14 +626,17 @@ int main(int argc, char** argv)
 	// for(int i = 0; i < 3; i++)
 	// 	printf("Num color images class %d is %d of %d. %lf%%\n", i, numcolorimages[i], numtotalbyclass[i], 100. * numcolorimages[i]/numtotalbyclass[i]);
 
-
+	
 
 	if(cmd_train_count > 0)
 	{
 		//net.addTrainingData(training_data,training_names);
 		net.printTrainingDistribution();
 
-		net.train();
+		if(epochs == -1)
+			net.train();
+		else
+			net.train(epochs);
 	}
 	if(cmd_test_count > 0)
 	{
@@ -603,6 +655,7 @@ int main(int argc, char** argv)
 		for(int i = 0; i < predictions.size(); i++)
 		{
 			int trueIndex = net.getIndexFromName(test_names[i]);
+			// printf("%d %d\n", predictions[i], trueIndex);
 			if(predictions[i] == trueIndex)
 			{
 				numCorrect++;
@@ -611,7 +664,7 @@ int main(int argc, char** argv)
 			numTotalClass[trueIndex]++;
 		}
 
-		printf("Results on test data: %lf%%\n", 100.0 * numCorrect/predictions.size());
+		printf("Results on test data: %d/%lu - %lf%%\n", numCorrect,predictions.size(), 100.0 * numCorrect/predictions.size());
 		for(int i = 0; i < numCorrectClass.size(); i++)
 		{
 			printf("    Class %d: %d out of %d, %lf%%\n",i, numCorrectClass[i],numTotalClass[i],100.*numCorrectClass[i]/numTotalClass[i]);

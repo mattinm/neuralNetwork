@@ -17,6 +17,7 @@ FIND_PATH(MYSQL_INCLUDE_DIR mysql.h
   /usr/local/mysql/include
   /opt/local/include/mysql5/mysql
 )
+MESSAGE("mysql found at ${MYSQL_INCLUDE_DIR}")
 
 SET(MYSQL_NAMES mysqlclient mysqlclient_r)
 FIND_LIBRARY(MYSQL_LIBRARY

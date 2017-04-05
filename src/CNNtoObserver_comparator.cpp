@@ -16,11 +16,13 @@
 
 // #define FLAG_SHOW_MATCHED_BOXES //when not commmented will show image of each msi showing matched and unmatched boxes
 // #define FLAG_SHOW_BLACKOUT_BOXES //when not commmented will show image of each msi showing blacked out boxes after the blackout stage
+// #define FLAG_SHOW_MISSED_BACKGROUND
 
 #define BACKGROUND -1
 #define WHITE_PHASE 2
 #define BLUE_PHASE 1000000
 #define MATCHING_PERCENT 0.1
+#define MATCHING_PERCENT_FOR_OUTPUT 0.5
 
 using namespace cv;
 using namespace std;
@@ -82,12 +84,16 @@ string Box::toString()
 struct MSI
 {
 	int msi;
+	bool used = false;
 	vector<Box> boxes;
 
 	//bmr => background_misclassified_percentages<species_id, ratio BG classified as species_id>
 	//for the species_id != BACKGROUND, it is the misclassified ratio
 	//for the species_id == BACKGROUND, it is the correctly classified ratio
-	unordered_map<int,float> bmr; 
+	// unordered_map<int,float> bmr;
+	unordered_map<int,int> bmc; // <species_id, pixel count of BG classified as species_id>
+	int totalBGCount = 0;
+	int numPixels;
 	string original_image_path = "";
 
 	MSI();
@@ -124,6 +130,8 @@ void readFile(const char* filename)
 	for(int i = 0; i < numMSIs; i++)
 	{
 		int msi = readInt(in);
+		// if(msi > 5000)
+		// 	printf("found msi > 5000 - %d\n",msi);
 		int numBoxes = readInt(in);
 		// locations[msi] = vector<Box>(numBoxes);
 		locations[msi].init(msi,numBoxes);
@@ -178,7 +186,13 @@ void readInOriginalFilenames(const string& original_image_folder)
 					string ipan(inPathandName);
 					if(ipan.find("_prediction") == string::npos)
 					{
+						// cout << "Found: " << ipan << " MSI - " << getMSI(ipan) << endl;
 						filenamesByMSI[getMSI(ipan)] = ipan;
+
+						// if(getMSI(ipan) == 5605)
+						// {
+						// 	cout << "\tFrom map: " << filenamesByMSI[getMSI(ipan)] << endl;
+						// }
 					}
 				}
 			}
@@ -194,8 +208,14 @@ void readInOriginalFilenames(const string& original_image_folder)
 
 		for(auto it = locations.begin(); it != locations.end(); it++)
 		{
+			// if(it->first == 5605)
+			// 	cout << "Trying 5605" << endl;
+ 
 			if(filenamesByMSI.find(it->first) != filenamesByMSI.end()) // if we found the MSI in filenamesByMSI
+			{
+				// cout << "Putting " << it->first << endl;
 				locations[it->first].original_image_path = filenamesByMSI[it->first];
+			}
 
 			//only worry if the original_image_path doesn't exist when looking for it
 
@@ -255,7 +275,7 @@ possible dataTypes
 dims will be converted to big endian on output
 dim[0] should be number of items to output, then x, y, z dimesions
 */
-void initIDX(ofstream& out, const string& outName, uint8_t dataType, uint8_t numDims, const vector<int32_t>& dims)
+void initIDX(ofstream& out, const string& outName, uint8_t dataType, const vector<int32_t>& dims)
 {
 	if(out.is_open())
 		out.close();
@@ -263,6 +283,8 @@ void initIDX(ofstream& out, const string& outName, uint8_t dataType, uint8_t num
 	//put magic number of 0 0 dataType numdims
 	out.put(0); out.put(0);
 	out.put(dataType);
+
+	uint8_t numDims = (uint8_t)dims.size();
 	out.put(numDims);
 
 
@@ -323,10 +345,12 @@ int main(int argc, char** argv)
 	{
 		printf("Usage: ./CNNtoObserver_comparator obsfile image1 image2 ...\n");
 		printf("  Optional args MUST come before required args\n");
-		printf("  --idx_name=<string>               A base name (no extension) for IDX output files. Actual files will be baseName_data.idx and baseName_label.idxn");
+		printf("GROUP: All or none must exist\n");
+		printf("  --idx_name=<string>               A base name (no extension) for IDX output files. Actual files will be baseName_data.idx and baseName_label.idx\n");
 		printf("  --idx_size=<int>                  The size in pixels of the width/height for the output IDX. All output images will be square.\n");
-		printf("  --exclude=<int>                   The species_id of the species to exclude from calculations and the output IDX. Can be used multiple times.\n");
 		printf("  --original_image_folder=<string>  The path to the folder holding the original images that have the MSI in their name in the form \"msi#\".\n");
+		printf("END GROUP\n");
+		printf("  --exclude=<int>                   The species_id of the species to exclude from calculations and the output IDX. Can be used multiple times.\n");
 		return 0;
 	}
 	int32_t idx_size = -1;
@@ -406,7 +430,7 @@ int main(int argc, char** argv)
 	// resizeWindow("image",600,600);
 
 	int bgStride = idx_size / 2;
-	int fgStride = 1000;\
+	int fgStride = 2;
 
 	bool origDoOutput = doOutput;
 
@@ -416,7 +440,24 @@ int main(int argc, char** argv)
 
 		string filename(argv[a]);
 		int msi = getMSI(filename); //got the msi
+
+		//make sure we have locations for this msi
+		if(locations.find(msi) == locations.end()) // if we don't have locations for the MSI
+		{
+			printf("Unable to find locations for MSI %d in the obsfile given. Skipping.\n", msi);
+			continue;
+		}
+
+		if(locations[msi].used) // == true // we have already used the msi once. can't handle multiple predictions on one msi
+		{
+			printf("We have already used MSI %d. You shouldn't have multiple predictions over the same MSI for a single CNN. Skipping second.\n", msi);
+			continue;
+		}
+
+		locations[msi].used = true;
+
 		Mat im = imread(argv[a],1); //got the image
+		locations[msi].numPixels = im.rows * im.cols;
 		int numBoxes = locations[msi].boxes.size();
 		printf("Doing msi %5d: size %4d x %4d (w x h). Num obs: %3d\n", msi,im.cols,im.rows,numBoxes);
 
@@ -436,6 +477,11 @@ int main(int argc, char** argv)
 		//make a copy to draw on
 		#ifdef FLAG_SHOW_MATCHED_BOXES
 		Mat draw = im.clone();
+		Mat draw_orig = orig_im.clone();
+		#endif
+		#ifdef FLAG_SHOW_MISSED_BACKGROUND
+		Mat draw_missed_bg = im.clone();
+		Mat draw_missed_bg_orig = orig_im.clone();
 		#endif
 
 		//calculate # obs that match (white and blue)
@@ -585,6 +631,7 @@ int main(int argc, char** argv)
 				else
 					color = Scalar(0,255,0);
 				rectangle(draw,Point(box.x,box.y),Point(box.ex,box.ey),color,3);
+				rectangle(draw_orig,Point(box.x,box.y),Point(box.ex,box.ey),color,3);
 				#endif
 
 
@@ -594,8 +641,12 @@ int main(int argc, char** argv)
 			#ifdef FLAG_SHOW_MATCHED_BOXES
 			cv::Size mysizeMatched(750,750 * draw.rows / draw.cols);
 			resize(draw,draw,mysizeMatched);
+			resize(draw_orig,draw_orig,mysizeMatched);
 			imshow("image",draw);
-			waitKey(0);
+			imshow("orig",draw_orig);
+			#ifndef FLAG_SHOW_MISSED_BACKGROUND
+			waitKey(0); // if also showing missed background, show all at once
+			#endif
 			#endif
 
 			// printf("start blackout\n");
@@ -640,38 +691,51 @@ int main(int argc, char** argv)
 		//count background pixels and what they were classified as
 
 		// printf("start bmr\n");
-		unordered_map<int,int> phaseCount({{WHITE_PHASE,0},{BLUE_PHASE,0},{BACKGROUND,0}}); //technically more of a speciesCount than a phaseCount
-		int totalBGCount = 0;
+		// unordered_map<int,int> phaseCount({{WHITE_PHASE,0},{BLUE_PHASE,0},{BACKGROUND,0}}); //technically more of a speciesCount than a phaseCount
+		locations[msi].bmc[WHITE_PHASE] = 0;
+		locations[msi].bmc[BLUE_PHASE] = 0;
+		locations[msi].bmc[BACKGROUND] = 0;
+		// int totalBGCount = 0;
 		for(int y = 0; y < im.rows; y++)
 		{
 			for(int x = 0; x < im.cols; x++)
 			{
 				const Vec3b& pix = im.at<Vec3b>(y,x);
-				phaseCount[match(pix)]++; //this could maybe be parallelized with a concurrent map or a vector of maps that are summed after
 				if(pix[0] != 0 || pix[1] != 0 || pix[2] != 0) //ie, the pixel is not black
-					totalBGCount++;
+				{
+					// phaseCount[match(pix)]++; //this could maybe be parallelized with a concurrent map or a vector of maps that are summed after
+					locations[msi].bmc[match(pix)]++;
+
+					// totalBGCount++;
+					locations[msi].totalBGCount++;
+				}
 			}
 		}
 
 		//cacluate ratios
-		for(auto it = phaseCount.begin(); it != phaseCount.end(); it++)
-		{
-			//it->first is the species_id
-			//it->second is the count for the species
-			locations[msi].bmr[it->first] = (float)it->second/totalBGCount;
-		}
+		// for(auto it = phaseCount.begin(); it != phaseCount.end(); it++)
+		// {
+		// 	//it->first is the species_id
+		// 	//it->second is the count for the species
+		// 	locations[msi].bmr[it->first] = (float)it->second/totalBGCount;
+		// }
 
 		//pull misclassified BG area for training
-		if(doOutput)
+		#ifndef FLAG_SHOW_MISSED_BACKGROUND
+		if(doOutput) // if we want to show missed bg this is always needed
+		#endif
 		{
 			//stride over full image and grab boxes that don't match bg or excluded species
 			// printf("Image: rows %d cols %d\n", im.rows,im.cols);
 			int size = idx_size * idx_size;
+			#ifdef FLAG_SHOW_MISSED_BACKGROUND
+			int missedBGCount = 0;
+			#endif
 			for(int y = 0; y < im.rows - idx_size; y += bgStride)
 			{
 				for(int x = 0; x < im.cols - idx_size; x += bgStride)
 				{
-					int cacluatedSpecies;
+					int cacluatedSpecies = -1;
 					map<int,int> phaseCount({{WHITE_PHASE,0},{BLUE_PHASE,0},{BACKGROUND,0}});
 					for(int i = 0; i < idx_size; i++)
 						for(int j = 0; j < idx_size; j++)
@@ -679,10 +743,14 @@ int main(int argc, char** argv)
 	
 					for(auto it = phaseCount.begin(); it != phaseCount.end(); it++)
 					{
-						if((float)it->second/size > MATCHING_PERCENT)
+						if(exclude.find(it->first) == exclude.end()) // if not in map
 						{
-							cacluatedSpecies = it->first;
-							break;
+							// printf("Species %d: %f > %f -> %d\n",it->first,(float)it->second/size, MATCHING_PERCENT_FOR_OUTPUT,(float)it->second/size > MATCHING_PERCENT_FOR_OUTPUT);
+							if((float)it->second/size > MATCHING_PERCENT)
+							{
+								cacluatedSpecies = it->first;
+								break;
+							}
 						}
 					}
 	
@@ -697,16 +765,38 @@ int main(int argc, char** argv)
 						fixedImage.mat = forTraining.clone(); //need to deep copy
 						fixedImage.species_id = BACKGROUND;
 						forTrainingFixed.push_back(fixedImage);
+
+						#ifdef FLAG_SHOW_MISSED_BACKGROUND
+						rectangle(draw_missed_bg,Point(x,y),Point(x+idx_size,y+idx_size),Scalar(0,0,0),3);
+						rectangle(draw_missed_bg_orig,Point(x,y),Point(x+idx_size,y+idx_size),Scalar(0,0,0),3);
+						missedBGCount++;
+						#endif
 					}
 				}
 			}
+
+			#ifdef FLAG_SHOW_MISSED_BACKGROUND
+			if(missedBGCount > 0)
+			{
+				printf("MSI %d: missed BG %d\n", msi, missedBGCount);
+				cv::Size mysizeMatched(750,750 * draw_missed_bg_orig.rows / draw_missed_bg_orig.cols);
+				resize(draw_missed_bg,draw_missed_bg,mysizeMatched);
+				imshow("missed background",draw_missed_bg);
+				resize(draw_missed_bg_orig,draw_missed_bg_orig,mysizeMatched);
+				imshow("missed background orig",draw_missed_bg_orig);
+				waitKey(0);
+			}
+			#endif
+
 		}
 	}
+
+	doOutput = origDoOutput;
 
 	if(doOutput)
 	{
 		//convert all the variable sized images for training to the fixed idx_size
-		printf("For training variable size %lu\n", forTrainingVariable.size());
+		// printf("For training variable size %lu\n", forTrainingVariable.size());
 		for(OutImage &image : forTrainingVariable)
 		{
 			for(int y = 0; y < image.mat.rows - idx_size; y += fgStride)
@@ -732,17 +822,21 @@ int main(int argc, char** argv)
 		ofstream outdata,outlabel;
 		vector<int32_t> dimsdata = {(int32_t)forTrainingFixed.size(),idx_size,idx_size,3}; //num images, rows, cols, depth
 		vector<int32_t> dimslabel = {(int32_t)forTrainingFixed.size()}; //num images
-		initIDX(outdata,outName+string("_data.idx"),0x08,4,dimsdata); //idx named outName with data type of unsigned byte
-		initIDX(outlabel,outName+string("_label.idx"),0x0C,4,dimslabel); //idx named outName with data type of int
+		initIDX(outdata,outName+string("_data.idx"),0x08,dimsdata); //idx named outName_data.idx with data type of unsigned byte
+		initIDX(outlabel,outName+string("_label.idx"),0x0C,dimslabel); //idx named outName_label.idx with data type of int
 		for(OutImage &image : forTrainingFixed)
 		{
 			assert(image.mat.cols == idx_size && image.mat.rows == idx_size);
 			writeMatToIDX(outdata,image.mat,0x08);
 			outlabel.write(reinterpret_cast<const char *>(&(image.species_id)),4);
+			// printf("species_id to label: %d\n",image.species_id);
 		}
 	}
 
+
 	//calcuate aggregate matching obs
+	printf("Species Accuracy:\n");
+
 	int numWhite = 0, numBlue = 0, matchedWhite = 0, matchedBlue = 0;
 	unordered_map<int,int> num = { {WHITE_PHASE,0},{BLUE_PHASE,0} };
 	unordered_map<int,int> matched = { {WHITE_PHASE,0},{BLUE_PHASE,0} };
@@ -773,7 +867,7 @@ int main(int argc, char** argv)
 		}
 	}
 
-	printf("Species Accuracy:\n");
+	
 	for(auto it = num.begin(); it != num.end(); it++)
 	{
 		if(exclude.find(it->first) != exclude.end()) // if species is excluded, skip
@@ -785,7 +879,45 @@ int main(int argc, char** argv)
 	}
 
 
-	// printf("Overall (white:blue): Matched %d:%d, Missed %d:%d Total %d:%d, Percent %.2lf:%.2lf\n", matchedWhite,matchedBlue,numWhite-matchedWhite,numBlue-matchedBlue,numWhite,numBlue,100.*matchedWhite/numWhite,100.*matchedBlue/numBlue);
+
+	//calcuate misclassified BG percents
+	printf("\nBackground Accuracy\n");
+
+	map<int,float> bmr; //background_misclassified_ratios (for the background species it is correctly classified ratio)
+	int total_background_count = 0;
+	int total_pixel_count = 0;
+
+	//sum up all pixel counts that were really BG for each species
+	for(auto loc = locations.begin(); loc != locations.end(); loc++)
+	{
+		if(!loc->second.used) //if not used, skip
+			continue;
+		total_background_count += loc->second.totalBGCount;
+		total_pixel_count += loc->second.numPixels;
+		for(auto spec = loc->second.bmc.begin(); spec != loc->second.bmc.end(); spec++)
+		{
+			if(exclude.find(spec->first) != exclude.end() && spec->first != BACKGROUND) // if the current species is being excluded
+				continue;
+			if(bmr.find(spec->first) == bmr.end()) // if species not in bmr so far
+			{
+				bmr[spec->first] = spec->second;
+			}
+			else
+			{
+				bmr[spec->first] += spec->second;
+			}
+		}
+	}
+
+	for(auto ratio = bmr.begin(); ratio != bmr.end(); ratio++)
+	{
+		ratio->second /= total_background_count;
+		ratio->second *= 100;
+
+		printf("   Species %7d: Percent BG classifed as species - %3.2lf%%\n", ratio->first, ratio->second);
+	}
+	printf("Percentage of all pixels that are BG: %.2lf%%\n", 100.0 * total_background_count/total_pixel_count);
+
 
 	return 0;
 }
