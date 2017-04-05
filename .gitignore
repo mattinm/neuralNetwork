@@ -261,3 +261,12 @@ msi_locations.bin
 *.old*
 CNNs/
 mosaic_test_images/
+Idx_files/
+SeamCarve_CNNs/
+Trained\ CNNs/
+Training_scripts/
+Videos/
+geeseImages*/
+old/
+src/Blob_compare_error*.csv
+msi_true_counts.csv
