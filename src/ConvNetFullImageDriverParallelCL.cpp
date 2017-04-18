@@ -133,7 +133,7 @@ int getNextRow()
 	{
 		out = curRow;
 		curRow += stride;
-		printf("Giving row %d of %d (%d)\n", out,__rows - inputHeight, __rows);
+		// printf("Giving row %d of %d (%d)\n", out,__rows - inputHeight, __rows);
 	}
 	else
 	{
@@ -522,6 +522,8 @@ int main(int argc, char** argv)
 
 	printf("Found %lu image(s).\n", filenames.size());
 
+	setbuf(stdout,0);
+
 	//init all nets
 	for(int i = 0; i < getNumDevices(); i++)
 	{
@@ -559,9 +561,10 @@ int main(int argc, char** argv)
 	for(int i=0; i < filenames.size(); i++)
 	{
 		starttime = time(NULL);
+		cout << filenames[i];
 		breakUpImage(filenames[i].c_str());
 		endtime = time(NULL);
-		cout << "Time for image: " << filenames[i] << ": " << secondsToString(endtime - starttime) << endl;
+		cout << " - Time for image: " << secondsToString(endtime - starttime) << endl;
 	}
 
 	//cout << "returning" << endl;

@@ -307,6 +307,9 @@ public: 	// functions
 	void preprocessIndividually();
 	void preprocessCollectively();
 
+	void setTrueNameIndex(const std::string& name, int index);
+
+
 	int getIndexFromName(const std::string& name) const;
 
 	//running
@@ -352,7 +355,6 @@ private:	// functions
 	void initWeights(ConvLayer* conv, const std::string& weights);
 
 	//functions dealing with data
-	void setTrueNameIndex(const std::string& name, int index);
 	int getTrueValIndex(const std::string& trueVal, bool allowAppends = true);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
 	int getMaxElementIndex(const std::vector<int>& vect) const;

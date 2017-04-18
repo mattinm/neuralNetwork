@@ -2712,6 +2712,9 @@ void Net::train(int epochs)
 {
 	printf("STOCHASTIC GRADIENT DESCENT\n");
 
+	for(int i = 0; i < __trueNames.size(); i++)
+		printf("index %d is name %s\n", i,__trueNames[i].c_str());
+
 	//set up all the layerNeeds and velocities for training.
  	vector<cl_mem> layerNeeds(0);
 	vector<cl_mem> velocities(0); // still needs to exist even if not using momentum so it compiles.

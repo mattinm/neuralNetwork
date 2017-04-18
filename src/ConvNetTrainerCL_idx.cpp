@@ -3,6 +3,7 @@
 #include <fstream>
 #include <vector>
 #include <iostream>
+#include <unordered_map>
 
 #include "opencv2/imgproc/imgproc.hpp" //used for showing images being read in from IDX
 #include "opencv2/highgui/highgui.hpp"
@@ -14,6 +15,7 @@ typedef vector<vector<vector<double> > > imVector;
 bool showImages = false;
 
 int imcount = 0;
+unordered_map<string, bool> excludes;
 /**********************
  *	Helper Functions
  ***********************/
@@ -176,6 +178,8 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 	}
 
 	string retval = to_string((long)trueVal);
+	if(excludes.find(retval) != excludes.end())
+		retval = "-1";
 	// cout << retval << endl;
 
 	//show image and trueVal
@@ -272,6 +276,10 @@ string getNextImage_byCount(ifstream& in, ifstream& trueval_in, imVector& dest, 
 			retVal = "1000000";
 	}
 
+	if(excludes.find(retVal) != excludes.end())
+		retVal = "-1";
+
+
 
 	//show image and trueVal
 	if(showImages)
@@ -328,10 +336,11 @@ int main(int argc, char** argv)
 		printf("        -test_label=path/to/test/labels.idx     Path to test labels\n");
 		printf("        -byCount                                IDXs are Marshall's with the counts instead of labels\n");
 		printf("        -showImages                             Shows each image as read in. For image verification purposes.\n");
+		printf("        -exclude=<string>                       Adds the string as a class name to be excluded from CNN. Says all excluded class images are background. Can be used multiple times.\n");
 		printf("        -epochs=<int>                           Amount of epochs to train for. Default: until it isn't getting better.\n");
 		printf("    GROUP: All or none. Note: the amount of colon (:) separted values must be the same for both args.\n");
 		printf("        -trainRatio_classes=name1:name2:...     The class names for the train ratio.\n");
-		printf("        -trainRatio_amounts=int1:int2:...        The amounts for the train ratio.\n");
+		printf("        -trainRatio_amounts=int1:int2:...       The amounts for the train ratio.\n");
 		printf("    END GROUP\n");
 		return 0;
 	}
@@ -343,6 +352,8 @@ int main(int argc, char** argv)
 	string train_data_path, test_data_path, train_label_path, test_label_path;
 	char * netConfig_path = argv[1];
 	char * saveName = argv[2];
+
+	// printf("FROM PROGRAM: %s %s\n", netConfig_path, saveName);
 	bool byCount = false;
 	string train_ratio_classes = "", train_ratio_amounts = "";
 	for(int i = 3; i < argc; i++)
@@ -380,9 +391,12 @@ int main(int argc, char** argv)
 			train_ratio_classes = arg.substr(arg.find('=')+1);
 		else if(arg.find("-trainRatio_amounts") != string::npos)
 			train_ratio_amounts = arg.substr(arg.find('=')+1);
+		else if(arg.find("-exclude=") != string::npos)
+			excludes[arg.substr(arg.find('=')+1)] = true;
 		else
 		{
 			printf("Unknown arg '%s'. Exiting.\n", argv[i]);
+			return -1;
 		}
 	}
 
@@ -511,6 +525,15 @@ int main(int argc, char** argv)
 	*
 	**************************/
 	Net net(netConfig_path);
+
+	if(byCount)
+	{
+		net.setTrueNameIndex("-1",0);
+		net.setTrueNameIndex("2",1);
+		net.setTrueNameIndex("1000000",2);
+	}
+
+
 	net.preprocessCollectively();
 	net.setSaveName(saveName);
 	if(train_ratio_amounts != "")
