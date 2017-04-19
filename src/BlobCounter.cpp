@@ -8,28 +8,55 @@
 using namespace cv;
 using namespace std;
 
+int getMSI(string filename)
+{
+	int startMSIIndex = filename.find("msi");
+	int nextUnderscore = filename.find("_",startMSIIndex);
+	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
+	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
+}
+
 int main(int argc, char** argv)
 {
+
+	bool show = false;
 	if(argc == 1)
 	{
 		printf("Use: ./BlobCounter im1.jpg im2.png ...\n");
 		return 0;
 	}
+
+	int i = 1;
+	if(string(argv[1]).find("-show") != string::npos)
+	{
+		i++;
+		show = true;
+	}
 	// printf("for\n");
-	for(int i = 1; i < argc; i++)
+	for(; i < argc; i++)
 	{
 		Mat im = imread(argv[i], 1);
+
+		//making a border that is all blue will help the blob detector find blobs on the edge of an image
+		int b = 5;
+		copyMakeBorder(im,im,b,b,b,b,BORDER_CONSTANT,Scalar(255,0,0));
 
 		string imname = argv[i];
 		imname = imname.substr(imname.rfind('/')+1);
 		int startprediction = imname.find("_prediction");
 		int lastDot = imname.rfind('.');
 		imname.erase(startprediction,lastDot - startprediction);
-		// imshow("orig",im);
-		// waitKey(0);
 
-		// printf("hi\n");
-		// printf("argv[%d] %s\n", i,argv[i]);
+		cv::Size mysizeMatched(750,750 * im.rows / im.cols);
+		
+		if(show)
+		{
+			Mat im_show = im.clone();
+			resize(im_show,im_show,mysizeMatched);
+			imshow("orig",im_show);
+			waitKey(0);
+		}
+
 
 		if((im.empty()))
 		{
@@ -54,11 +81,18 @@ int main(int argc, char** argv)
 		inRange(hsv_im, Scalar(45,50,50),Scalar(75,255,255),greenOnly);
 		bitwise_not(greenOnly,greenOnly);
 
-		imshow("redOnly",redOnly);
-		waitKey(0);
+		if(show)
+		{
+			Mat red_show = redOnly.clone();
+			resize(red_show,red_show,mysizeMatched);
+			imshow("redOnly",red_show);
+			waitKey(0);
 
-		imshow("greenOnly",greenOnly);
-		waitKey(0);
+			Mat green_show = greenOnly.clone();
+			resize(green_show,green_show,mysizeMatched);
+			imshow("greenOnly",green_show);
+			waitKey(0);
+		}
 
 		SimpleBlobDetector::Params params;
 		params.filterByColor = true;
@@ -67,7 +101,7 @@ int main(int argc, char** argv)
 		// params.minInertiaRatio = 0;
 		// params.maxInertiaRatio = 1;
 		params.filterByArea = false;
-		params.minArea = 10;
+		params.minArea = 0;
 		params.maxArea = 300;
 
 		params.filterByCircularity = false;
@@ -88,16 +122,21 @@ int main(int argc, char** argv)
 		
 
 		//image name, whiteCount, blueCount
-		printf("%s,%lu,%lu\n", imname.c_str(), redkeypoints.size(),greenkeypoints.size());
+		printf("%d,%lu,%lu\n", getMSI(imname), redkeypoints.size(),greenkeypoints.size());
 
-		Mat im_with_keypoints;
-		drawKeypoints(im, redkeypoints, im_with_keypoints, Scalar(255,255,255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-		imshow("redkeypoints",im_with_keypoints);
-		waitKey(0);
+		if(show)
+		{
+			Mat im_with_keypoints;
+			drawKeypoints(im, redkeypoints, im_with_keypoints, Scalar(0,0,0), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+			resize(im_with_keypoints,im_with_keypoints,mysizeMatched);
+			imshow("redkeypoints",im_with_keypoints);
+			waitKey(0);
 
-		// Mat im_with_keypoints2;
-		// drawKeypoints(im, greenkeypoints, im_with_keypoints2, Scalar(255,255,255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-		// imshow("greenkeypoints",im_with_keypoints2);
-		// waitKey(0);
+			Mat im_with_keypoints2;
+			drawKeypoints(im, greenkeypoints, im_with_keypoints2, Scalar(0,0,0), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+			resize(im_with_keypoints2,im_with_keypoints2,mysizeMatched);
+			imshow("greenkeypoints",im_with_keypoints2);
+			waitKey(0);
+		}
 	}
 }
