@@ -223,7 +223,9 @@ private: 	// members
 	cl_kernel reluKernel, leakyReluKernel, convKernel, maxPoolKernel, softmaxKernel, zeroPadKernel, reluBackKernel,
 		zeroPadBackKernel, softmaxBackKernel, maxPoolBackKernel, leakyReluBackKernel, convBackNeuronsKernel, 
 		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel,
-		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel;
+		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel,
+		zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel;
+
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
 	std::vector<cl_mem> clBiases;
@@ -379,14 +381,14 @@ private:	// functions
 	void feedForward(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
  		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
-	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
+		const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxForward();
 	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);
 	void softmaxBackprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, const cl_command_queue& queue, const Kernels& k, Net* net);
 	void backprop(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void backprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, Net* net, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& velocities, 
-	const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue queue, const Kernels& k);
+		const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue queue, const Kernels& k);
 	void storeWeightsInHolder(WeightHolder& holder);
 	void loadWeightsFromHolder(WeightHolder& holder);
 	bool stringToDims(std::string str, int* dims);
@@ -416,6 +418,11 @@ private:	// functions
 	void CheckError(cl_int error);
 	std::string LoadKernel(const char* name);
 	cl_program CreateProgram(std::string source, cl_context& context, int programNum = -1);
+
+	//minibatch training
+	void zeroMem(std::vector<cl_mem>& mem, const std::vector<size_t>& sizes);
+	void backprop_noUpdate(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities, std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases);
+	void updateWeights(std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases, std::vector<cl_mem>& velocities);
 
 };
 

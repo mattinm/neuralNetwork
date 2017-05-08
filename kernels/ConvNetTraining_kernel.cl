@@ -379,6 +379,114 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 
 }
 
+//////////////////////////
+//MINIBATCH
+//////////////////////////
+__kernel void convolve_back_weights_no_update_accum(__global double* weights, __global double* prevNeurons, __global double* dneurons,
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* dweights)
+{
+	
+	const int x = get_global_id(0);
+	const int numWeightsPerFilter = filterSize * filterSize * depth;
+	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
+	const int depxstr = depth * stride;
+	const int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
+
+	int d = x/numWeightsPerFilter; //myFilter
+	int p = x % numWeightsPerFilter; // my place in the filter
+	double myDerivative = 0;
+
+	for(int a=0; a < numBlocksPerRow; a++)
+	{
+		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
+		{
+			myDerivative += prevNeurons[p] * dneurons[d];
+			p += depxstr;
+			d += numFilters;
+		}
+		p += toNextBlockDown;
+	}
+
+	//L2 Reg?
+	myDerivative += l2Lambda * weights[x];
+	// printf("%d old %lf my %lf new %lf\n", x, dweights[x],myDerivative,dweights[x]+myDerivative);
+
+	dweights[x] += myDerivative;
+}
+
+//should have numBiases work units
+__kernel void convolve_back_biases_no_update_accum(__global double* biases, __global double* dneurons, int dneuronSize, 
+	int dneuronDepth, double stepSize, __global double* dbiases)
+{
+	
+	const int i = get_global_id(0);
+	const int dneurFaceSize = dneuronSize/dneuronDepth;
+
+	int j = i;//%dneuronDepth //which filter we're in. dont need % because there is only one bias per filter
+	double myDerivative = 0;
+	for(int a = 0; a< dneurFaceSize; a++) // calc myDerivative
+	{
+		myDerivative += dneurons[j];
+		j+=dneuronDepth;
+	}
+	//printf("stepSize %lf myDerivative %lf, result %.9lf\n", stepSize, myDerivative, stepSize * myDerivative);
+	dbiases[i] += myDerivative;
+	// biases[i] -= stepSize * myDerivative; // update bias
+
+}
+
+__kernel void zero_out(__global double* mem)
+{
+	mem[get_global_id(0)] = 0;
+}
+
+__kernel void update_weights(__global double* weights, __global double* dweights, double stepSize)
+{
+	const int x = get_global_id(0);
+
+	double myWeight = weights[x];
+	myWeight -= stepSize * dweights[x];
+	if(myWeight > MAX_NORM_CAP)
+		weights[x] = MAX_NORM_CAP;
+	else if(myWeight < -MAX_NORM_CAP)
+		weights[x] = -MAX_NORM_CAP;
+	else
+		weights[x] = myWeight;
+
+	// printf("%d %lf %lf\n", x, dweights[x], weights[x]);
+}
+
+__kernel void update_weights_moment(__global double* weights, __global double* dweights, double stepSize, __global double* velocity)
+{
+	const int x = get_global_id(0);
+
+	//Nesterov Accelerated Momentum
+	double myVel = velocity[x];
+	double prevVel = myVel;
+	myVel = MOMENT_CONST * myVel - stepSize * dweights[x];
+
+	//max-norm
+	double myWeight = weights[x];
+	//myWeight += myVel; //normal momentum
+	myWeight += -MOMENT_CONST * prevVel + (1+MOMENT_CONST) * myVel; // Nesterov Momentum
+	if(myWeight > MAX_NORM_CAP)
+		weights[x] = MAX_NORM_CAP;
+	else if(myWeight < -MAX_NORM_CAP)
+		weights[x] = -MAX_NORM_CAP;
+	else
+		weights[x] = myWeight;
+}
+
+__kernel void update_biases(__global double* biases, __global double* dbiases, double stepSize)
+{
+	const int i = get_global_id(0);
+	biases[i] -= stepSize * dbiases[i];
+}
+
+//////////////////////////
+//END MINIBATCH
+//////////////////////////
+
 __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
@@ -451,6 +559,8 @@ __kernel void softmax_back(__global double* dNeurons, __global double* neurons, 
 	{
 		dNeurons[i] = neurons[i];
 	}
+
+	// printf("SoftBack - Class %d: gradient %lf\n",i,dNeurons[i]);
 }
 
 
@@ -503,6 +613,7 @@ __kernel void divideEquals(__global double* dest, int num)
 {
 	int x = get_global_id(0);
 	dest[x] /= num;
+	printf("Avg gradient - Class %d: gradient %lf\n", x, dest[x]);
 }
 
 /*************************************************

@@ -200,6 +200,8 @@ __kernel void softmax_allCL(__global double *prevNeurons, __global double *neuro
 {
 	int i = get_global_id(0);
 	neurons[i] = exp(prevNeurons[i])/(*denominator);
+	// printf("CNN Output - Class %d: conf %lf\n", i, neurons[i],*denominator);
+
 }
 
 __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,

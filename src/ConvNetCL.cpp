@@ -854,6 +854,13 @@ bool Net::finalize()
 		plusEqualsKernel = clCreateKernel(CNTraining, "plusEquals", &error); CheckError(error);
 		divideEqualsKernel = clCreateKernel(CNTraining, "divideEquals", &error); CheckError(error);
 
+		zeroMemKernel = clCreateKernel(CNTraining, "zero_out", &error); CheckError(error);
+		convBackWeightsNoUpdateAccumKernel = clCreateKernel(CNTraining, "convolve_back_weights_no_update_accum", &error); CheckError(error);
+		convBackBiasesNoUpdateAccumKernel = clCreateKernel(CNTraining, "convolve_back_biases_no_update_accum", &error); CheckError(error);
+		updateWeightsKernel = clCreateKernel(CNTraining, "update_weights", &error); CheckError(error);
+		updateWeightsMomentKernel = clCreateKernel(CNTraining, "update_weights_moment", &error); CheckError(error);
+		updateBiasesKernel = clCreateKernel(CNTraining, "update_biases", &error); CheckError(error);
+
 		//make the queue
 		queue = clCreateCommandQueue(__context, __deviceIds[q], 0, &error); 
 		CheckError(error);
@@ -2535,11 +2542,219 @@ void Net::backprop(int curTrueVal, cl_mem** prevNeurons, cl_mem** neurons, Net* 
 }
 
 
+void Net::backprop_noUpdate(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities, vector<cl_mem>& gradients_weights, vector<cl_mem>& gradients_biases)
+{
+	int curConvLayer = clWeights.size() - 1;
+	size_t globalWorkSize[] = {0, 0, 0};
+	cl_mem* temp;
+	for(int i = __layers.size() -1; i > 0; i--)
+	{
+		// printf("layer %d\n", i);
+		if(__layers[i]->layerType == ACTIV_LAYER)
+		{
+			int type = ((ActivLayer*)__layers[i])->activationType;
+			globalWorkSize[0] = (size_t)__neuronSizes[i-1];
+			if(type == RELU)
+			{
+				// cout << "running reluBackKernel " << endl;
+				clSetKernelArg(reluBackKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(reluBackKernel, 1, sizeof(cl_mem), neurons);
+				clSetKernelArg(reluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
+				CheckError(clEnqueueNDRangeKernel(queue, reluBackKernel, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			}
+			else if(type == LEAKY_RELU)
+			{
+				// cout << "running leakyReluBackKernel " << endl;
+				clSetKernelArg(leakyReluBackKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(leakyReluBackKernel, 1, sizeof(cl_mem), neurons);
+				clSetKernelArg(leakyReluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i])); // dneuronInfo
+				CheckError(clEnqueueNDRangeKernel(queue, leakyReluBackKernel, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			}
+		}
+		else if(__layers[i]->layerType == MAX_POOL_LAYER)
+		{
+			// cout << "running maxPoolBackKernel " << endl;
+			int numIndexes = __neuronSizes[i];
+			clSetKernelArg(maxPoolBackKernel, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(maxPoolBackKernel, 1, sizeof(cl_mem), neurons);
+			clSetKernelArg(maxPoolBackKernel, 2, sizeof(cl_mem), &(layerNeeds[i]));
+			clSetKernelArg(maxPoolBackKernel, 3, sizeof(int), &numIndexes);
+			clSetKernelArg(maxPoolBackKernel, 4, sizeof(int), &(__neuronDims[i][2]));
+			// cout << "args set" << endl;
+			globalWorkSize[0] = (size_t)__neuronSizes[i-1];
+			// printf("globalWorkSize %lu\n", globalWorkSize[0]);
+			CheckError(clEnqueueNDRangeKernel(queue, maxPoolBackKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			// cout << "kernel started" << endl;
+		}
+		else if(__layers[i]->layerType == CONV_LAYER)
+		{
+			//backprop neurons					
+			// cout << "running convBackNeuronsKernel" << endl;
+			ConvLayer* conv = (ConvLayer*)__layers[i];
+			clSetKernelArg(convBackNeuronsKernel, 0, sizeof(cl_mem), prevNeurons);
+			clSetKernelArg(convBackNeuronsKernel, 1, sizeof(cl_mem), neurons);
+			clSetKernelArg(convBackNeuronsKernel, 2, sizeof(cl_mem), &(clWeights[curConvLayer]));
+			clSetKernelArg(convBackNeuronsKernel, 3, sizeof(int), &(conv->numBiases)); //numFilters
+			clSetKernelArg(convBackNeuronsKernel, 4, sizeof(int), &(conv->filterSize)); //filterSize
+			clSetKernelArg(convBackNeuronsKernel, 5, sizeof(int), &(conv->stride)); //stride
+			clSetKernelArg(convBackNeuronsKernel, 6, sizeof(int), &(conv->paddedNeuronWidth));
+			clSetKernelArg(convBackNeuronsKernel, 7, sizeof(int), &(__neuronDims[i-1][2])); //depth
+
+			globalWorkSize[0] = (size_t) conv->paddedNeuronSize;					
+			CheckError(clEnqueueNDRangeKernel(queue, convBackNeuronsKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+			clFinish(queue); //MUST finish before weights start getting updated
+
+			//backprop and update biases
+			// cout << "running convBackBiasesKernel " << endl;
+			clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 0, sizeof(cl_mem), &(clBiases[curConvLayer]));
+			clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 1, sizeof(cl_mem), neurons);
+			clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 2, sizeof(int), &(__neuronSizes[i]));
+			clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 3, sizeof(int), &(conv->numBiases)); // numFilters = dneuronsDepth
+			clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 4, sizeof(double), &(__learningRate));
+			clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 5, sizeof(cl_mem), &gradients_biases[curConvLayer]);
+			globalWorkSize[0] = (size_t) conv->numBiases;
+			CheckError(clEnqueueNDRangeKernel(queue, convBackBiasesNoUpdateAccumKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+		// clFinish(queue);
+		// cout << "ConvLayer back biases " << curConvLayer << endl;
+		// CheckError(clEnqueueReadBuffer(queue, clBiases[curConvLayer], CL_TRUE, 0, sizeof(double) * globalWorkSize[0],
+		// 	test.data(), 0, nullptr, nullptr));
+		// printArray(test.data(), globalWorkSize[0]);
+		// getchar();
+
+			//backprop and update weights					
+			// cout << "running convBackWeightsKernel" << endl;
+
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 0,  sizeof(cl_mem), &(clWeights[curConvLayer]));
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 1,  sizeof(cl_mem), &(layerNeeds[i]));
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 2,  sizeof(cl_mem), neurons);
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 3,  sizeof(int), &(__neuronDims[i-1][2])); // depth
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 4,  sizeof(int), &(conv->stride)); // stride
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 5,  sizeof(int), &(conv->paddedNeuronWidth));
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 6,  sizeof(int), &(conv->filterSize)); // filterSize
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 7,  sizeof(int), &(conv->numBiases)); // numFilters
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 8,  sizeof(double), &__learningRate);
+			clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 9, sizeof(cl_mem), &gradients_weights[curConvLayer]);
+			globalWorkSize[0] = (size_t)conv->numWeights;
+			CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsNoUpdateAccumKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+	// clFinish(queue);
+	// cout << "ConvLayer back weights " << curConvLayer << endl;
+	// cout << "numWeights " << conv->numWeights << endl;
+	// CheckError(clEnqueueReadBuffer(queue, clWeights[curConvLayer], CL_TRUE, 0, sizeof(double) * conv->numWeights,
+	// 	test.data(), 0, nullptr, nullptr));
+	// printArray(test.data(), conv->numWeights);
+	// getchar();
+
+			//backprop zeroPad if necessary
+			if(conv->padding != 0) 
+			{
+				clFinish(queue); //so the weights finish updating before zeroPadBackKernel starts changing prevNeurons and neurons
+
+				//swap prev and cur neuron pointers
+				temp = neurons;
+				neurons = prevNeurons;
+				prevNeurons = temp;
+
+				clSetKernelArg(zeroPadBackKernel, 0, sizeof(cl_mem), prevNeurons);
+				clSetKernelArg(zeroPadBackKernel, 1, sizeof(cl_mem), neurons);
+				clSetKernelArg(zeroPadBackKernel, 2, sizeof(int), &(conv->padding)); //padding
+				clSetKernelArg(zeroPadBackKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); //prevWidth (non-padded)
+				clSetKernelArg(zeroPadBackKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); //prevHeight(non-padded)
+				clSetKernelArg(zeroPadBackKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); //depth
+				// cout << "Running zeroPadBackKernel" << endl;
+				globalWorkSize[0] = (size_t)conv->paddedNeuronSize;
+				CheckError(clEnqueueNDRangeKernel(queue,zeroPadBackKernel, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			}
+			curConvLayer--;
+		} // end if-elseif for backprop of single layer
+
+		clFinish(queue);
+		// cout << "post finish" << endl;
+
+		// cout << "Backprop Layer " << i << endl;
+		// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+		// 	test.data(), 0, nullptr, nullptr));
+		// for(int j=0; j< __neuronSizes[i]; j++)
+		// {
+		// 	cout << test[j] << ", ";
+		// }
+		// cout << endl << endl;
+		// getchar();
+
+		temp = neurons;
+		neurons = prevNeurons;
+		prevNeurons = temp;
+	}// end for loop for backprop
+}
+
+
+void Net::updateWeights(vector<cl_mem>& gradients_weights, vector<cl_mem>& gradients_biases, vector<cl_mem>& velocities)
+{
+	int curConvLayer = 0;
+	for(int i = 0; i < __layers.size(); i++)
+	{
+		if(__layers[i]->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)__layers[i];
+			size_t sizeBias[] = {(size_t) conv->numBiases,0,0};
+			size_t sizeWeight[] = {(size_t) conv->numWeights,0,0};
+
+			clSetKernelArg(updateBiasesKernel, 0, sizeof(cl_mem), &clBiases[curConvLayer]);
+			clSetKernelArg(updateBiasesKernel, 1, sizeof(cl_mem), &gradients_biases[curConvLayer]);
+			clSetKernelArg(updateBiasesKernel, 2, sizeof(double), &__learningRate);
+			CheckError(clEnqueueNDRangeKernel(queue, updateBiasesKernel, 1,
+				nullptr, sizeBias, nullptr, 0, nullptr, nullptr));
+
+			if(__useMomentum)
+			{
+				clSetKernelArg(updateWeightsMomentKernel, 0, sizeof(cl_mem), &clWeights[curConvLayer]);
+				clSetKernelArg(updateWeightsMomentKernel, 1, sizeof(cl_mem), &gradients_weights[curConvLayer]);
+				clSetKernelArg(updateWeightsMomentKernel, 2, sizeof(double), &__learningRate);
+				clSetKernelArg(updateWeightsMomentKernel, 3, sizeof(cl_mem), &velocities[curConvLayer]);
+				CheckError(clEnqueueNDRangeKernel(queue, updateWeightsMomentKernel, 1,
+					nullptr, sizeWeight, nullptr, 0, nullptr, nullptr));
+			}
+			else
+			{
+				clSetKernelArg(updateWeightsKernel, 0, sizeof(cl_mem), &clWeights[curConvLayer]);
+				clSetKernelArg(updateWeightsKernel, 1, sizeof(cl_mem), &gradients_weights[curConvLayer]);
+				clSetKernelArg(updateWeightsKernel, 2, sizeof(double), &__learningRate);
+				CheckError(clEnqueueNDRangeKernel(queue, updateWeightsKernel, 1,
+					nullptr, sizeWeight, nullptr, 0, nullptr, nullptr));
+			}
+			clFinish(queue);
+
+			curConvLayer++;
+		}
+	}	
+}
+
+void Net::zeroMem(vector<cl_mem>& mem, const vector<size_t>& sizes)
+{
+	for(int i = 0; i < mem.size(); i++)
+	{
+		size_t globalWorkSize[] = {sizes[i],0,0};
+		clSetKernelArg(zeroMemKernel, 0, sizeof(cl_mem), &(mem[i]));
+		CheckError(clEnqueueNDRangeKernel(queue, zeroMemKernel, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+	}
+}
+
 /***************************
 *
 * Not completed DO NOT USE
 * A miniBatch train function training with backprop.
-* TODO: Set it up so it stores the average of the gradient from each example
+* TODO: Set it up so it stores the average of the gradient ON EACH WEIGHT from each example
 * TODO: Parallelize so multiple stuff feed forwards at once. Use DETrain or AntTrain as a reference
 * Public
 *
@@ -2552,6 +2767,7 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 		return;
 	}
 
+
 	printf("MINIBATCH GRADIENT DESCENT\n");
 	vector<cl_mem> layerNeeds(0);
 	vector<cl_mem> velocities(0);
@@ -2563,9 +2779,9 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 
 	if(epochs == -1)
  	{
- 		if(__testData.size() == 0)
- 			epochs = 1;
- 		else
+ 		// if(__testData.size() == 0)
+ 		// 	epochs = 1;
+ 		// else
  			epochs = 9999; // if you need more than this set it yourself
  	}
 
@@ -2589,13 +2805,34 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	CheckError(clSetKernelArg(plusEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
 	CheckError(clSetKernelArg(plusEqualsKernel, 1, sizeof(cl_mem), neurons));
 	CheckError(clSetKernelArg(divideEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
-	CheckError(clSetKernelArg(divideEqualsKernel, 1, sizeof(int), &(__neuronSizes.back())));
+	// CheckError(clSetKernelArg(divideEqualsKernel, 1, sizeof(int), &(__neuronSizes.back())));
+	CheckError(clSetKernelArg(divideEqualsKernel,1,sizeof(int), &batchSize));
+
+	vector<cl_mem> gradients_weights, gradients_biases;
+	vector<size_t> gradients_weights_sizes, gradients_biases_sizes;
+
+	for(int i = 0; i < __layers.size(); i++)
+	{
+		if(__layers[i]->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)__layers[i];
+
+			gradients_weights_sizes.push_back(conv->numWeights);
+			gradients_weights.push_back(clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * conv->numWeights, nullptr, &error));
+			CheckError(error);
+
+			gradients_biases_sizes.push_back(conv->numBiases);
+			gradients_biases.push_back(clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * conv->numBiases, nullptr, &error));
+			CheckError(error);
+		}
+	}
 
 	////////////////////////////
 	// start of training
 	// start of epochs
 	////////////////////////////
 	setbuf(stdout, NULL);
+	printf("Run for %d epochs\n", epochs);
 	for(int e = 0; e < epochs; e++)
 	{
 		starttime = time(NULL);
@@ -2619,13 +2856,13 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 		}
 		
 		int numCorrect = 0;
+		int imsDone = 0;
 
 		for(int r = 0; r < trainingData.size() - batchSize; r += batchSize) // the ones that don't nicely fit in a batch will be discarded
 		{
 			//reset the accumulated derivatives to 0
-			CheckError(clEnqueueWriteBuffer(queue, batchHolder, CL_TRUE, 0, 
-				sizeof(double) * batchZeros.size(),
-				batchZeros.data(), 0, nullptr, nullptr));
+			zeroMem(gradients_weights, gradients_weights_sizes);
+			zeroMem(gradients_biases, gradients_biases_sizes);
 
 			for(int b = r; b < r+batchSize; b++)
 			{
@@ -2644,34 +2881,26 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	            clFinish(queue);
 				if(getMaxElementIndex(soft) == trueVals[b])
 					numCorrect++;
+				imsDone++;
 
-				// get the derivative of the softmax
+				// get the derivatives
 				softmaxBackprop(trueVals[b]);
+				backprop_noUpdate(layerNeeds, velocities, gradients_weights, gradients_biases);
 
-				//add it into the total
-				CheckError(clEnqueueNDRangeKernel(queue, plusEqualsKernel, 1,
-					nullptr, plusGlobalWorkSize, nullptr, 0, nullptr, nullptr));
 			} // end of batch
 			// cout << "end of batch" << endl;
 
 			clFinish(queue);
-			//get the average derivative and put it into neurons
-			CheckError(clEnqueueNDRangeKernel(queue, divideEqualsKernel, 1,
-				nullptr, plusGlobalWorkSize, nullptr, 0, nullptr, nullptr));
-			clSetKernelArg(copyArrayKernel, 0, sizeof(cl_mem), &batchHolder);
-			clSetKernelArg(copyArrayKernel, 1, sizeof(cl_mem), neurons);
-			clFinish(queue);
-			CheckError(clEnqueueNDRangeKernel(queue, copyArrayKernel, 1,
-				nullptr, plusGlobalWorkSize, nullptr, 0, nullptr, nullptr));
-			clFinish(queue);
 
-			//backprop the averaged gradients
-			backprop(layerNeeds, velocities);
+			//update weights
+			// backprop(layerNeeds, velocities);
+			updateWeights(gradients_weights, gradients_biases, velocities);
+
 		} // end of single epoch. end of training data to go through this epoch
 
 		endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << numCorrect << " out of " << trueVals.size() << ". " << numCorrect/(double)trueVals.size()*100 << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
+	 	cout << "Accuracy on training data: " << numCorrect << " out of " << imsDone << " (" << trueVals.size() << "). " << numCorrect/(double)imsDone*100 << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
