@@ -790,6 +790,8 @@ bool Net::finalize()
 			CNForwardPath = "ConvNetForward_kernel.cl";
 		else if(fileExists("../kernels/ConvNetForward_kernel.cl"))
 			CNForwardPath = "../kernels/ConvNetForward_kernel.cl";
+		else if(fileExists("../../kernels/ConvNetForward_kernel.cl"))
+			CNForwardPath = "../../kernels/ConvNetForward_kernel.cl";
 		else if(fileExists("..\\..\\..\\kernels\\ConvNetForward_kernel.cl"))
 			CNForwardPath = "..\\..\\..\\kernels\\ConvNetForward_kernel.cl";
 		else
@@ -806,6 +808,8 @@ bool Net::finalize()
 			CNTraining_kernel = "ConvNetTraining_kernel.cl";
 		else if(fileExists("../kernels/ConvNetTraining_kernel.cl"))
 			CNTraining_kernel = "../kernels/ConvNetTraining_kernel.cl";
+		else if(fileExists("../../kernels/ConvNetTraining_kernel.cl"))
+			CNTraining_kernel = "../../kernels/ConvNetTraining_kernel.cl";
 		else if(fileExists("..\\..\\..\\kernels\\ConvNetTraining_kernel.cl"))
 			CNTraining_kernel = "..\\..\\..\\kernels\\ConvNetTraining_kernel.cl";
 		else
@@ -813,7 +817,7 @@ bool Net::finalize()
 			printf("Cannot find ConvNetForward_kernel.cl\n");
 			return false;
 		}
-		CNTraining = CreateProgram(LoadKernel("../kernels/ConvNetTraining_kernel.cl"), __context, TRAINING_PROGRAM);
+		CNTraining = CreateProgram(LoadKernel(CNTraining_kernel.c_str()), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
 
 		

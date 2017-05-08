@@ -526,12 +526,12 @@ int main(int argc, char** argv)
 	**************************/
 	Net net(netConfig_path);
 
-	if(byCount)
-	{
+	// if(byCount)
+	// {
 		net.setTrueNameIndex("-1",0);
 		net.setTrueNameIndex("2",1);
 		net.setTrueNameIndex("1000000",2);
-	}
+	// }
 
 
 	net.preprocessCollectively();
@@ -555,7 +555,7 @@ int main(int argc, char** argv)
 	{
 		cout << net.getErrorLog() << endl;
 		cout << "Something went wrong making the net. Exiting." << endl;
-		return 0;
+		return 1;
 	}
 
 	

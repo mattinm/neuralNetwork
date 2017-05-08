@@ -265,6 +265,12 @@ void breakUpImage(const char* imageName)
 	curRow = 0;
 
 	fullMat = imread(imageName,1);
+	if(fullMat.empty())
+	{
+		printf("File '%s' was unable to open\n", imageName);
+	}
+	if(rgb)
+		cvtColor(fullMat,fullMat,CV_BGR2RGB);
 
 	__rows = fullMat.rows;
 	__cols = fullMat.cols;

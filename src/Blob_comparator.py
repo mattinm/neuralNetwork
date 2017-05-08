@@ -8,6 +8,8 @@ class CountClass:
 		pass
 
 def getMSI(filename):
+    if(filename.isdigit()):
+        return filename;
 	startMSIIndex = filename.find("msi");
 	nextUnderscore = filename.find("_",startMSIIndex);
 	return filename[startMSIIndex+3:nextUnderscore]
@@ -31,7 +33,10 @@ with open(sys.argv[1],'rU') as f:
 	for row in trueValReader:
 		trueVals[row[0]] = [int(row[1]),int(row[2])]
 
+print "True vals size = " + str(len(trueVals))
+
 #read in list of calculated vals
+print "\n\n\n"
 counts = []
 for i in range(2,len(sys.argv)):
 	with open(sys.argv[i],'rU') as f:
@@ -43,6 +48,7 @@ for i in range(2,len(sys.argv)):
 			msi = getMSI(row[0])
 			if(msi in trueVals.keys()):
 				counts[-1].vals[msi] = [int(row[1]),int(row[2])]
+        print counts[-1].name + " - " + str(len(counts[-1].vals))
 
 
 #compare and make output csvs

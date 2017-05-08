@@ -47,7 +47,7 @@ int main(int argc, char** argv)
 		int lastDot = imname.rfind('.');
 		imname.erase(startprediction,lastDot - startprediction);
 
-		cv::Size mysizeMatched(750,750 * im.rows / im.cols);
+		cv::Size mysizeMatched(750,750 * im.rows / im.cols); //make the 750 smaller if it's too big for your screen
 		
 		if(show)
 		{
@@ -73,10 +73,13 @@ int main(int argc, char** argv)
 		inRange(hsv_im, Scalar(0,50,50),Scalar(30,255,255),low);
 		inRange(hsv_im, Scalar(130,50,50),Scalar(179,255,255),high);
 
+
+		//copy-convert image to B/W where black is where the red was. This helps with the blob detector.
 		Mat redOnly;
 		addWeighted(low, 1., high, 1., 0., redOnly);
 		bitwise_not(redOnly,redOnly);
 
+		//copy-convert image to B/W where black is where the green was
 		Mat greenOnly;
 		inRange(hsv_im, Scalar(45,50,50),Scalar(75,255,255),greenOnly);
 		bitwise_not(greenOnly,greenOnly);
