@@ -656,10 +656,14 @@ int main(int argc, char** argv)
 		//net.addTrainingData(training_data,training_names);
 		net.printTrainingDistribution();
 
+		// if(epochs == -1)
+		// 	net.miniBatchTrain(10,10);
+		// else
+		// 	net.miniBatchTrain(64,epochs);
 		if(epochs == -1)
-			net.miniBatchTrain(10,10);
+			net.train();
 		else
-			net.miniBatchTrain(64,epochs);
+			net.train(epochs);
 	}
 	if(cmd_test_count > 0)
 	{
