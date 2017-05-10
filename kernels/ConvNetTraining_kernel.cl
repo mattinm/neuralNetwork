@@ -17,6 +17,8 @@
 #define MOMENT_CONST .9 	 //multiplication constant for momentum
 #define MAX_NORM_CAP 6.0 	 //max absolute value a weight can have
 
+#define EPSILON 1e-8         //small constant so no divide by 0
+
 #define iterations 50        //iterations for exact_exp
 
 // END DEFINES
@@ -687,3 +689,21 @@ __kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
 	neurons[x] = maxVal;
 }
 
+/*************************************************
+*
+*	Batch Normalization kernels
+*
+*************************************************/
+
+__kernel void batch_norm(__global double* prevNeurons, __global double* neurons, const __global double* gamma, const __global double* beta, 
+	const __global double* mu, const __global double* sigma_squared)
+{
+	int x = get_global_id(0);
+	double xhat = (prevNeurons[x] - mu[x])/pow(sigma_squared[x] + EPSILON, 0.5);
+	neurons[x] = gamma[x] * xhat + beta[x];
+}
+
+__kernel void batch_norm_back(__global double* prevdNeurons, __global double* dneurons)
+{
+	int x = get_global_id(0);
+}

@@ -14,6 +14,7 @@
 #include <cfloat>
 #include <string>
 #include <vector>
+#include <thread>
 
 //OpenCV
 #include "opencv2/imgproc/imgproc.hpp"
@@ -26,11 +27,17 @@
  	#include "CL/cl.h"
 #endif
 
+//defines for preprocessing
+#define __PREPROCESS_INDIVIDUAL 0
+#define __PREPROCESS_COLLECTIVE 1
+#define __PREPROCESS_BATCH_NORM 2
+
 //defines for layers
 #define ABSTRACT_LAYER -1
 #define CONV_LAYER 0
 #define MAX_POOL_LAYER 1
 #define ACTIV_LAYER 2
+#define BATCH_NORM_LAYER 3
 
 //defines for ActivTypes
 #define RELU 0
@@ -122,6 +129,8 @@ private: 	// structs
 	};
 
 	struct Kernels{
+		~Kernels();
+		bool built = false;
 		cl_kernel reluKernelF;
 		cl_kernel leakyReluKernelF;
 		cl_kernel convKernelF;
@@ -149,7 +158,48 @@ private: 	// structs
 		cl_kernel vectorESumKernel;
 		cl_kernel plusEqualsKernel;
 		cl_kernel divideEqualsKernel;
+		cl_kernel zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, 
+			updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel, batchNormKernel, batchNormBackKernel;
 	};
+
+	static int check_counter(int count);
+
+	//from https://www.daniweb.com/programming/software-development/threads/498822/c-11-thread-equivalent-of-pthread-barrier
+	class spinlock_barrier
+	{
+	public:
+	  spinlock_barrier(const spinlock_barrier&) = delete;
+	  spinlock_barrier& operator=(const spinlock_barrier&) = delete;
+
+	  explicit spinlock_barrier(unsigned int count) :
+	    m_count(Net::check_counter(count)), m_generation(0), 
+	    m_count_reset_value(count)
+	  {
+	  }
+
+	  void count_down_and_wait()
+	  {
+	    unsigned int gen = m_generation.load();
+
+	    if (--m_count == 0)
+	    {
+	      if (m_generation.compare_exchange_weak(gen, gen + 1))
+	      {
+	        m_count = m_count_reset_value;
+	      }
+	      return;
+	    }
+
+	    while ((gen == m_generation) && (m_count != 0))
+	      std::this_thread::yield();
+	  }
+
+	private:
+	  std::atomic<unsigned int> m_count;
+	  std::atomic<unsigned int> m_generation;
+	  unsigned int m_count_reset_value;
+	};
+
 
 private: 	// members
 	bool __inited = false;
@@ -182,7 +232,8 @@ private: 	// members
 		//training
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
-		bool __preprocessIndividual = false;
+		// bool __preprocessIndividual = false;
+		int __preprocessType = __PREPROCESS_COLLECTIVE;
 		double __mean = 0;
 		double __stddev = 0;
 		unsigned long __trainingSize = 0;
@@ -206,6 +257,21 @@ private: 	// members
 		std::vector<int> __trainRatioAmounts;
 		std::vector<int> __trainActualAmounts;
 
+		//batch norm
+		// std::atomic<int> mu_reset_done = false;
+		std::mutex mtx;
+		std::vector<std::mutex> mtx_a;
+		int thread_count = 0;
+		bool mu_reset_done = false;
+
+		std::vector<double> mu;
+		std::vector<double> sigma_squared;
+		cl_mem mu_cl;
+		cl_mem sigma_squared_cl;
+
+		std::vector<cl_mem> gamma;
+		std::vector<cl_mem> beta;
+
 	//OpenCL related members
 	cl_uint __platformIdCount;
 	cl_uint __deviceIdCount;
@@ -217,6 +283,7 @@ private: 	// members
 	bool __constantMem = false;
 	bool __stuffBuilt = false;
 	cl_program CNForward, CNTraining;
+	std::string CNForwardPath, CNTrainingPath;
 	//running kernels
 	cl_kernel reluKernelF, leakyReluKernelF, convKernelF, convKernelFC, maxPoolKernelF, softmaxKernelF, zeroPadKernelF;
 	//training kernels
@@ -224,12 +291,13 @@ private: 	// members
 		zeroPadBackKernel, softmaxBackKernel, maxPoolBackKernel, leakyReluBackKernel, convBackNeuronsKernel, 
 		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel,
 		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel,
-		zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel;
+		zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel,
+		batchNormKernel, batchNormBackKernel;
 
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
 	std::vector<cl_mem> clBiases;
-	cl_mem n, p, *neurons, *prevNeurons, denom;	
+	cl_mem n, p, *neurons, *prevNeurons, denom;
 
 
 	//DE
@@ -382,6 +450,8 @@ private:	// functions
  		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
 		const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
+	void feedForward_BN(const int num_threads, const int minibatch_size, const std::vector<std::vector<double>* >& trainingData, int start, int end, std::vector<cl_mem*>& prevNeurons, std::vector<cl_mem*>& neurons,//cl_mem** prevNeurons, cl_mem** neurons,
+		const std::vector<std::vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
 	void softmaxForward();
 	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);
@@ -409,7 +479,7 @@ private:	// functions
 	void mapPosIndexes(ConvLayer* origConv, int* origpos, ConvLayer* destConv, int* destpos);
 	// void DE_mutation_crossover_selection(int netNum, );
 	void buildKernels(Kernels& k, int device);
-	void releaseKernels(Kernels&k);
+	// void releaseKernels(Kernels&k);
 	void trial_thread(int netIndex, std::vector<Net*>* nets, double netfit, Net* trial, double* trainDataPtr, int curTrueVal, cl_mem** prevNeurons, 
 		cl_mem** neurons, const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, 
 		const std::vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP);
