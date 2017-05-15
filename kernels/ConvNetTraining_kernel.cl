@@ -696,14 +696,38 @@ __kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
 *************************************************/
 
 __kernel void batch_norm(__global double* prevNeurons, __global double* neurons, const __global double* gamma, const __global double* beta, 
-	const __global double* mu, const __global double* sigma_squared)
+	const __global double* mu, const __global double* sigma_squared, int depth)
 {
 	int x = get_global_id(0);
 	double xhat = (prevNeurons[x] - mu[x])/pow(sigma_squared[x] + EPSILON, 0.5);
-	neurons[x] = gamma[x] * xhat + beta[x];
+	if(depth < 1) // this means by activation instead of by feature map
+		neurons[x] = gamma[x] * xhat + beta[x];
+	else
+	{
+		int k = x % depth; // this gives what depth (ie feature map) we are on
+		neurons[x] = gamma[k] * xhat + beta[k];
+	}
 }
 
-__kernel void batch_norm_back(__global double* prevdNeurons, __global double* dneurons)
+__kernel void batch_norm_back(__global double* prevdNeurons, __global double* dNeurons, int depth, __global double* gamma, __global double* mu, 
+	__global double* sigma2, __global double* delta_mu, __global double* delta_sigma2, __global double* bn_x, int minibatch_size)
 {
-	int x = get_global_id(0);
+	int i = get_global_id(0);
+	int k;
+	if(depth < 1)
+		k = i;
+	else
+		k = i % depth;
+	double delta_xhat = dNeurons[i] * gamma[k];
+	double delta_x = delta_xhat * 1/pow(sigma2[k] + EPSILON, 0.5) + delta_sigma2[k] * 2 * (bn_x[i] - mu[k]) / minibatch_size
+		+ delta_mu[k] / minibatch_size;
+	dNeurons[i] = delta_x;
+
+}
+
+__kernel void update_gamma_and_beta(__global double* gamma, __global double* beta, __global double* delta_gamma, __global double* delta_beta, double stepSize)
+{
+	int i = get_global_id(0);
+	gamma[i] += delta_gamma[i] * stepSize;
+	beta[i] += delta_beta[i] * stepSize;
 }

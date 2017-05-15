@@ -108,6 +108,12 @@ private: 	// structs
 		bool equals(const ConvLayer& other);
 	};
 
+	struct BatchNormLayer : Layer{
+		std::vector<double> gamma;
+		std::vector<double> beta;
+		bool byFeatureMap = true; //if false, by activation
+	}
+
 	struct MaxPoolLayer : Layer{
 		int stride;
 		int poolSize;
@@ -259,18 +265,25 @@ private: 	// members
 
 		//batch norm
 		// std::atomic<int> mu_reset_done = false;
-		std::mutex mtx;
+		std::mutex mtx, gw_mtx, gb_mtx; //mutex, gradient_weights_mutex, gradient_biases_mutex;
 		std::vector<std::mutex> mtx_a;
 		int thread_count = 0;
 		bool mu_reset_done = false;
 
-		std::vector<double> mu;
-		std::vector<double> sigma_squared;
-		cl_mem mu_cl;
-		cl_mem sigma_squared_cl;
+		std::vector<std::vector<std::vector<std::vector<double> > > > bn_x, bn_xhat;
 
-		std::vector<cl_mem> gamma;
-		std::vector<cl_mem> beta;
+		std::vector<std::vector<double> > mu, delta_mu;
+		std::vector<std::vector<double> > sigma_squared, delta_sigma2; //is delta_sigma_squared
+		std::vector<cl_mem> mu_cl, delta_mu_cl;
+		std::vector<cl_mem> sigma_squared_cl, delta_sigma2_cl;
+
+
+		std::vector<cl_mem> gamma; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
+		std::vector<cl_mem> beta;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
+		std::vector<std::vector<double> > delta_gamma;
+		std::vector<std::vector<double> > delta_beta;
+		std::vector<cl_mem> delta_gamma_cl; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
+		std::vector<cl_mem> delta_beta_cl;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -322,6 +335,7 @@ public: 	// functions
 	bool addActivLayer();
 	bool addActivLayer(int activationType);
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad);
+	bool addBatchNormLayer(bool byFeatureMap = true);
 	bool addMaxPoolLayer(int poolSize, int stride);
 	bool addFullyConnectedLayer(int outputSize);
 	bool setActivType(int activationType);
@@ -391,6 +405,7 @@ public: 	// functions
 	//training
 	void train(int epochs=-1);
 	void miniBatchTrain(int batchSize, int epochs=-1);
+	void batchNormTrain(int batchSize, int epochs=-1);
 	void DETrain(int generations, int population = 25, double mutationScale = 0.5, int crossMethod = DE_EXPONENTIAL_CROSSOVER, double crossProb = 0.1, bool BP = true);
 	void DETrain_sameSize(int mutationType, int generations, int dataBatchSize, int population = 15, double mutationScale = 0.5, int crossMethod = DE_BINOMIAL_CROSSOVER, double crossProb = 0.8, bool BP = true);
 	bool setDETargetSelectionMethod(int method);
@@ -450,7 +465,7 @@ private:	// functions
  		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
 		const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
-	void feedForward_BN(const int num_threads, const int minibatch_size, const std::vector<std::vector<double>* >& trainingData, int start, int end, std::vector<cl_mem*>& prevNeurons, std::vector<cl_mem*>& neurons,//cl_mem** prevNeurons, cl_mem** neurons,
+	void feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const std::vector<std::vector<double>* >& trainingData, int start, int end, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons,
 		const std::vector<std::vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
 	void softmaxForward();
 	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
@@ -491,8 +506,15 @@ private:	// functions
 
 	//minibatch training
 	void zeroMem(std::vector<cl_mem>& mem, const std::vector<size_t>& sizes);
-	void backprop_noUpdate(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities, std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases);
+	void backprop_noUpdate(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases);
 	void updateWeights(std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases, std::vector<cl_mem>& velocities);
+
+	//batchnorm training
+	void backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int amount, std::vector<cl_mem*> *prevNeurons, std::vector<cl_mem*> *neurons,
+		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
+		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases);
+	void setupBatchNormCLMems(int num_threads, const vector<int>& thread_sizes);
+	void pullGammaAndBeta();
 
 };
 
