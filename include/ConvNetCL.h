@@ -112,7 +112,7 @@ private: 	// structs
 		std::vector<double> gamma;
 		std::vector<double> beta;
 		bool byFeatureMap = true; //if false, by activation
-	}
+	};
 
 	struct MaxPoolLayer : Layer{
 		int stride;
@@ -165,7 +165,8 @@ private: 	// structs
 		cl_kernel plusEqualsKernel;
 		cl_kernel divideEqualsKernel;
 		cl_kernel zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, 
-			updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel, batchNormKernel, batchNormBackKernel;
+			updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel, batchNormKernel, batchNormBackKernel, 
+			updateGammaAndBetaKernel;
 	};
 
 	static int check_counter(int count);
@@ -305,7 +306,7 @@ private: 	// members
 		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel,
 		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel,
 		zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel,
-		batchNormKernel, batchNormBackKernel;
+		batchNormKernel, batchNormBackKernel, updateGammaAndBetaKernel;
 
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
@@ -512,9 +513,10 @@ private:	// functions
 	//batchnorm training
 	void backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int amount, std::vector<cl_mem*> *prevNeurons, std::vector<cl_mem*> *neurons,
 		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
-		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases);
-	void setupBatchNormCLMems(int num_threads, const vector<int>& thread_sizes);
+		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases, const std::vector<cl_mem>& bn_x_cl);
+	void setupBatchNormCLMems(int num_threads, const std::vector<int>& thread_sizes, std::vector<std::vector<cl_mem> > &bn_x_cl);
 	void pullGammaAndBeta();
+	void updateGammaAndBeta();
 
 };
 

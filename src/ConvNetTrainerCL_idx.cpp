@@ -661,9 +661,9 @@ int main(int argc, char** argv)
 		// else
 		// 	net.miniBatchTrain(64,epochs);
 		if(epochs == -1)
-			net.train();
+			net.batchNormTrain(8);
 		else
-			net.train(epochs);
+			net.batchNormTrain(8,epochs);
 	}
 	if(cmd_test_count > 0)
 	{
