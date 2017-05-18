@@ -4068,7 +4068,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			// for(int b = r; b < r+batchSize; b++)
 			// {
 				// if(b % 100 == 0)
-					printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
+					// printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
 				//do the feedForward and see if it was right
 				int start = r, end;
 				vector<thread> thr(numThreads);
