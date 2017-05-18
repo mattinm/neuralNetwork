@@ -3847,20 +3847,27 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 	printf("MINIBATCH GRADIENT DESCENT WITH BATCH NORMALIZATION\n");
 
-	int numThreads = 8;
+	int numThreads = 12;
 	vector<int> thread_sizes(numThreads);
 	if(batchSize % numThreads != 0)
 	{
-		thread_sizes[0] = batchSize % numThreads;
-		int rest = (batchSize - thread_sizes[0])/(numThreads - 1);
-		for(int i = 0; i < numThreads - 1; i++)
-			thread_sizes[i] = rest; // even distribute across the rest
+		// thread_sizes[0] = batchSize % numThreads;
+		// int rest = (batchSize - thread_sizes[0])/(numThreads - 1);
+		// for(int i = 1; i < numThreads; i++)
+		// 	thread_sizes[i] = rest; // even distribute across the rest
+		int i = 0;
+		for(int mini = 0, i = 0; mini < batchSize; mini++, i = (i+1)%numThreads)
+		{
+			thread_sizes[i]++;
+		}
 	}
 	else
 	{
 		for(int i = 0; i < numThreads; i++)
 			thread_sizes[i] = batchSize / numThreads;
 	}
+	// for(int i = 0; i < thread_sizes.size(); i++)
+	// 	printf("size %d: %d\n", i,thread_sizes[i]);
 	#ifdef _DEBUG
 	printf("thread sizes set, %d\n",__isFinalized);
 	#endif
