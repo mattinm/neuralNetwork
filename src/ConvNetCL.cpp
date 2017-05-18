@@ -484,6 +484,51 @@ bool Net::addBatchNormLayer(bool byFeatureMap)
 	return true;
 }
 
+bool Net::addBatchNormLayer(bool byFeatureMap, int gamma_size, const string& gamma, int beta_size, const string& beta)
+{
+	int prevWidth  = __neuronDims.back()[0];
+	int prevHeight = __neuronDims.back()[1];
+	int prevDepth  = __neuronDims.back()[2];
+
+	BatchNormLayer *batch = new BatchNormLayer();
+	batch->layerType = BATCH_NORM_LAYER;
+	if(byFeatureMap)
+	{
+		if(gamma_size != beta_size || gamma_size != prevDepth)
+		{
+			printf("Inconsistent sizes for gamma, beta, and previous layer when adding batch norm layer.\n");
+			return false;
+		}
+		batch->gamma.resize(prevDepth,1);
+		batch->beta.resize(prevDepth,0);
+		batch->byFeatureMap = true;
+	}
+	else
+	{
+		int size = __neuronSizes.back();
+		if(gamma_size != beta_size || gamma_size != size)
+		{
+			printf("Inconsistent sizes for gamma, beta, and previous layer when adding batch norm layer.\n");
+			return false;
+		}
+		batch->gamma.resize(size,1);
+		batch->beta.resize(size,0);
+		batch->byFeatureMap = false; // by activation
+	}
+	vector<string> gamma_array = convnet::split(gamma,',');
+	vector<string> beta_array = convnet::split(beta,',');
+	for(int i = 0; i < gamma_size; i++)
+	{
+		batch->gamma[i] = stod(gamma_array[i]);
+		batch->beta[i] = stod(beta_array[i]);
+	}
+
+	__layers.push_back(batch);
+	pushBackLayerSize(prevWidth,prevHeight,prevDepth);
+	__isFinalized = false;
+	return true;
+}
+
 /*****************************
 *
 * Adds a Convolutional Layer with weights specified by the string (could be the string random as it is above.)
@@ -2103,6 +2148,7 @@ void Net::feedForward(cl_mem** prevNeurons, cl_mem** neurons, vector<vector<int>
 void Net::feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const vector<vector<double>* >& trainingData, const vector<double>& trueVals, int start, int end, vector<cl_mem*>* prevNeurons, vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
 	const vector<vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier)
 {
+	// printf("Thread %d: doing items [%d,%d)\n", thread_num,start,end);
 	//do housekeeping to make sure everything is sized right
 	size_t ss = prevNeurons->size();
 	int amount = end - start;
@@ -4019,12 +4065,12 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 			pullGammaAndBeta(); //to calc xhat in feedForward_BN
 
-			for(int b = r; b < r+batchSize; b++)
-			{
-				if(b % 100 == 0)
-					printf("Doing %d of %lu\n",b, trainingData.size() - batchSize);
+			// for(int b = r; b < r+batchSize; b++)
+			// {
+				// if(b % 100 == 0)
+					printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
 				//do the feedForward and see if it was right
-				int start = batchSize, end;
+				int start = r, end;
 				vector<thread> thr(numThreads);
 				//feedforward
 				#ifdef _DEBUG
@@ -4072,7 +4118,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 				#ifdef _DEBUG
 				printf("backprop joined\n");
 				#endif
-			} // end of batch
+			// } // end of batch
 			// cout << "end of batch" << endl;
 
 			clFinish(queue);
@@ -4086,7 +4132,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 		endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << bnNumCorrect << " out of " << lastTrainIndex - 1 << " (" << trueVals.size() << "). " << numCorrect/(double)imsDone*100 << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
+	 	cout << "Accuracy on training data: " << bnNumCorrect << " out of " << lastTrainIndex - 1 << " (" << trueVals.size() << "). " << 100.0*bnNumCorrect/(lastTrainIndex-1) << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
@@ -8311,6 +8357,78 @@ bool Net::load(const char* filename)
 
 				addMaxPoolLayer(pool_size,pool_stride);
 			}
+			else if(line == "BATCH_NORM_LAYER")
+			{
+				bool byFeatureMap = false;
+				int gamma_size = -1, beta_size = -1,featFound = 0;
+				string gamma = "", beta = "";
+				while(line != "END_BATCH_NORM_LAYER")
+				{
+					if(line.find("byFeatureMap=1") != string::npos)
+					{
+						featFound++;
+						byFeatureMap = true;
+					}
+					else if(line.find("byFeatureMap=0") != string::npos)
+					{
+						featFound++;
+						byFeatureMap = false;
+					}
+					else if(line.find("gamma_size=") != string::npos)
+						gamma_size = stoi(line.substr(line.find('=')+1));
+					else if(line.find("beta_size=") != string::npos)
+						beta_size = stoi(line.substr(line.find('=')+1));
+					else if(line.find("gamma=") != string::npos)
+						gamma = line.substr(line.find('=')+1);
+					else if(line.find("beta=") != string::npos)
+						beta = line.substr(line.find('=')+1);
+					else
+					{
+						cout << "Improper file structure while getting BatchNormLayer args at line " << lineNum << ". Exiting load.";
+						file.close();
+						return false;
+					}
+					getline(file,line); lineNum++;
+				}
+
+				if(featFound < 1)
+				{
+					printf("Layer ending on line %d: Missing byFeatureMap arg when getting BatchNormLayer args.\n",lineNum);
+					file.close(); return false;
+				}
+				else if(featFound > 1)
+				{
+					printf("Layer ending on line %d: There should only be one byFeatureMap arg per BatchNormLayer.\n",lineNum);
+					file.close(); return false;
+				}
+				else if(gamma_size < 1)
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Unable to find gamma_size or gamma_size < 1.\n",lineNum);
+					file.close(); return false;
+				}
+				else if(beta_size < 1)
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Unable to find beta_size or beta_size < 1.\n",lineNum);
+					file.close(); return false;
+				}
+				else if(gamma == "")
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Unable to find gamma.\n",lineNum);
+					file.close(); return false;
+				}
+				else if(beta == "")
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Unable to find beta.\n",lineNum);
+					file.close(); return false;
+				}
+
+				bool success = addBatchNormLayer(byFeatureMap,gamma_size,gamma,beta_size,beta);
+				if(!success)
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Failed to successfully add BatchNormLayer.\n",lineNum);
+					file.close(); return false;
+				}
+			}
 			else if(line == "CONV_LAYER")
 			{
 				int conv_stride, conv_pad, conv_numFilters, conv_filterSize, convArgs = 0;
@@ -8531,6 +8649,47 @@ bool Net::load(const char* filename)
 					}
 				}
 			}
+			else if(items[0] == "batchNorm")
+			{
+				if(items.size() == 1) //no other info
+				{
+					bool success = addBatchNormLayer();
+					if(!success)
+					{
+						printf("Line %d: Error adding default batchNorm layer\n", lineNum);
+						return false;
+					}
+				}
+				else
+				{
+					if(items[1].find("byFeatureMap="))
+					{
+						string arg = convnet::tolower(items[1].substr(items[1].find('=')+1));
+						bool success;
+						if(arg == "true" || arg == "1")
+							success = addBatchNormLayer(true);
+						else if(arg == "false" || arg == "0")
+							success = addBatchNormLayer(false);
+						else
+						{
+							printf("Line %d: byFeatureMap arg should have value true or false or 1 or 0\n", lineNum);
+							return false;
+						}
+						if(!success)
+						{
+							printf("Line %d: Error adding batchNorm layer\n", lineNum);
+							return false;
+						}
+
+					}
+					else
+					{
+						printf("Line %d: Unknown arg for batchNorm layer '%s'\n", lineNum, items[1].c_str());
+						return false;
+					}
+
+				}
+			}
 			else if(items[0] == "activ")
 			{
 				string type = convnet::tolower(items[1]);
@@ -8548,6 +8707,7 @@ bool Net::load(const char* filename)
 				if(!success)
 				{
 					printf("Line %d: Error adding activation layer with type %s\n", lineNum, items[1].c_str());
+					return false;
 				}
 			}
 			else if(items[0] == "maxpool")
@@ -8771,6 +8931,37 @@ bool Net::save(const char* filename)
 			out += '\n';
 
 			out += "END_CONV_LAYER\n";
+		}
+		else if(type == BATCH_NORM_LAYER)
+		{
+			BatchNormLayer* batch = (BatchNormLayer*)__layers[l];
+			out += "BATCH_NORM_LAYER\n";
+			if(batch->byFeatureMap)
+				out += "byFeatureMap=1\n";
+			else
+				out += "byFeatureMap=0\n";
+
+			sprintf(data,"%lu\n",batch->gamma.size());
+			out += "gamma_size="; out += data;
+			out += "gamma=";
+			for(int g = 0; g < batch->gamma.size(); g++)
+			{
+				sprintf(data,"%lf,",batch->gamma[g]);
+				out += data;
+			}
+			out += '\n';
+
+			sprintf(data,"%lu\n",batch->beta.size());
+			out += "beta_size="; out += data;
+			out += "beta=";
+			for(int g = 0; g < batch->beta.size(); g++)
+			{
+				sprintf(data,"%lf,",batch->beta[g]);
+				out += data;
+			}
+			out += '\n';
+
+			out += "END_BATCH_NORM_LAYER\n";
 		}
 	}
 	out += "SOFTMAX_LAYER\n";

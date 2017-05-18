@@ -436,6 +436,7 @@ private:	// functions
 
 	//functions dealing with layers
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad, const std::string& weightsAndBias);
+	bool addBatchNormLayer(bool byFeatureMap, int gamma_size, const std::string& gamma, int beta_size, const std::string& beta);
 	void pushBackLayerSize(int width, int height, int depth);
 
 	//weights and biases
