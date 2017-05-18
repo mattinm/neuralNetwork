@@ -285,6 +285,8 @@ private: 	// members
 		std::vector<std::vector<double> > delta_beta;
 		std::vector<cl_mem> delta_gamma_cl; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<cl_mem> delta_beta_cl;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
+		std::mutex bnNumCorrect_mtx;
+		int bnNumCorrect;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -466,8 +468,6 @@ private:	// functions
  		const std::vector<cl_mem>& layerNeeds, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
 		const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
-	void feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const std::vector<std::vector<double>* >& trainingData, int start, int end, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons,
-		const std::vector<std::vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
 	void softmaxForward();
 	void softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void softmaxBackprop(int curTrueVal);
@@ -511,6 +511,8 @@ private:	// functions
 	void updateWeights(std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases, std::vector<cl_mem>& velocities);
 
 	//batchnorm training
+	void feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const std::vector<std::vector<double>* >& trainingData, const std::vector<double>& trueVals, int start, int end, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons,
+		const std::vector<std::vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
 	void backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int amount, std::vector<cl_mem*> *prevNeurons, std::vector<cl_mem*> *neurons,
 		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
 		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases, const std::vector<cl_mem>& bn_x_cl);

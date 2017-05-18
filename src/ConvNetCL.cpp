@@ -23,7 +23,7 @@
 #include <random>
 #include <unordered_map>
 
-#define _DEBUG 0 //uncomment for some print statements to help with debugging
+// #define _DEBUG 0 //uncomment for some print statements to help with debugging
 
 // 	includes brought in from ConvNetCL.h
 //
@@ -2100,7 +2100,7 @@ void Net::feedForward(cl_mem** prevNeurons, cl_mem** neurons, vector<vector<int>
 * Private
 *
 *****************************/
-void Net::feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const vector<vector<double>* >& trainingData, int start, int end, vector<cl_mem*>* prevNeurons, vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
+void Net::feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const vector<vector<double>* >& trainingData, const vector<double>& trueVals, int start, int end, vector<cl_mem*>* prevNeurons, vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
 	const vector<vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier)
 {
 	//do housekeeping to make sure everything is sized right
@@ -2429,7 +2429,8 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 		// getchar();
 
 	}
-	
+	int numCorrect = 0;
+	vector<double> soft(__neuronSizes.back());
 	for(int a = 0; a < amount; a++)
 	{
 		#ifdef _DEBUG
@@ -2437,7 +2438,16 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 		#endif
 		if(usesSoftmax)
 			softmaxForward((*prevNeurons)[a], (*neurons)[a], queue, denom, k);
+		CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+		 	soft.data(), 0, nullptr, nullptr));
+        clFinish(queue);
+		if(getMaxElementIndex(soft) == trueVals[start + a])
+			numCorrect++;
+
 	}
+	bnNumCorrect_mtx.lock();
+	bnNumCorrect += numCorrect;
+	bnNumCorrect_mtx.unlock();
 	// printf("end feed\n");
 }
 
@@ -3243,18 +3253,18 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 
 			for(int a = 0; a < amount; a++)
 			{
-				CheckError(clSetKernelArg(batchNormBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 1, sizeof(cl_mem), (*neurons)[a]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 2, sizeof(int), &depth));
-				CheckError(clSetKernelArg(batchNormBackKernel, 3, sizeof(cl_mem), gamma[curBNLayer]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 4, sizeof(cl_mem), mu_cl[curBNLayer]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 5, sizeof(cl_mem), sigma_squared_cl[curBNLayer]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 6, sizeof(cl_mem), delta_mu_cl[curBNLayer]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 7, sizeof(cl_mem), delta_sigma2_cl[curBNLayer]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 8, sizeof(cl_mem), bn_x_cl[a]));
-				CheckError(clSetKernelArg(batchNormBackKernel, 9, sizeof(int), &minibatch_size));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 1, sizeof(cl_mem), (*neurons)[a]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 2, sizeof(int), &depth));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 3, sizeof(cl_mem), gamma[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 4, sizeof(cl_mem), mu_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 5, sizeof(cl_mem), sigma_squared_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 6, sizeof(cl_mem), delta_mu_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 7, sizeof(cl_mem), delta_sigma2_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 8, sizeof(cl_mem), bn_x_cl[a]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 9, sizeof(int), &minibatch_size));
 				globalWorkSize[0] = __neuronSizes[i];
-				CheckError(clEnqueueNDRangeKernel(queue, batchNormBackKernel, 1, nullptr,
+				CheckError(clEnqueueNDRangeKernel(queue, k.batchNormBackKernel, 1, nullptr,
 					globalWorkSize, nullptr, 0, nullptr, nullptr));
 			}
 			clFinish(queue);
@@ -3265,6 +3275,9 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 		{
 			for(int a = 0; a < amount; a++)
 			{
+				#ifdef _DEBUG
+				printf("Thread %d.%d: Backprop Layer %d Type %d\n", thread_num,a,i,__layers[i]->layerType);
+				#endif
 				// printf("layer %d\n", i);
 				if(__layers[i]->layerType == ACTIV_LAYER)
 				{
@@ -3273,19 +3286,19 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					if(type == RELU)
 					{
 						// cout << "running reluBackKernel " << endl;
-						clSetKernelArg(reluBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
-						clSetKernelArg(reluBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
-						clSetKernelArg(reluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i])); // dneuronInfo
-						CheckError(clEnqueueNDRangeKernel(queue, reluBackKernel, 1,
+						clSetKernelArg(k.reluBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+						clSetKernelArg(k.reluBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+						clSetKernelArg(k.reluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i])); // dneuronInfo
+						CheckError(clEnqueueNDRangeKernel(queue, k.reluBackKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					}
 					else if(type == LEAKY_RELU)
 					{
 						// cout << "running leakyReluBackKernel " << endl;
-						clSetKernelArg(leakyReluBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
-						clSetKernelArg(leakyReluBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
-						clSetKernelArg(leakyReluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i])); // dneuronInfo
-						CheckError(clEnqueueNDRangeKernel(queue, leakyReluBackKernel, 1,
+						clSetKernelArg(k.leakyReluBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+						clSetKernelArg(k.leakyReluBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+						clSetKernelArg(k.leakyReluBackKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i])); // dneuronInfo
+						CheckError(clEnqueueNDRangeKernel(queue, k.leakyReluBackKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					}
 				}
@@ -3293,50 +3306,57 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 				{
 					// cout << "running maxPoolBackKernel " << endl;
 					int numIndexes = __neuronSizes[i];
-					clSetKernelArg(maxPoolBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
-					clSetKernelArg(maxPoolBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
-					clSetKernelArg(maxPoolBackKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i]));
-					clSetKernelArg(maxPoolBackKernel, 3, sizeof(int), &numIndexes);
-					clSetKernelArg(maxPoolBackKernel, 4, sizeof(int), &(__neuronDims[i][2]));
+					clSetKernelArg(k.maxPoolBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+					clSetKernelArg(k.maxPoolBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.maxPoolBackKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i]));
+					clSetKernelArg(k.maxPoolBackKernel, 3, sizeof(int), &numIndexes);
+					clSetKernelArg(k.maxPoolBackKernel, 4, sizeof(int), &(__neuronDims[i][2]));
 					// cout << "args set" << endl;
 					globalWorkSize[0] = (size_t)__neuronSizes[i-1];
 					// printf("globalWorkSize %lu\n", globalWorkSize[0]);
-					CheckError(clEnqueueNDRangeKernel(queue, maxPoolBackKernel, 1,
+					CheckError(clEnqueueNDRangeKernel(queue, k.maxPoolBackKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					// cout << "kernel started" << endl;
 				}
 				else if(__layers[i]->layerType == CONV_LAYER)
 				{
+					#ifdef _DEBUG
+					printf("Thread %d.%d: back conv neuron\n", thread_num,a);
+					#endif
 					//backprop neurons					
 					// cout << "running convBackNeuronsKernel" << endl;
 					ConvLayer* conv = (ConvLayer*)__layers[i];
-					clSetKernelArg(convBackNeuronsKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
-					clSetKernelArg(convBackNeuronsKernel, 1, sizeof(cl_mem), (*neurons)[a]);
-					clSetKernelArg(convBackNeuronsKernel, 2, sizeof(cl_mem), &(clWeights[curConvLayer]));
-					clSetKernelArg(convBackNeuronsKernel, 3, sizeof(int), &(conv->numBiases)); //numFilters
-					clSetKernelArg(convBackNeuronsKernel, 4, sizeof(int), &(conv->filterSize)); //filterSize
-					clSetKernelArg(convBackNeuronsKernel, 5, sizeof(int), &(conv->stride)); //stride
-					clSetKernelArg(convBackNeuronsKernel, 6, sizeof(int), &(conv->paddedNeuronWidth));
-					clSetKernelArg(convBackNeuronsKernel, 7, sizeof(int), &(__neuronDims[i-1][2])); //depth
+					clSetKernelArg(k.convBackNeuronsKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+					clSetKernelArg(k.convBackNeuronsKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.convBackNeuronsKernel, 2, sizeof(cl_mem), &(clWeights[curConvLayer]));
+					clSetKernelArg(k.convBackNeuronsKernel, 3, sizeof(int), &(conv->numBiases)); //numFilters
+					clSetKernelArg(k.convBackNeuronsKernel, 4, sizeof(int), &(conv->filterSize)); //filterSize
+					clSetKernelArg(k.convBackNeuronsKernel, 5, sizeof(int), &(conv->stride)); //stride
+					clSetKernelArg(k.convBackNeuronsKernel, 6, sizeof(int), &(conv->paddedNeuronWidth));
+					clSetKernelArg(k.convBackNeuronsKernel, 7, sizeof(int), &(__neuronDims[i-1][2])); //depth
 
 					globalWorkSize[0] = (size_t) conv->paddedNeuronSize;					
-					CheckError(clEnqueueNDRangeKernel(queue, convBackNeuronsKernel, 1,
+					CheckError(clEnqueueNDRangeKernel(queue, k.convBackNeuronsKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 
 					clFinish(queue); //MUST finish before weights start getting updated
 
+					#ifdef _DEBUG
+					printf("Thread %d.%d: back conv biases\n", thread_num,a);
+					#endif
+
 					//backprop and update biases
 					// cout << "running convBackBiasesKernel " << endl;
-					clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 0, sizeof(cl_mem), &(clBiases[curConvLayer]));
-					clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 1, sizeof(cl_mem), (*neurons)[a]);
-					clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 2, sizeof(int), &(__neuronSizes[i]));
-					clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 3, sizeof(int), &(conv->numBiases)); // numFilters = dneuronsDepth
-					clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 4, sizeof(double), &(__learningRate));
-					clSetKernelArg(convBackBiasesNoUpdateAccumKernel, 5, sizeof(cl_mem), &gradients_biases[curConvLayer]);
+					clSetKernelArg(k.convBackBiasesNoUpdateAccumKernel, 0, sizeof(cl_mem), &(clBiases[curConvLayer]));
+					clSetKernelArg(k.convBackBiasesNoUpdateAccumKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.convBackBiasesNoUpdateAccumKernel, 2, sizeof(int), &(__neuronSizes[i]));
+					clSetKernelArg(k.convBackBiasesNoUpdateAccumKernel, 3, sizeof(int), &(conv->numBiases)); // numFilters = dneuronsDepth
+					clSetKernelArg(k.convBackBiasesNoUpdateAccumKernel, 4, sizeof(double), &(__learningRate));
+					clSetKernelArg(k.convBackBiasesNoUpdateAccumKernel, 5, sizeof(cl_mem), &gradients_biases[curConvLayer]);
 					globalWorkSize[0] = (size_t) conv->numBiases;
 					//because of += we need to ensure mutual exclusion
 					gb_mtx.lock();
-						CheckError(clEnqueueNDRangeKernel(queue, convBackBiasesNoUpdateAccumKernel, 1,
+						CheckError(clEnqueueNDRangeKernel(queue, k.convBackBiasesNoUpdateAccumKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 						clFinish(queue);
 					gb_mtx.unlock();
@@ -3348,22 +3368,26 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 				// printArray(test.data(), globalWorkSize[0]);
 				// getchar();
 
+					#ifdef _DEBUG
+					printf("Thread %d.%d: back conv weights\n", thread_num,a);
+					#endif
+
 					//backprop and update weights					
 					// cout << "running convBackWeightsKernel" << endl;
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 0,  sizeof(cl_mem), &(clWeights[curConvLayer]));
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 1,  sizeof(cl_mem), &(layerNeeds[a][i]));
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 2,  sizeof(cl_mem), (*neurons)[a]);
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 3,  sizeof(int), &(__neuronDims[i-1][2])); // depth
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 4,  sizeof(int), &(conv->stride)); // stride
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 5,  sizeof(int), &(conv->paddedNeuronWidth));
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 6,  sizeof(int), &(conv->filterSize)); // filterSize
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 7,  sizeof(int), &(conv->numBiases)); // numFilters
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 8,  sizeof(double), &__learningRate);
-					clSetKernelArg(convBackWeightsNoUpdateAccumKernel, 9, sizeof(cl_mem), &gradients_weights[curConvLayer]);
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 0,  sizeof(cl_mem), &(clWeights[curConvLayer]));
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 1,  sizeof(cl_mem), &(layerNeeds[a][i]));
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 2,  sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 3,  sizeof(int), &(__neuronDims[i-1][2])); // depth
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 4,  sizeof(int), &(conv->stride)); // stride
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 5,  sizeof(int), &(conv->paddedNeuronWidth));
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 6,  sizeof(int), &(conv->filterSize)); // filterSize
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 7,  sizeof(int), &(conv->numBiases)); // numFilters
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 8,  sizeof(double), &__learningRate);
+					clSetKernelArg(k.convBackWeightsNoUpdateAccumKernel, 9, sizeof(cl_mem), &gradients_weights[curConvLayer]);
 					globalWorkSize[0] = (size_t)conv->numWeights;
 					//because of += we need to ensure mutual exclusion
 					gw_mtx.lock();
-						CheckError(clEnqueueNDRangeKernel(queue, convBackWeightsNoUpdateAccumKernel, 1,
+						CheckError(clEnqueueNDRangeKernel(queue, k.convBackWeightsNoUpdateAccumKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 						clFinish(queue);
 					gw_mtx.unlock();
@@ -3379,6 +3403,9 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					//backprop zeroPad if necessary
 					if(conv->padding != 0) 
 					{
+						#ifdef _DEBUG
+						printf("Thread %d.%d: back conv padding\n", thread_num,a);
+						#endif
 						clFinish(queue); //so the weights finish updating before zeroPadBackKernel starts changing prevNeurons and neurons
 
 						//swap prev and cur neuron pointers
@@ -3386,18 +3413,23 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 						(*neurons)[a] = (*prevNeurons)[a];
 						(*prevNeurons)[a] = temp;
 
-						clSetKernelArg(zeroPadBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
-						clSetKernelArg(zeroPadBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
-						clSetKernelArg(zeroPadBackKernel, 2, sizeof(int), &(conv->padding)); //padding
-						clSetKernelArg(zeroPadBackKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); //prevWidth (non-padded)
-						clSetKernelArg(zeroPadBackKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); //prevHeight(non-padded)
-						clSetKernelArg(zeroPadBackKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); //depth
+						clSetKernelArg(k.zeroPadBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+						clSetKernelArg(k.zeroPadBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+						clSetKernelArg(k.zeroPadBackKernel, 2, sizeof(int), &(conv->padding)); //padding
+						clSetKernelArg(k.zeroPadBackKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); //prevWidth (non-padded)
+						clSetKernelArg(k.zeroPadBackKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); //prevHeight(non-padded)
+						clSetKernelArg(k.zeroPadBackKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); //depth
 						// cout << "Running zeroPadBackKernel" << endl;
 						globalWorkSize[0] = (size_t)conv->paddedNeuronSize;
-						CheckError(clEnqueueNDRangeKernel(queue,zeroPadBackKernel, 1,
+						CheckError(clEnqueueNDRangeKernel(queue,k.zeroPadBackKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					}
-					curConvLayer--;
+					#ifdef _DEBUG
+					printf("Thread %d.%d: back conv done\n", thread_num,a);
+					#endif
+
+					if(a == amount - 1)
+						curConvLayer--;
 				} // end if-elseif for backprop of single layer
 
 				clFinish(queue);
@@ -3416,9 +3448,16 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 				temp = (*neurons)[a];
 				(*neurons)[a] = (*prevNeurons)[a];
 				(*prevNeurons)[a] = temp;
+
+				#ifdef _DEBUG
+				printf("Thread %d.%d: swap\n", thread_num,a);
+				#endif
 			}
 		}
 	}// end for loop for backprop
+	#ifdef _DEBUG
+	printf("Thread %d: very last thing in backprop\n", thread_num);
+	#endif
 }
 
 
@@ -3808,7 +3847,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 	printf("MINIBATCH GRADIENT DESCENT WITH BATCH NORMALIZATION\n");
 
-	int numThreads = 1;
+	int numThreads = 8;
 	vector<int> thread_sizes(numThreads);
 	if(batchSize % numThreads != 0)
 	{
@@ -3940,6 +3979,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	for(int e = 0; e < epochs; e++)
 	{
 		starttime = time(NULL);
+		bnNumCorrect = 0;
 		//adjust learning rate
 		if(e % 10 == 0 && e != 0)
 		{
@@ -3963,7 +4003,8 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		int imsDone = 0;
 		spinlock_barrier* barrier_ptr = &barrier;
 
-		for(int r = 0; r < trainingData.size() - batchSize; r += batchSize) // the ones that don't nicely fit in a batch will be discarded
+		int lastTrainIndex = trainingData.size() - trainingData.size() % batchSize;
+		for(int r = 0; r < lastTrainIndex; r += batchSize) // the ones that don't nicely fit in a batch will be discarded
 		{
 			//reset the accumulated derivatives to 0
 			zeroMem(gradients_weights, gradients_weights_sizes);
@@ -3973,6 +4014,8 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 			for(int b = r; b < r+batchSize; b++)
 			{
+				if(b % 100 == 0)
+					printf("Doing %d of %lu\n",b, trainingData.size() - batchSize);
 				//do the feedForward and see if it was right
 				int start = batchSize, end;
 				vector<thread> thr(numThreads);
@@ -3984,15 +4027,17 @@ void Net::batchNormTrain(int batchSize, int epochs)
 				{
 					end = start + thread_sizes[t];
 					vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
-					thr[t] = thread([=] {feedForward_BN(numThreads, batchSize, t, trainingData, start, end, pptr, nptr,//prevNeurons[t], neurons[t],
-						layerNeeds[t], queues[t], denoms[t], kernels[t], barrier_ptr);});
+					thr[t] = thread([=, &kernels, &trainingData, &trueVals, &layerNeeds, &queues, &denoms]
+					 {feedForward_BN(numThreads, batchSize, t, ref(trainingData), ref(trueVals), start, end, pptr, nptr,//prevNeurons[t], neurons[t],
+						ref(layerNeeds[t]), ref(queues[t]), ref(denoms[t]), ref(kernels[t]), barrier_ptr);});
 					start = end;
 				}
 				for(int t = 0; t < numThreads; t++)
 					thr[t].join();
 				#ifdef _DEBUG
-				printf("joined\n");
+				printf("feedforward joined\n");
 				#endif
+
 
 				//backprop
 				#ifdef _DEBUG
@@ -4001,13 +4046,24 @@ void Net::batchNormTrain(int batchSize, int epochs)
 				for(int t = 0; t < numThreads; t++)
 				{
 					vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
-					thr[t] = thread([=] {backprop_noUpdate_BN(numThreads, batchSize, t, thread_sizes[t], pptr, nptr,
-						layerNeeds[t], queues[t], kernels[t], barrier_ptr, gradients_weights, gradients_biases, bn_x_cl[t]);});
+					thr[t] = thread([=, &kernels, &layerNeeds, &queues, &gradients_weights, &gradients_biases, &bn_x_cl]
+						// [&,numThreads, batchSize, t, thread_sizes, pptr, nptr, barrier_ptr
+						// // layerNeeds, queues,kernels,gradients_weights,gradients_biases,bn_x_cl] 
+						// ]
+						{backprop_noUpdate_BN(numThreads, batchSize, t, thread_sizes[t], pptr, nptr,
+						layerNeeds[t], queues[t], ref(kernels[t]), barrier_ptr, gradients_weights, gradients_biases, bn_x_cl[t]);});
+					// thr[t] = thread(&Net::backprop_noUpdate_BN,numThreads, batchSize, t, thread_sizes[t], pptr, nptr,
+					// 	ref(layerNeeds[t]), ref(queues[t]), ref(kernels[t]), barrier_ptr, ref(gradients_weights), ref(gradients_biases), ref(bn_x_cl[t]));
 				}
+				// printf("post for\n");
 				for(int t = 0; t < numThreads; t++)
+				{
+					// printf("before join %d\n", t);
 					thr[t].join();
+					// printf("after join %d\n", t);
+				}
 				#ifdef _DEBUG
-				printf("joined\n");
+				printf("backprop joined\n");
 				#endif
 			} // end of batch
 			// cout << "end of batch" << endl;
@@ -4023,7 +4079,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 		endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << numCorrect << " out of " << imsDone << " (" << trueVals.size() << "). " << numCorrect/(double)imsDone*100 << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
+	 	cout << "Accuracy on training data: " << bnNumCorrect << " out of " << lastTrainIndex - 1 << " (" << trueVals.size() << "). " << numCorrect/(double)imsDone*100 << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
