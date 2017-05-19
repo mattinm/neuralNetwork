@@ -657,7 +657,7 @@ int main(int argc, char** argv)
 		net.printTrainingDistribution();
 
 		// if(epochs == -1)
-		// 	net.miniBatchTrain(10,10);
+		// 	net.miniBatchTrain(64,10);
 		// else
 		// 	net.miniBatchTrain(64,epochs);
 		if(epochs == -1)

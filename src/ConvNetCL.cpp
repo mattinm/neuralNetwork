@@ -1861,6 +1861,71 @@ void Net::trainSetup(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 
 /*****************************
 *
+* Net::trainSetup is called from Net::train(). Makes sure training doesn't use constant mem, finalizes if needed, 
+* preprocesses data, sets up Net::run() to work on test data, sets some clKernelArgs for softmax
+* Private
+*
+*****************************/
+void Net::trainSetup()
+{
+	//make sure we're finalized without __constantMem
+	if(!__isFinalized || __constantMem)
+ 	{
+ 		__constantMem = false;
+ 		if(!finalize())
+ 		{
+ 			printf("Net was unable to finalize. Aborting training.\n");
+ 			return;
+ 		}
+ 	}
+
+ 	//Tell which device we're using to train
+ 	size_t valueSize;
+	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_NAME, 0, NULL, &valueSize));
+	char* name = new char[valueSize];
+	printf("Training with device %d: ",__device);
+	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_NAME, valueSize, name, nullptr));
+	printf("%s\n",name);
+
+   	if(__trainingType == TRAIN_AS_IS)
+   		printf("Training using distribution AS IS\n");
+   	else if(__trainingType == TRAIN_EQUAL_PROP)
+   		printf("Training using EQUAL PROPORTIONS\n");
+
+
+
+ 	//preprocess the data, training and test
+ 	// if(__preprocessIndividual)
+ 	if(__preprocessType == __PREPROCESS_INDIVIDUAL)
+ 	{
+	 	if(!__trainingDataPreprocessed)
+	 		//preprocessTrainingDataCollective();
+	        preprocessTrainingDataIndividual();
+	    if(__testData.size() != 0 && !__testDataPreprocessed)
+	    	preprocessTestDataIndividual();
+	}
+	else if(__preprocessType == __PREPROCESS_COLLECTIVE) // __preprocessCollective
+	{
+		if(!__trainingDataPreprocessed)
+			preprocessTrainingDataCollective();
+		if(!__testDataPreprocessed)
+			preprocessTestDataCollective();
+	}
+
+	//this is for when we are doing run() on the test data
+ 	__isTraining = true;
+	if(__testData.size() != 0)
+ 	{
+ 		__dataPointer = &__testData;
+ 	}
+
+ 	//set some softmax related args that won't change
+ 	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
+ 	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
+}
+
+/*****************************
+*
 * Runs the feed forward kernels for all Layers excluding softmax.
 * Expects the image to be in the prevNeurons pointer. 
 * Puts the output of the function into the prevNeurons pointer.
@@ -2491,6 +2556,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			numCorrect++;
 
 	}
+	// printf("Thread %d: %d of %d correct\n", thread_num,numCorrect,amount);
 	bnNumCorrect_mtx.lock();
 	bnNumCorrect += numCorrect;
 	bnNumCorrect_mtx.unlock();
@@ -3148,7 +3214,8 @@ void Net::backprop_noUpdate(vector<cl_mem>& layerNeeds, vector<cl_mem>& gradient
 	}// end for loop for backprop
 }
 
-void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int amount, vector<cl_mem*> *prevNeurons, vector<cl_mem*> *neurons,
+void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int start, const int amount, 
+	const vector<double>& trueVals, vector<cl_mem*> *prevNeurons, vector<cl_mem*> *neurons,
 	const vector<vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const Kernels& k, spinlock_barrier* barrier,
 	const vector<cl_mem>& gradients_weights, const vector<cl_mem>& gradients_biases, const vector<cl_mem>& bn_x_cl)
 {
@@ -3156,6 +3223,14 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 	size_t globalWorkSize[] = {0, 0, 0};
 	int thread_count = 0;
 	cl_mem* temp;
+
+	if(usesSoftmax)
+		for(int a = 0; a < amount; a++)
+		{
+			cl_mem **pptr = &(*prevNeurons)[a], **nptr = &(*neurons)[a];
+			softmaxBackprop(trueVals[start + a], pptr, nptr, queue, k, this);
+		}
+
 	for(int i = __layers.size() -1; i > 0; i--)
 	{
 		if(__layers[i]->layerType == BATCH_NORM_LAYER)
@@ -3577,6 +3652,12 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 
 
 	printf("MINIBATCH GRADIENT DESCENT\n");
+
+	if(!__isFinalized)
+	{
+		finalize(); // this also sets __maxNeuronSize
+	}
+
 	vector<cl_mem> layerNeeds(0);
 	vector<cl_mem> velocities(0);
 	trainSetup(layerNeeds, velocities);
@@ -3606,15 +3687,6 @@ void Net::miniBatchTrain(int batchSize, int epochs)
 	time_t starttime, endtime;
 
 	cl_int error;
-	vector<double> batchZeros(__neuronSizes.back(), 0);
-	size_t plusGlobalWorkSize[] = {(size_t)__neuronSizes.back(), 0, 0};
-	cl_mem batchHolder = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __neuronSizes.back(), nullptr, &error);
-	CheckError(error);
-	CheckError(clSetKernelArg(plusEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
-	CheckError(clSetKernelArg(plusEqualsKernel, 1, sizeof(cl_mem), neurons));
-	CheckError(clSetKernelArg(divideEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
-	// CheckError(clSetKernelArg(divideEqualsKernel, 1, sizeof(int), &(__neuronSizes.back())));
-	CheckError(clSetKernelArg(divideEqualsKernel,1,sizeof(int), &batchSize));
 
 	vector<cl_mem> gradients_weights, gradients_biases;
 	vector<size_t> gradients_weights_sizes, gradients_biases_sizes;
@@ -3893,7 +3965,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 	printf("MINIBATCH GRADIENT DESCENT WITH BATCH NORMALIZATION\n");
 
-	int numThreads = 12;
+	int numThreads = 8;
 	vector<int> thread_sizes(numThreads);
 	if(batchSize % numThreads != 0)
 	{
@@ -3912,18 +3984,18 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		for(int i = 0; i < numThreads; i++)
 			thread_sizes[i] = batchSize / numThreads;
 	}
-	// for(int i = 0; i < thread_sizes.size(); i++)
-	// 	printf("size %d: %d\n", i,thread_sizes[i]);
+	for(int i = 0; i < thread_sizes.size(); i++)
+		printf("size %d: %d\n", i,thread_sizes[i]);
 	#ifdef _DEBUG
 	printf("thread sizes set, %d\n",__isFinalized);
 	#endif
 
 	if(!__isFinalized)
 	{
-		printf("to finalize\n");
-		// __stuffBuilt = true; //we are doing this ourselves
 		finalize(); // this also sets __maxNeuronSize
 	}
+
+	trainSetup();
 
 	vector<vector<cl_mem> > bn_x_cl;
 
@@ -3994,16 +4066,6 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 	time_t starttime, endtime;
 
-	vector<double> batchZeros(__neuronSizes.back(), 0);
-	size_t plusGlobalWorkSize[] = {(size_t)__neuronSizes.back(), 0, 0};
-	cl_mem batchHolder = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * __neuronSizes.back(), nullptr, &error);
-	CheckError(error);
-	// CheckError(clSetKernelArg(plusEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
-	// CheckError(clSetKernelArg(plusEqualsKernel, 1, sizeof(cl_mem), neurons));
-	// CheckError(clSetKernelArg(divideEqualsKernel, 0, sizeof(cl_mem), &batchHolder));
-	// CheckError(clSetKernelArg(divideEqualsKernel, 1, sizeof(int), &(__neuronSizes.back())));
-	// CheckError(clSetKernelArg(divideEqualsKernel,1,sizeof(int), &batchSize));
-
 	vector<cl_mem> gradients_weights, gradients_biases;
 	vector<size_t> gradients_weights_sizes, gradients_biases_sizes;
 
@@ -4028,7 +4090,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	// start of epochs
 	////////////////////////////
 	
-	printf("Run for %d epochs\n", epochs);
+	printf("Run for %d epochs on %d threads\n", epochs,numThreads);
 	for(int e = 0; e < epochs; e++)
 	{
 		starttime = time(NULL);
@@ -4042,7 +4104,6 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		cout << "Epoch: ";
 	 	cout << setw(epSize) << e;
 	 	cout << ". ";
-	 	// printf("Epoch: %d",e);
 
 		getTrainingData(trainingData, trueVals); // this gets the training data for this epoch
 		if(batchSize > trainingData.size())
@@ -4055,6 +4116,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		int numCorrect = 0;
 		int imsDone = 0;
 		spinlock_barrier* barrier_ptr = &barrier;
+		vector<int> starts(numThreads);
 
 		int lastTrainIndex = trainingData.size() - trainingData.size() % batchSize;
 		for(int r = 0; r < lastTrainIndex; r += batchSize) // the ones that don't nicely fit in a batch will be discarded
@@ -4065,66 +4127,57 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 			pullGammaAndBeta(); //to calc xhat in feedForward_BN
 
-			// for(int b = r; b < r+batchSize; b++)
-			// {
-				// if(b % 100 == 0)
-					// printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
-				//do the feedForward and see if it was right
-				int start = r, end;
-				vector<thread> thr(numThreads);
-				//feedforward
-				#ifdef _DEBUG
-				printf("Start threadify feedforward... ");
-				#endif
-				for(int t = 0; t < numThreads; t++) //thread-ify the batch
-				{
-					end = start + thread_sizes[t];
-					vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
-					thr[t] = thread([=, &kernels, &trainingData, &trueVals, &layerNeeds, &queues, &denoms]
-					 {feedForward_BN(numThreads, batchSize, t, ref(trainingData), ref(trueVals), start, end, pptr, nptr,//prevNeurons[t], neurons[t],
-						ref(layerNeeds[t]), ref(queues[t]), ref(denoms[t]), ref(kernels[t]), barrier_ptr);});
-					start = end;
-				}
-				for(int t = 0; t < numThreads; t++)
-					thr[t].join();
-				#ifdef _DEBUG
-				printf("feedforward joined\n");
-				#endif
+
+			printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
+			//do the feedForward and see if it was right
+			int start = r, end;
+			vector<thread> thr(numThreads);
+			//feedforward
+			#ifdef _DEBUG
+			printf("Start threadify feedforward... ");
+			#endif
+			for(int t = 0; t < numThreads; t++) //thread-ify the batch
+			{
+				end = start + thread_sizes[t];
+				starts[t] = start;
+				vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
+				thr[t] = thread([=, &kernels, &trainingData, &trueVals, &layerNeeds, &queues, &denoms]
+				 {feedForward_BN(numThreads, batchSize, t, ref(trainingData), ref(trueVals), start, end, pptr, nptr,//prevNeurons[t], neurons[t],
+					ref(layerNeeds[t]), ref(queues[t]), ref(denoms[t]), ref(kernels[t]), barrier_ptr);});
+				start = end;
+			}
+			for(int t = 0; t < numThreads; t++)
+				thr[t].join();
+			#ifdef _DEBUG
+			printf("feedforward joined\n");
+			#endif
 
 
-				//backprop
-				#ifdef _DEBUG
-				printf("Start threadify backprop... ");
-				#endif
-				for(int t = 0; t < numThreads; t++)
-				{
-					vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
-					thr[t] = thread([=, &kernels, &layerNeeds, &queues, &gradients_weights, &gradients_biases, &bn_x_cl]
-						// [&,numThreads, batchSize, t, thread_sizes, pptr, nptr, barrier_ptr
-						// // layerNeeds, queues,kernels,gradients_weights,gradients_biases,bn_x_cl] 
-						// ]
-						{backprop_noUpdate_BN(numThreads, batchSize, t, thread_sizes[t], pptr, nptr,
-						layerNeeds[t], queues[t], ref(kernels[t]), barrier_ptr, gradients_weights, gradients_biases, bn_x_cl[t]);});
-					// thr[t] = thread(&Net::backprop_noUpdate_BN,numThreads, batchSize, t, thread_sizes[t], pptr, nptr,
-					// 	ref(layerNeeds[t]), ref(queues[t]), ref(kernels[t]), barrier_ptr, ref(gradients_weights), ref(gradients_biases), ref(bn_x_cl[t]));
-				}
-				// printf("post for\n");
-				for(int t = 0; t < numThreads; t++)
-				{
-					// printf("before join %d\n", t);
-					thr[t].join();
-					// printf("after join %d\n", t);
-				}
-				#ifdef _DEBUG
-				printf("backprop joined\n");
-				#endif
-			// } // end of batch
-			// cout << "end of batch" << endl;
+			//backprop
+			#ifdef _DEBUG
+			printf("Start threadify backprop... ");
+			#endif
+			for(int t = 0; t < numThreads; t++)
+			{
+				vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
+				thr[t] = thread([=, &kernels, &layerNeeds, &queues, &gradients_weights, &gradients_biases, &bn_x_cl, &trueVals]
+					{backprop_noUpdate_BN(numThreads, batchSize, t, starts[t], thread_sizes[t], trueVals, pptr, nptr,
+					ref(layerNeeds[t]), queues[t], ref(kernels[t]), barrier_ptr, ref(gradients_weights), ref(gradients_biases), bn_x_cl[t]);});
+			}
+			// printf("post for\n");
+			for(int t = 0; t < numThreads; t++)
+			{
+				// printf("before join %d\n", t);
+				thr[t].join();
+				// printf("after join %d\n", t);
+			}
+			#ifdef _DEBUG
+			printf("backprop joined\n");
+			#endif
 
 			clFinish(queue);
 
 			//update weights
-			// backprop(layerNeeds, velocities);
 			updateWeights(gradients_weights, gradients_biases, velocities);
 			updateGammaAndBeta();
 

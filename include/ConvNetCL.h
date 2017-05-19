@@ -463,6 +463,7 @@ private:	// functions
 	void pushCLWeights(std::vector<Layer*>& layers, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, cl_bool block);
 	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
 	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
+	void trainSetup();
 	void trainSetup(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void feedForward(std::vector<cl_mem>& layerNeeds);
 	void feedForward(cl_mem** prevNeurons, cl_mem** neurons, std::vector<std::vector<int> >& __neuronDims, std::vector<Layer*>& __layers,
@@ -514,7 +515,7 @@ private:	// functions
 	//batchnorm training
 	void feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const std::vector<std::vector<double>* >& trainingData, const std::vector<double>& trueVals, int start, int end, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons,
 		const std::vector<std::vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
-	void backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int amount, std::vector<cl_mem*> *prevNeurons, std::vector<cl_mem*> *neurons,
+	void backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int start, const int amount, const std::vector<double>& trueVals, std::vector<cl_mem*> *prevNeurons, std::vector<cl_mem*> *neurons,
 		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
 		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases, const std::vector<cl_mem>& bn_x_cl);
 	void setupBatchNormCLMems(int num_threads, const std::vector<int>& thread_sizes, std::vector<std::vector<cl_mem> > &bn_x_cl);
