@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <cassert>
 
 //OpenCV
 #include "opencv2/imgproc/imgproc.hpp"

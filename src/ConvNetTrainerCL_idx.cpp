@@ -531,6 +531,8 @@ int main(int argc, char** argv)
 		net.setTrueNameIndex("-1",0);
 		net.setTrueNameIndex("2",1);
 		net.setTrueNameIndex("1000000",2);
+
+	net.printLayerDims();
 	// }
 
 

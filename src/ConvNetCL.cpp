@@ -113,7 +113,9 @@ Net::Net(const Net &other) // Copy constructor
 
 Net::Net(const char* filename)
 {
-	load(filename);
+	bool success = load(filename);
+	if(!success)
+		exit(1);
 }
 
 Net::Net(int inputWidth, int inputHeight, int inputDepth)
@@ -735,9 +737,14 @@ void Net::printLayerDims() const
 		{
 			ActivLayer* act = (ActivLayer*)__layers[i];
 			if(act->activationType == LEAKY_RELU)
-			printf("Leaky RELU    %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+				printf("Leaky RELU    %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 			else if(act->activationType == RELU)
-			printf("RELU          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+				printf("RELU          %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+		}
+		else if(__layers[i]->layerType == BATCH_NORM_LAYER)
+		{
+			printf("BatchNorm     %d x %d x %d\n",__neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+
 		}
 		else
 			printf("Unknown Layer: %d\n",__layers[i]->layerType);
@@ -999,6 +1006,7 @@ bool Net::finalize()
 		}
 		else if (type == MAX_POOL_LAYER); //these are here so they don't catch on the else statement
 		else if (type == ACTIV_LAYER);
+		else if (type == BATCH_NORM_LAYER);
 		else
 		{
 			cout << "Unknown layer type. Aborting finalize." << endl;
@@ -2273,9 +2281,9 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 				}
 				mtx.unlock();
 			}
-			printf("before barrier\n");
+			// printf("before barrier\n");
 			barrier->count_down_and_wait(); //thread barrier
-			printf("after barrier\n");
+			// printf("after barrier\n");
 			////////////////
 			// Calculate mu on CPU
 			////////////////
@@ -2290,7 +2298,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			int depth = __neuronDims[i][2];
 			for(int m = 0; m < __neuronSizes[i]; m++)
 			{
-				mtx_a[m].lock();
+				lock_guard<mutex> guard(mtx_a[m]);
 				for(int a = 0; a < amount; a++)
 				{
 					if(batch->byFeatureMap)
@@ -2298,14 +2306,13 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 					else
 						mu[curBNLayer][m] += bn_x[thread_num][a][curBNLayer][m];
 				}
-				mtx_a[m].unlock();
 			}
 
 			mtx.lock();
 			//last person to finish do the division and write to GPU
 			if(++thread_count == num_threads)
 			{
-				for(int m = 0; m < __neuronSizes[i]; m++)
+				for(int m = 0; m < mu[curBNLayer].size(); m++)
 				{
 					if(batch->byFeatureMap)
 						mu[curBNLayer][m] /= minibatch_size * __neuronDims[i][0] * __neuronDims[i][1];
@@ -2327,25 +2334,29 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			// Calculate sigma_squared on CPU
 			////////////////
 
+			#ifdef _DEBUG
+			printf("Thread %d: bn calc sigma2\n",thread_num);
+			#endif
+
 			for(int m = 0; m < __neuronSizes[i]; m++)
 			{
-				mtx_a[m].lock();
+				lock_guard<mutex> guard(mtx_a[m]);
 				for(int a = 0; a < amount; a++)
 				{
-					double sigma = bn_x[thread_num][a][curBNLayer][m] - mu[curBNLayer][m];
+					double sigma = bn_x[thread_num][a][curBNLayer][m] - mu[curBNLayer][m % depth];
+					// double sigma = bn_x.at(thread_num).at(a).at(curBNLayer).at(m) - mu.at(curBNLayer).at(m % depth);
 					if(batch->byFeatureMap)
 						sigma_squared[curBNLayer][m % depth] += sigma * sigma;
 					else
 						sigma_squared[curBNLayer][m] += sigma * sigma;
 				}
-				mtx_a[m].unlock();
 			}
 
 			mtx.lock();
 			//last person to finish do the division and write to GPU
 			if(++thread_count == num_threads)
 			{
-				for(int m = 0; m < __neuronSizes[i]; m++)
+				for(int m = 0; m < sigma_squared[curBNLayer].size(); m++)
 				{
 					if(batch->byFeatureMap)
 						sigma_squared[curBNLayer][m] /= minibatch_size * __neuronDims[i][0] * __neuronDims[i][1];
@@ -2366,16 +2377,20 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			// Calculate output of BN layer on GPU
 			////////////////
 
+			#ifdef _DEBUG
+			printf("Thread %d: bn calc dneurons\n",thread_num);
+			#endif
+
 			for(int a = 0; a < amount; a++)
 			{
 				int depth = batch->byFeatureMap ? __neuronDims[i][2] : 0; // number < 1 means by activation instead of by feature map. use number < 1 when previous layer is non-convLayers
-				clSetKernelArg(k.batchNormKernel, 0, sizeof(cl_mem), prevNeurons->at(a));
-				clSetKernelArg(k.batchNormKernel, 1, sizeof(cl_mem), neurons->at(a));
-				clSetKernelArg(k.batchNormKernel, 2, sizeof(cl_mem), gamma.at(curBNLayer));
-				clSetKernelArg(k.batchNormKernel, 3, sizeof(cl_mem), beta.at(curBNLayer));
-				clSetKernelArg(k.batchNormKernel, 4, sizeof(cl_mem), &(mu_cl[curBNLayer]));
-				clSetKernelArg(k.batchNormKernel, 5, sizeof(cl_mem), &(sigma_squared_cl[curBNLayer]));
-				clSetKernelArg(k.batchNormKernel, 6, sizeof(int), &depth);
+				CheckError(clSetKernelArg(k.batchNormKernel, 0, sizeof(cl_mem), prevNeurons->at(a)));
+				CheckError(clSetKernelArg(k.batchNormKernel, 1, sizeof(cl_mem), neurons->at(a)));
+				CheckError(clSetKernelArg(k.batchNormKernel, 2, sizeof(cl_mem), &gamma.at(curBNLayer)));
+				CheckError(clSetKernelArg(k.batchNormKernel, 3, sizeof(cl_mem), &beta.at(curBNLayer)));
+				CheckError(clSetKernelArg(k.batchNormKernel, 4, sizeof(cl_mem), &(mu_cl.at(curBNLayer))));
+				CheckError(clSetKernelArg(k.batchNormKernel, 5, sizeof(cl_mem), &(sigma_squared_cl.at(curBNLayer))));
+				CheckError(clSetKernelArg(k.batchNormKernel, 6, sizeof(int), &depth));
 				//other args set above
 				globalWorkSize[0] = (size_t) __neuronSizes[i];
 				CheckError(clEnqueueNDRangeKernel(queue, k.batchNormKernel, 1,
@@ -2401,12 +2416,13 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			}
 
 			curBNLayer++;
+
+			#ifdef _DEBUG
+			printf("Thread %d: END bn\n",thread_num);
+			#endif
 		}
 		else
 		{
-			#ifdef _DEBUG
-			printf("Thread %d: not batchNormLayer\n",thread_num);
-			#endif
 			//if not a batch norm layer, do layer ops semi-concurrently
 			for(int a = 0; a < amount; a++)
 			{
@@ -3235,31 +3251,43 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 	{
 		if(__layers[i]->layerType == BATCH_NORM_LAYER)
 		{
+			#ifdef _DEBUG
+			printf("Thread %d: Backprop - Start BNLayer %d\n", thread_num,i);
+			#endif
 			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
 			int depth = __neuronDims[i][2];
 			
 			//delta_y is in neurons
-			vector<vector<double> >delta_y(__neuronSizes[i]);
+			#ifdef _DEBUG
+			printf("Thread %d: Backprop - read delta y %d\n", thread_num,i);
+			#endif
+			vector<vector<double> >delta_y(amount);
 			for(int a = 0; a < amount; a++)
 			{
-				CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * delta_y.size(), 
+				delta_y[a].resize(__neuronSizes[i]);
+				CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * delta_y[a].size(), 
 					delta_y[a].data(), 0, nullptr, nullptr));
 			}
 
 			//calc delta_gamma and delta_beta and put on gpu
+			#ifdef _DEBUG
+			printf("Thread %d: Backprop - Calc delta gamma and delta beta %d\n", thread_num,i);
+			#endif
 			if(batch->byFeatureMap)
 			{
+				assert( depth == delta_beta[curBNLayer].size());
 				for(int a = 0; a < amount; a++)
 				{
 					for(int d = 0; d < depth; d++) // for each feature map "d"
 					{
-						mtx_a[d].lock(); // there is extra limits on concurrency between this and the mtxs used in delta_sigma2 that slow down performance
+						lock_guard<mutex> guard(mtx_a[d]); // there is extra limits on concurrency between this and the mtxs used in delta_sigma2 that slow down performance
 						for(int feat = d; feat < __neuronSizes[i]; feat += depth) // for each feature in feature map "d"
 						{
-							delta_beta[curBNLayer][d] += delta_y[a][feat];
-							delta_gamma[curBNLayer][d] += delta_y[a][feat] * bn_xhat[thread_num][a][curBNLayer][feat];
+							// delta_beta[curBNLayer][d] += delta_y[a][feat];
+							delta_beta.at(curBNLayer).at(d) += delta_y.at(a).at(feat);
+							// delta_gamma[curBNLayer][d] += delta_y[a][feat] * bn_xhat[thread_num][a][curBNLayer][feat];
+							delta_gamma.at(curBNLayer).at(d) += delta_y.at(a).at(feat) * bn_xhat.at(thread_num).at(a).at(curBNLayer).at(feat);
 						}
-						mtx_a[d].unlock();
 					}
 				}
 			}
@@ -3269,14 +3297,15 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 				{
 					for(int dy = 0; dy < delta_beta[curBNLayer].size(); dy++)
 					{
-						mtx_a[dy].lock();
+						lock_guard<mutex> guard(mtx_a[dy]);
 						delta_beta[curBNLayer][dy] += delta_y[a][dy];
 						delta_gamma[curBNLayer][dy] += delta_y[a][dy] * bn_xhat[thread_num][a][curBNLayer][dy];
-						mtx_a[dy].unlock();
 					}
 				}
 			}
-
+			#ifdef _DEBUG
+			printf("Thread %d: Backprop - Calc delta sigma2 %d\n", thread_num,i);
+			#endif
 
 			//delta_sigma2
 			if(batch->byFeatureMap)
@@ -3314,6 +3343,9 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 			}
 
 			//delta mu
+			#ifdef _DEBUG
+			printf("Thread %d: Backprop - Calc delta mu %d\n", thread_num,i);
+			#endif
 			barrier->count_down_and_wait();
 			if(batch->byFeatureMap)
 			{
@@ -3377,12 +3409,12 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 				CheckError(clSetKernelArg(k.batchNormBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]));
 				CheckError(clSetKernelArg(k.batchNormBackKernel, 1, sizeof(cl_mem), (*neurons)[a]));
 				CheckError(clSetKernelArg(k.batchNormBackKernel, 2, sizeof(int), &depth));
-				CheckError(clSetKernelArg(k.batchNormBackKernel, 3, sizeof(cl_mem), gamma[curBNLayer]));
-				CheckError(clSetKernelArg(k.batchNormBackKernel, 4, sizeof(cl_mem), mu_cl[curBNLayer]));
-				CheckError(clSetKernelArg(k.batchNormBackKernel, 5, sizeof(cl_mem), sigma_squared_cl[curBNLayer]));
-				CheckError(clSetKernelArg(k.batchNormBackKernel, 6, sizeof(cl_mem), delta_mu_cl[curBNLayer]));
-				CheckError(clSetKernelArg(k.batchNormBackKernel, 7, sizeof(cl_mem), delta_sigma2_cl[curBNLayer]));
-				CheckError(clSetKernelArg(k.batchNormBackKernel, 8, sizeof(cl_mem), bn_x_cl[a]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 3, sizeof(cl_mem), &gamma[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 4, sizeof(cl_mem), &mu_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 5, sizeof(cl_mem), &sigma_squared_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 6, sizeof(cl_mem), &delta_mu_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 7, sizeof(cl_mem), &delta_sigma2_cl[curBNLayer]));
+				CheckError(clSetKernelArg(k.batchNormBackKernel, 8, sizeof(cl_mem), &bn_x_cl[a]));
 				CheckError(clSetKernelArg(k.batchNormBackKernel, 9, sizeof(int), &minibatch_size));
 				globalWorkSize[0] = __neuronSizes[i];
 				CheckError(clEnqueueNDRangeKernel(queue, k.batchNormBackKernel, 1, nullptr,
@@ -3869,15 +3901,17 @@ void Net::setupBatchNormCLMems(int num_threads, const vector<int>& thread_sizes,
 		{
 			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
 			vector<double> zeros(batch->gamma.size(),0);
-			if(batch->gamma.size() > maxsize)
-				maxsize = batch->gamma.size();
+			// if(batch->gamma.size() > maxsize)
+			// 	maxsize = batch->gamma.size();
+			if(__neuronSizes[i] > maxsize)
+				maxsize = __neuronSizes[i];
 			//size of gamma and beta is given by the BatchNormLayer->gamma/beta.size()
-			gamma[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->gamma.size(), batch->gamma.data(), &error); CheckError(error);
-			beta[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->beta.size(), batch->beta.data(), &error); CheckError(error);
+			gamma[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->gamma.data(), &error); CheckError(error);
+			beta[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->beta.size(), batch->beta.data(), &error); CheckError(error);
 			delta_gamma[curBNLayer].resize(batch->gamma.size());
 			delta_beta[curBNLayer].resize(batch->gamma.size());
-			delta_gamma_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->gamma.size(), zeros.data(), &error); CheckError(error);
-			delta_beta_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->beta.size(), zeros.data(), &error); CheckError(error);
+			delta_gamma_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), zeros.data(), &error); CheckError(error);
+			delta_beta_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->beta.size(), zeros.data(), &error); CheckError(error);
 
 			mu[curBNLayer].resize(batch->gamma.size());
 			sigma_squared[curBNLayer].resize(batch->gamma.size());
@@ -3903,8 +3937,12 @@ void Net::setupBatchNormCLMems(int num_threads, const vector<int>& thread_sizes,
 	}
 	vector<mutex> temp(maxsize);
 	mtx_a.swap(temp);
+
+	
+
 	#ifdef _DEBUG
 	printf("done\n");
+	printf("num mutexes in mtx_a is %d\n", maxsize);
 	#endif
 }
 
@@ -6396,7 +6434,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 void Net::buildKernels(Kernels& k, int device)
 {
 	#ifdef _DEBUG
-	printf("Start buildKernels train(%s) run(%s)... \n",CNTrainingPath.c_str(), CNForwardPath.c_str());
+	printf("Start buildKernels train(%s) run(%s)... ",CNTrainingPath.c_str(), CNForwardPath.c_str());
 	#endif
 	cl_int error;
 	// const char* foptions = "-cl-mad-enable";
@@ -8702,7 +8740,7 @@ bool Net::load(const char* filename)
 					}
 				}
 			}
-			else if(items[0] == "batchNorm")
+			else if(items[0] == "batchnorm")
 			{
 				if(items.size() == 1) //no other info
 				{
