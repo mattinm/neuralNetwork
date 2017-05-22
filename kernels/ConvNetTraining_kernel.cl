@@ -60,7 +60,7 @@ __kernel void relu(__global double* prevNeurons, __global double* neurons, __glo
 	else
 	{
 		dneuronInfo[i] = 0;
-		if(prevNeurons < 0)
+		if(prevNeurons[i] < 0)
 			neurons[i] = 0;
 		else
 			neurons[i] = RELU_CAP;

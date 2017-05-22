@@ -32,7 +32,7 @@ __kernel void relu(__global double* prevNeurons, __global double* neurons)
 	// neurons[i] = clamp(prevNeurons[i], -RELU_CAP, RELU_CAP);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
 		neurons[i] = prevNeurons[i];
-	else if(prevNeurons < 0)
+	else if(prevNeurons[i] < 0)
 		neurons[i] = 0;
 	else
 		neurons[i] = RELU_CAP;

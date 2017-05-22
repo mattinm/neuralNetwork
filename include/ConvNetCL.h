@@ -287,7 +287,7 @@ private: 	// members
 		std::vector<cl_mem> delta_gamma_cl; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<cl_mem> delta_beta_cl;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::mutex bnNumCorrect_mtx;
-		int bnNumCorrect;
+		int bnNumCorrect, bnNumZeros = 0;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -522,6 +522,7 @@ private:	// functions
 	void setupBatchNormCLMems(int num_threads, const std::vector<int>& thread_sizes, std::vector<std::vector<cl_mem> > &bn_x_cl);
 	void pullGammaAndBeta();
 	void updateGammaAndBeta();
+	int getNumBatchNormLayers();
 
 };
 

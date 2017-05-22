@@ -743,7 +743,10 @@ void Net::printLayerDims() const
 		}
 		else if(__layers[i]->layerType == BATCH_NORM_LAYER)
 		{
-			printf("BatchNorm     %d x %d x %d\n",__neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+			if(((BatchNormLayer*)__layers[i])->byFeatureMap)
+				printf("BatchNorm (f) %d x %d x %d\n",__neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+			else
+				printf("BatchNorm (a) %d x %d x %d\n",__neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 
 		}
 		else
@@ -1848,6 +1851,10 @@ void Net::trainSetup(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 		if(!__testDataPreprocessed)
 			preprocessTestDataCollective();
 	}
+	else
+	{
+		printf("NO PREPROCESSING OF TRAINING DATA\n");
+	}
 
 	//this is for when we are doing run() on the test data
  	__isTraining = true;
@@ -2275,6 +2282,8 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 					{
 						mu[curBNLayer][m] = 0;
 						sigma_squared[curBNLayer][m] = 0;
+						delta_mu[curBNLayer][m] = 0;
+						delta_sigma2[curBNLayer][m] = 0;
 						delta_gamma[curBNLayer][m] = 0;
 						delta_beta[curBNLayer][m] = 0;
 					}
@@ -2413,6 +2422,13 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 				else
 					for(int f = 0; f < __neuronSizes[i]; f++)
 						bn_xhat[thread_num][a][curBNLayer][f] = (bn_xhat[thread_num][a][curBNLayer][f] - batch->beta[f]) / batch->gamma[f];
+			}
+
+			for(int a = 0; a < amount; a++)
+			{
+				temp = (*neurons)[a];
+				(*neurons)[a] = (*prevNeurons)[a];
+				(*prevNeurons)[a] = temp;
 			}
 
 			curBNLayer++;
@@ -2557,9 +2573,18 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 
 	}
 	int numCorrect = 0;
+	int numzeros = 0;
 	vector<double> soft(__neuronSizes.back());
 	for(int a = 0; a < amount; a++)
 	{
+		// CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+		//  	soft.data(), 0, nullptr, nullptr));
+		// stringstream ss("");
+		// for(int s = 0; s < __neuronSizes.back(); s++)
+		// 	ss << soft[s] << ", ";
+		// ss << endl;
+		// printf("pre-soft: %s\n", ss.str().c_str());
+
 		#ifdef _DEBUG
 		printf("Thread %d.%d: start softmax... \n",thread_num,a);
 		#endif
@@ -2567,14 +2592,22 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			softmaxForward((*prevNeurons)[a], (*neurons)[a], queue, denom, k);
 		CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 		 	soft.data(), 0, nullptr, nullptr));
-        clFinish(queue);
 		if(getMaxElementIndex(soft) == trueVals[start + a])
 			numCorrect++;
+		if(getMaxElementIndex(soft) == 0)
+			numzeros++;
+
+		// ss.str(string());
+		// for(int s = 0; s < __neuronSizes.back(); s++)
+		// 	ss << soft[s] << ", ";
+		// ss << endl;
+		// printf("soft: %s\n", ss.str().c_str());
 
 	}
 	// printf("Thread %d: %d of %d correct\n", thread_num,numCorrect,amount);
 	bnNumCorrect_mtx.lock();
 	bnNumCorrect += numCorrect;
+	bnNumZeros   += numzeros;
 	bnNumCorrect_mtx.unlock();
 	// printf("end feed\n");
 }
@@ -3351,7 +3384,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 			{
 				for(int d = 0; d < depth; d++)
 				{
-					mtx_a[d].lock(); // once thread locks, do it for all images thread has done
+					lock_guard<mutex> guard(mtx_a[d]);
 					for(int a = 0; a < amount; a++)
 					{
 						for(int feat = d; feat < __neuronSizes[i]; feat += depth)
@@ -3362,14 +3395,13 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 								+ delta_sigma2[curBNLayer][d] * -2 * (x_i - mu[curBNLayer][d]) / (minibatch_size * __neuronDims[i][0] * __neuronDims[i][1]);
 						}
 					}
-					mtx_a[d].unlock();
 				}
 			}
 			else
 			{
 				for(int feat = 0; feat < __neuronSizes[i]; feat++) // for each feature
 				{
-					mtx_a[feat].lock();
+					lock_guard<mutex> guard(mtx_a[feat]);
 					for(int a = 0; a < amount; a++)
 					{
 						double delta_xhat = delta_y[a][feat] * batch->gamma[feat];
@@ -3377,7 +3409,6 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 						delta_mu[curBNLayer][feat] += delta_xhat * -1/pow(sigma_squared[curBNLayer][feat] + 1e-8,0.5) 
 					 		+ delta_sigma2[curBNLayer][feat] * -2 * (x_i - mu[curBNLayer][feat]) / (minibatch_size * __neuronDims[i][0] * __neuronDims[i][1]);
 					}
-				 	mtx_a[feat].unlock();
 				}
 			}
 
@@ -3421,6 +3452,13 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					globalWorkSize, nullptr, 0, nullptr, nullptr));
 			}
 			clFinish(queue);
+
+			for(int a = 0; a < amount; a++)
+			{
+				temp = (*neurons)[a];
+				(*neurons)[a] = (*prevNeurons)[a];
+				(*prevNeurons)[a] = temp;
+			}
 
 			curBNLayer--;
 		}
@@ -3985,6 +4023,15 @@ void Net::updateGammaAndBeta()
 	clFinish(queue);
 }
 
+int Net::getNumBatchNormLayers()
+{
+	int n = 0;
+	for(int i = 0; i < __layers.size(); i++)
+		if(__layers[i]->layerType == BATCH_NORM_LAYER)
+			n++;
+	return n;
+}
+
 /***************************
 *
 * A batchNorm train function training does minibatch training with batch normalization.
@@ -3994,6 +4041,8 @@ void Net::updateGammaAndBeta()
 void Net::batchNormTrain(int batchSize, int epochs)
 {
 	setbuf(stdout, NULL);
+	// if(getNumBatchNormLayers() > 0)
+	// 	__preprocessType = __PREPROCESS_BATCH_NORM;
 	if(batchSize < 0)
 	{
 		printf("MiniBatch size must be positive. Aborting train.\n");
@@ -4003,7 +4052,9 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 	printf("MINIBATCH GRADIENT DESCENT WITH BATCH NORMALIZATION\n");
 
-	int numThreads = 8;
+	int numThreads = 12;
+	if(batchSize < numThreads)
+		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
 	if(batchSize % numThreads != 0)
 	{
@@ -4165,7 +4216,6 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 			pullGammaAndBeta(); //to calc xhat in feedForward_BN
 
-
 			printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
 			//do the feedForward and see if it was right
 			int start = r, end;
@@ -4224,6 +4274,8 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
 	 	cout << "Accuracy on training data: " << bnNumCorrect << " out of " << lastTrainIndex - 1 << " (" << trueVals.size() << "). " << 100.0*bnNumCorrect/(lastTrainIndex-1) << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
+	 	cout << "Num zeros: " << bnNumZeros << endl;
+	 	bnNumZeros = 0;
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
