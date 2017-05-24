@@ -470,6 +470,8 @@ bool Net::addBatchNormLayer(bool byFeatureMap)
 	{
 		batch->gamma.resize(prevDepth,1);
 		batch->beta.resize(prevDepth,0);
+		batch->e.resize(prevDepth);
+		batch->var.resize(prevDepth);
 		batch->byFeatureMap = true;
 	}
 	else
@@ -477,6 +479,8 @@ bool Net::addBatchNormLayer(bool byFeatureMap)
 		int size = __neuronSizes.back();
 		batch->gamma.resize(size,1);
 		batch->beta.resize(size,0);
+		batch->e.resize(size);
+		batch->var.resize(size);
 		batch->byFeatureMap = false; // by activation
 	}
 
@@ -486,7 +490,7 @@ bool Net::addBatchNormLayer(bool byFeatureMap)
 	return true;
 }
 
-bool Net::addBatchNormLayer(bool byFeatureMap, int gamma_size, const string& gamma, int beta_size, const string& beta)
+bool Net::addBatchNormLayer(bool byFeatureMap, int gamma_size, const string& gamma, const string& beta, const string& e, const string& var)
 {
 	int prevWidth  = __neuronDims.back()[0];
 	int prevHeight = __neuronDims.back()[1];
@@ -496,33 +500,32 @@ bool Net::addBatchNormLayer(bool byFeatureMap, int gamma_size, const string& gam
 	batch->layerType = BATCH_NORM_LAYER;
 	if(byFeatureMap)
 	{
-		if(gamma_size != beta_size || gamma_size != prevDepth)
-		{
-			printf("Inconsistent sizes for gamma, beta, and previous layer when adding batch norm layer.\n");
-			return false;
-		}
 		batch->gamma.resize(prevDepth,1);
 		batch->beta.resize(prevDepth,0);
+		batch->e.resize(prevDepth);
+		batch->var.resize(prevDepth);
 		batch->byFeatureMap = true;
 	}
 	else
 	{
 		int size = __neuronSizes.back();
-		if(gamma_size != beta_size || gamma_size != size)
-		{
-			printf("Inconsistent sizes for gamma, beta, and previous layer when adding batch norm layer.\n");
-			return false;
-		}
+
 		batch->gamma.resize(size,1);
 		batch->beta.resize(size,0);
+		batch->e.resize(size);
+		batch->var.resize(size);
 		batch->byFeatureMap = false; // by activation
 	}
 	vector<string> gamma_array = convnet::split(gamma,',');
 	vector<string> beta_array = convnet::split(beta,',');
+	vector<string> e_array = convnet::split(e,',');
+	vector<string> var_array = convnet::split(var,',');
 	for(int i = 0; i < gamma_size; i++)
 	{
 		batch->gamma[i] = stod(gamma_array[i]);
 		batch->beta[i] = stod(beta_array[i]);
+		batch->e[i] = stod(e_array[i]);
+		batch->var[i] = stod(var_array[i]);
 	}
 
 	__layers.push_back(batch);
@@ -949,11 +952,12 @@ bool Net::finalize()
 		updateWeightsMomentKernel = clCreateKernel(CNTraining, "update_weights_moment", &error); CheckError(error);
 		updateBiasesKernel = clCreateKernel(CNTraining, "update_biases", &error); CheckError(error);
 
-		printf("making bn kernels in finalize... ");
+		// printf("making bn kernels in finalize... ");
+		batchNormRunKernel = clCreateKernel(CNTraining, "batch_norm_run", &error); CheckError(error);
 		batchNormKernel = clCreateKernel(CNTraining, "batch_norm", &error); CheckError(error);
 		batchNormBackKernel = clCreateKernel(CNTraining, "batch_norm_back", &error); CheckError(error);
 		updateGammaAndBetaKernel = clCreateKernel(CNTraining, "update_gamma_and_beta", &error); CheckError(error);
-		printf("done\n");
+		// printf("done\n");
 
 		//make the queue
 		queue = clCreateCommandQueue(__context, __deviceIds[q], 0, &error); 
@@ -1182,6 +1186,13 @@ void Net::run()
 
  	// for(int j =0 ; j < __neuronSizes.size(); j++)
  	// 	printf("Layer %d: Size %d\n", j, __neuronSizes[j]);
+
+	//can call run no matter what for backward compatibility
+ 	if(getNumBatchNormLayers() > 0)
+ 	{
+ 		batchNormRun();
+ 		return;
+ 	}
 
  	if(!__isFinalized)
  		finalize();
@@ -2215,7 +2226,7 @@ void Net::feedForward(cl_mem** prevNeurons, cl_mem** neurons, vector<vector<int>
 
 /*****************************
 *
-* Batch Normalization feed forward method. Assumes multiple versions running concurrently.
+* Batch Normalization feed forward method for training. Assumes multiple versions running concurrently.
 * Does multiple images concurrently but sequentially by layer instead of sequentially by image
 * Doesn't use the class level variables (except weights and biases). 
 *
@@ -2232,6 +2243,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 	//do housekeeping to make sure everything is sized right
 	size_t ss = prevNeurons->size();
 	int amount = end - start;
+	static int thread_count = 0;
 	if(ss != neurons->size() || ss != layerNeeds.size() || amount > ss) // if we have extra mem allocated that we don't use I guess that's ok
 	{
 		printf("Feed forward with batch normalization: Inconsistent sizes\n");
@@ -2327,10 +2339,23 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 						mu[curBNLayer][m] /= minibatch_size * __neuronDims[i][0] * __neuronDims[i][1];
 					else
 						mu[curBNLayer][m] /= minibatch_size;
+
+					
 				}
 
 				CheckError(clEnqueueWriteBuffer(queue, mu_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * mu[curBNLayer].size(),
 					mu[curBNLayer].data(), 0, nullptr, nullptr));
+
+				if(__setEAndVar)
+				{
+					for(int m = 0; m < mu[curBNLayer].size(); m++)
+					{
+						batch->e[m] += mu[curBNLayer][m];
+						// printf("bntrain mu[%d][%d] %lf\n", curBNLayer,m,mu[curBNLayer][m]);
+						// printf("bntrain e[%d] %lf\n",m,batch->e[m]);
+						// getchar();
+					}
+				}
 
 				mu_reset_done = false;
 				thread_count = 0;
@@ -2354,6 +2379,8 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 				{
 					double sigma = bn_x[thread_num][a][curBNLayer][m] - mu[curBNLayer][m % depth];
 					// double sigma = bn_x.at(thread_num).at(a).at(curBNLayer).at(m) - mu.at(curBNLayer).at(m % depth);
+					// if(sigma * sigma < 0)
+					// 	printf("sigma problem\n");
 					if(batch->byFeatureMap)
 						sigma_squared[curBNLayer][m % depth] += sigma * sigma;
 					else
@@ -2367,14 +2394,24 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			{
 				for(int m = 0; m < sigma_squared[curBNLayer].size(); m++)
 				{
+					// if(minibatch_size * __neuronDims[i][0] * __neuronDims[i][1] < 0)
+					// 	printf("divide problem\n");
+
 					if(batch->byFeatureMap)
 						sigma_squared[curBNLayer][m] /= minibatch_size * __neuronDims[i][0] * __neuronDims[i][1];
 					else 
 						sigma_squared[curBNLayer][m] /= minibatch_size;
+
+					// if(sigma_squared[curBNLayer][m] < 0)
+					// 	printf("how?\n");
 				}
 
 				CheckError(clEnqueueWriteBuffer(queue, sigma_squared_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * sigma_squared[curBNLayer].size(),
 					sigma_squared[curBNLayer].data(), 0, nullptr, nullptr));
+
+				if(__setEAndVar)
+					for(int m = 0; m < sigma_squared[curBNLayer].size(); m++)
+						batch->var[m] += sigma_squared[curBNLayer][m];
 
 				thread_count = 0;
 			}
@@ -2418,7 +2455,11 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 					bn_xhat[thread_num][a][curBNLayer].data(), 0, nullptr, nullptr));
 				if(batch->byFeatureMap)
 					for(int f = 0; f < __neuronSizes[i]; f++)
+					{
+						// if(isnan(bn_xhat[thread_num][a][curBNLayer][f])) printf("Pre: nan!\n");
 						bn_xhat[thread_num][a][curBNLayer][f] = (bn_xhat[thread_num][a][curBNLayer][f] - batch->beta[f % depth]) / batch->gamma[f % depth];
+						// if(isnan(bn_xhat[thread_num][a][curBNLayer][f])) printf("Post: nan!\n");
+					}
 				else
 					for(int f = 0; f < __neuronSizes[i]; f++)
 						bn_xhat[thread_num][a][curBNLayer][f] = (bn_xhat[thread_num][a][curBNLayer][f] - batch->beta[f]) / batch->gamma[f];
@@ -2547,7 +2588,6 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 						CheckError(clSetKernelArg(k.leakyReluKernel, 2, sizeof(cl_mem), &(layerNeeds[a][i]))); // dneuronInfo
 						CheckError(clEnqueueNDRangeKernel(queue, k.leakyReluKernel, 1,
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
-						clFinish(queue);
 					}
 				}
 
@@ -2592,10 +2632,16 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			softmaxForward((*prevNeurons)[a], (*neurons)[a], queue, denom, k);
 		CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 		 	soft.data(), 0, nullptr, nullptr));
-		if(getMaxElementIndex(soft) == trueVals[start + a])
+		int predict = getMaxElementIndex(soft);
+		int actual = trueVals[start + a];
+		if(predict == actual)
+		{
 			numCorrect++;
-		if(getMaxElementIndex(soft) == 0)
-			numzeros++;
+			bnClassCorrect[predict]++;
+		}
+		bnClassTotal[actual]++;
+		// if(predict == 0)
+		// 	numzeros++;
 
 		// ss.str(string());
 		// for(int s = 0; s < __neuronSizes.back(); s++)
@@ -2611,6 +2657,389 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 	bnNumCorrect_mtx.unlock();
 	// printf("end feed\n");
 }
+
+/*****************************
+*
+* Batch Normalization feed forward method for running. Assumes multiple versions running concurrently.
+* Does multiple images concurrently but sequentially by layer instead of sequentially by image
+* Doesn't use the class level variables (except weights and biases). 
+*
+* start is inclusive start index in trainingData
+* end is exclusive ending index in training Data. (if start = 0 and end = 3 will do indexes 0,1,2)
+*
+* Private
+*
+*****************************/
+void Net::feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, vector<vector<double> >* __dataPointer, vector<cl_mem*>* prevNeurons, vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
+	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier)
+{
+	// printf("Thread %d: doing items [%d,%d)\n", thread_num,start,end);
+	//do housekeeping to make sure everything is sized right
+	size_t ss = prevNeurons->size();
+	int amount = end - start;
+	static int thread_count = 0;
+	if(ss != neurons->size() || amount > ss) // if we have extra mem allocated that we don't use I guess that's ok
+	{
+		printf("Feed forward with batch normalization: Inconsistent sizes\n");
+		return;
+	}
+	if(amount < 1)
+	{
+		printf("Feed forward with batch normalization: was asked to run over no data.\n");
+		return;
+	}
+
+	//load in original images
+	for(int i = start, j = 0; i < end; i++, j++)
+	{
+ 		CheckError(clEnqueueWriteBuffer(queue, *(prevNeurons->at(j)), CL_TRUE, 0,
+				sizeof(double) * __neuronSizes[0],
+				__dataPointer->at(i).data(), 0, nullptr, nullptr));
+		clFinish(queue);
+	}
+
+
+	// printf("start feed\n");
+	int curConvLayer = 0, curBNLayer = 0;
+	size_t globalWorkSize[] = {(size_t)__neuronSizes[0],0,0}; // initialized for copyArrayKernel
+	cl_mem* temp;
+	#ifdef _DEBUG
+	printf("Thread %d: start feed\n",thread_num);
+	#endif
+	for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
+	{
+		#ifdef _DEBUG
+		printf("Thread %d: layer %d, type %d\n",thread_num,i,__layers[i]->layerType);
+		#endif
+		//printf("Layer %d, type %d\n", i, __layers[i]->layerType);
+		if(__layers[i]->layerType == BATCH_NORM_LAYER)
+		{
+			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
+
+			//first thread here should resize the mu vector and set to zeros
+			if(mtx.try_lock()) // if locked, someone is doing this already and you can move on
+			{
+				if(mu_reset_done == false)
+				{
+					mu_reset_done = true;
+					thread_count = 0;
+
+					// for(int m = 0; m < mu[curBNLayer].size(); m++)
+					// {
+					// 	mu[curBNLayer][m] = 0;
+					// 	sigma_squared[curBNLayer][m] = 0;
+					// }
+				}
+				mtx.unlock();
+			}
+			// printf("before barrier\n");
+			barrier->count_down_and_wait(); //thread barrier
+			// printf("after barrier\n");
+			////////////////
+			// Calculate mu on CPU
+			////////////////
+
+			//pull from GPU
+			// for(int a = 0; a < amount; a++)
+			// {
+			// 	CheckError(clEnqueueReadBuffer(queue, *(*prevNeurons)[a], CL_TRUE, 0, sizeof(double) * bn_x[thread_num][a][curBNLayer].size(), 
+			// 		bn_x[thread_num][a][curBNLayer].data(), 0, nullptr, nullptr));
+			// }
+
+			// int depth = __neuronDims[i][2];
+			// for(int m = 0; m < __neuronSizes[i]; m++)
+			// {
+			// 	lock_guard<mutex> guard(mtx_a[m]);
+			// 	for(int a = 0; a < amount; a++)
+			// 	{
+			// 		if(batch->byFeatureMap)
+			// 			mu[curBNLayer][m % depth] += bn_x[thread_num][a][curBNLayer][m];
+			// 		else
+			// 			mu[curBNLayer][m] += bn_x[thread_num][a][curBNLayer][m];
+			// 	}
+			// }
+
+			mtx.lock();
+			//last person to finish do the division and write to GPU
+			if(++thread_count == num_threads)
+			{
+				// for(int m = 0; m < mu[curBNLayer].size(); m++)
+				// {
+				// 	if(batch->byFeatureMap)
+				// 		mu[curBNLayer][m] /= minibatch_size * __neuronDims[i][0] * __neuronDims[i][1];
+				// 	else
+				// 		mu[curBNLayer][m] /= minibatch_size;
+				// }
+
+				CheckError(clEnqueueWriteBuffer(queue, mu_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * mu[curBNLayer].size(),
+					batch->e.data(), 0, nullptr, nullptr));
+				CheckError(clEnqueueWriteBuffer(queue, sigma_squared_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * sigma_squared[curBNLayer].size(),
+					batch->var.data(), 0, nullptr, nullptr));
+
+				// mu_reset_done = false;
+				thread_count = 0;
+			}
+			mtx.unlock();
+
+			barrier->count_down_and_wait();
+
+			////////////////
+			// Calculate sigma_squared on CPU
+			////////////////
+
+			// #ifdef _DEBUG
+			// printf("Thread %d: bn calc sigma2\n",thread_num);
+			// #endif
+
+			// for(int m = 0; m < __neuronSizes[i]; m++)
+			// {
+			// 	lock_guard<mutex> guard(mtx_a[m]);
+			// 	for(int a = 0; a < amount; a++)
+			// 	{
+			// 		double sigma = bn_x[thread_num][a][curBNLayer][m] - mu[curBNLayer][m % depth];
+			// 		// double sigma = bn_x.at(thread_num).at(a).at(curBNLayer).at(m) - mu.at(curBNLayer).at(m % depth);
+			// 		// if(sigma * sigma < 0)
+			// 		// 	printf("sigma problem\n");
+			// 		if(batch->byFeatureMap)
+			// 			sigma_squared[curBNLayer][m % depth] += sigma * sigma;
+			// 		else
+			// 			sigma_squared[curBNLayer][m] += sigma * sigma;
+			// 	}
+			// }
+
+			// mtx.lock();
+			// //last person to finish do the division and write to GPU
+			// if(++thread_count == num_threads)
+			// {
+			// 	for(int m = 0; m < sigma_squared[curBNLayer].size(); m++)
+			// 	{
+			// 		// if(minibatch_size * __neuronDims[i][0] * __neuronDims[i][1] < 0)
+			// 		// 	printf("divide problem\n");
+			// 		if(batch->byFeatureMap)
+			// 			sigma_squared[curBNLayer][m] /= minibatch_size * __neuronDims[i][0] * __neuronDims[i][1];
+			// 		else 
+			// 			sigma_squared[curBNLayer][m] /= minibatch_size;
+			// 	}
+
+				
+
+			// 	thread_count = 0;
+			// }
+			// mtx.unlock();
+
+			// barrier->count_down_and_wait();
+
+			////////////////
+			// Calculate output of BN layer on GPU
+			////////////////
+
+			#ifdef _DEBUG
+			printf("Thread %d: bn calc dneurons\n",thread_num);
+			#endif
+
+			for(int a = 0; a < amount; a++)
+			{
+				int depth = batch->byFeatureMap ? __neuronDims[i][2] : 0; // number < 1 means by activation instead of by feature map. use number < 1 when previous layer is non-convLayers
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 0, sizeof(cl_mem), prevNeurons->at(a)));
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 1, sizeof(cl_mem), neurons->at(a)));
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 2, sizeof(cl_mem), &gamma.at(curBNLayer)));
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 3, sizeof(cl_mem), &beta.at(curBNLayer)));
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 4, sizeof(cl_mem), &(mu_cl.at(curBNLayer))));
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 5, sizeof(cl_mem), &(sigma_squared_cl.at(curBNLayer))));
+				CheckError(clSetKernelArg(k.batchNormRunKernel, 6, sizeof(int), &depth));
+				//other args set above
+				globalWorkSize[0] = (size_t) __neuronSizes[i];
+				CheckError(clEnqueueNDRangeKernel(queue, k.batchNormRunKernel, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+				temp = (*neurons)[a];
+				(*neurons)[a] = (*prevNeurons)[a];
+				(*prevNeurons)[a] = temp;
+			}
+			clFinish(queue); //should be fine to run them all in parallel and make them all finish here
+
+			//pull y from gpu to calc xhat for storage. Need current gamma and beta pulled in batchNormTrain(do differently later?)
+			// for(int a = 0; a < amount; a++)
+			// {
+			// 	CheckError(clEnqueueReadBuffer(queue, *(*prevNeurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+			// 		bn_xhat[thread_num][a][curBNLayer].data(), 0, nullptr, nullptr));
+			// 	if(batch->byFeatureMap)
+			// 		for(int f = 0; f < __neuronSizes[i]; f++)
+			// 			bn_xhat[thread_num][a][curBNLayer][f] = (bn_xhat[thread_num][a][curBNLayer][f] - batch->beta[f % depth]) / batch->gamma[f % depth];
+			// 	else
+			// 		for(int f = 0; f < __neuronSizes[i]; f++)
+			// 			bn_xhat[thread_num][a][curBNLayer][f] = (bn_xhat[thread_num][a][curBNLayer][f] - batch->beta[f]) / batch->gamma[f];
+			// }
+
+			for(int a = 0; a < amount; a++)
+			{
+				temp = (*neurons)[a];
+				(*neurons)[a] = (*prevNeurons)[a];
+				(*prevNeurons)[a] = temp;
+			}
+
+			curBNLayer++;
+
+			#ifdef _DEBUG
+			printf("Thread %d: END bn\n",thread_num);
+			#endif
+		}
+		else
+		{
+			//if not a batch norm layer, do layer ops semi-concurrently
+			for(int a = 0; a < amount; a++)
+			{
+				#ifdef _DEBUG
+				printf("Thread %d: a %d of %d. pn: %lu, n: %lu \n",thread_num,a,amount,prevNeurons->size(), neurons->size());
+				#endif
+				if(__layers[i]->layerType == CONV_LAYER)
+				{
+					ConvLayer* conv = (ConvLayer*)__layers[i];
+					if(conv->padding != 0) //if we need to do padding on the input
+					{
+						#ifdef _DEBUG
+						printf("Thread %d: starting padding...\n",thread_num);
+						#endif
+						clSetKernelArg(k.zeroPadKernelF, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+						clSetKernelArg(k.zeroPadKernelF, 1, sizeof(cl_mem), (*neurons)[a]);
+						clSetKernelArg(k.zeroPadKernelF, 2, sizeof(int), &(conv->padding)); // padding
+						clSetKernelArg(k.zeroPadKernelF, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
+						clSetKernelArg(k.zeroPadKernelF, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
+						clSetKernelArg(k.zeroPadKernelF, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+
+						// run it for the size of the new array
+						globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
+						CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernelF, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+						clFinish(queue);
+
+						//swap the buffers so prevNeurons holds the zero padded data
+						temp = (*neurons)[a];
+						(*neurons)[a] = (*prevNeurons)[a];
+						(*prevNeurons)[a] = temp;
+						#ifdef _DEBUG
+						printf("Thread %d: padding done\n",thread_num);
+						#endif
+					}
+
+					#ifdef _DEBUG
+					printf("Thread %d: Copy layerNeeds\n",thread_num);
+					#endif
+
+					clSetKernelArg(k.convKernelF, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+					clSetKernelArg(k.convKernelF, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.convKernelF, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
+					clSetKernelArg(k.convKernelF, 3, sizeof(cl_mem), &clBiases[curConvLayer]);
+					clSetKernelArg(k.convKernelF, 4, sizeof(int), &(conv->numBiases)); //numFilters
+					clSetKernelArg(k.convKernelF, 5, sizeof(int), &(conv->filterSize));
+					clSetKernelArg(k.convKernelF, 6, sizeof(int), &(conv->stride));
+					clSetKernelArg(k.convKernelF, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
+					clSetKernelArg(k.convKernelF, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
+
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, k.convKernelF, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+					#ifdef _DEBUG
+					printf("Thread %d: End conv layer\n",thread_num);
+					#endif
+					if(a == amount - 1)
+						curConvLayer++;
+				}
+				else if(__layers[i]->layerType == MAX_POOL_LAYER)
+				{
+					MaxPoolLayer* pool = (MaxPoolLayer*)__layers[i];
+					clSetKernelArg(k.maxPoolKernelF, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+					clSetKernelArg(k.maxPoolKernelF, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.maxPoolKernelF, 2, sizeof(int), &(__neuronDims[i-1][0])); //prevwidth
+					clSetKernelArg(k.maxPoolKernelF, 3, sizeof(int), &(__neuronDims[i-1][2])); //prevdepth
+					clSetKernelArg(k.maxPoolKernelF, 4, sizeof(int), &(pool->poolSize)); //poolsize
+					clSetKernelArg(k.maxPoolKernelF, 5, sizeof(int), &(pool->stride)); //stride
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, k.maxPoolKernelF, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				}
+				else if(__layers[i]->layerType == ACTIV_LAYER)
+				{
+					#ifdef _DEBUG
+					printf("Thread %d.%d: Start ActivLayer \n",thread_num,a);
+					#endif
+					int type = ((ActivLayer*)__layers[i])->activationType;
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					if(type == RELU)
+					{
+						#ifdef _DEBUG
+						printf("Thread %d.%d: RELU... \n",thread_num,a);
+						#endif
+						clSetKernelArg(k.reluKernelF, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+						clSetKernelArg(k.reluKernelF, 1, sizeof(cl_mem), (*neurons)[a]);
+						CheckError(clEnqueueNDRangeKernel(queue, k.reluKernelF, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+					else if(type == LEAKY_RELU)
+					{
+						#ifdef _DEBUG
+						printf("Thread %d.%d: LEAKY_RELU... \n",thread_num,a);
+						#endif
+						CheckError(clSetKernelArg(k.leakyReluKernelF, 0, sizeof(cl_mem), (*prevNeurons)[a]));
+						CheckError(clSetKernelArg(k.leakyReluKernelF, 1, sizeof(cl_mem), (*neurons)[a]));
+						CheckError(clEnqueueNDRangeKernel(queue, k.leakyReluKernelF, 1,
+							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					}
+				}
+
+				temp = (*neurons)[a];
+				(*neurons)[a] = (*prevNeurons)[a];
+				(*prevNeurons)[a] = temp;
+			}
+			clFinish(queue);
+		}
+		
+
+		// cout << "Forward Layer " << i << endl;
+		// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
+		// 	test.data(), 0, nullptr, nullptr));
+		// for(int j=0; j< __neuronSizes[i]; j++)
+		// {
+		// 	cout << test[j] << ", ";
+		// }
+		// cout << endl << endl;
+		// getchar();
+
+	}
+	// vector<double> soft(__neuronSizes.back());
+	for(int a = 0, i = start; a < amount; a++, i++)
+	{
+		// CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+		//  	soft.data(), 0, nullptr, nullptr));
+		// stringstream ss("");
+		// for(int s = 0; s < __neuronSizes.back(); s++)
+		// 	ss << soft[s] << ", ";
+		// ss << endl;
+		// printf("pre-soft: %s\n", ss.str().c_str());
+
+		#ifdef _DEBUG
+		printf("Thread %d.%d: start softmax... \n",thread_num,a);
+		#endif
+		if(usesSoftmax)
+			softmaxForward((*prevNeurons)[a], (*neurons)[a], queue, denom, k);
+		__confidences[i].resize(__neuronSizes.back());
+		CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
+		 	__confidences[i].data(), 0, nullptr, nullptr));
+
+
+
+		// ss.str(string());
+		// for(int s = 0; s < __neuronSizes.back(); s++)
+		// 	ss << soft[s] << ", ";
+		// ss << endl;
+		// printf("soft: %s\n", ss.str().c_str());
+
+	}
+
+	// printf("end feed\n");
+}
+
 
 /*****************************
 *
@@ -3270,7 +3699,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 {
 	int curConvLayer = clWeights.size() - 1, curBNLayer = gamma.size() - 1;
 	size_t globalWorkSize[] = {0, 0, 0};
-	int thread_count = 0;
+	static int thread_count = 0;
 	cl_mem* temp;
 
 	if(usesSoftmax)
@@ -3318,6 +3747,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 						{
 							// delta_beta[curBNLayer][d] += delta_y[a][feat];
 							delta_beta.at(curBNLayer).at(d) += delta_y.at(a).at(feat);
+							// printf("dy %lf\n", delta_y.at(a).at(feat));
 							// delta_gamma[curBNLayer][d] += delta_y[a][feat] * bn_xhat[thread_num][a][curBNLayer][feat];
 							delta_gamma.at(curBNLayer).at(d) += delta_y.at(a).at(feat) * bn_xhat.at(thread_num).at(a).at(curBNLayer).at(feat);
 						}
@@ -3336,6 +3766,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					}
 				}
 			}
+
 			#ifdef _DEBUG
 			printf("Thread %d: Backprop - Calc delta sigma2 %d\n", thread_num,i);
 			#endif
@@ -3414,8 +3845,15 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 
 			//last one done put delta_mu, delta_sigma2, delta_gamma, and delta_beta on gpu
 			mtx.lock();
+			// printf("%d of %d\n", thread_count + 1, num_threads);
 			if(++thread_count == num_threads)
 			{
+				// printf("running!\n");
+				// for(int q = 0; q < delta_gamma[curBNLayer].size(); q++)
+				// {
+				// 	printf("db[%d][%d] = %lf\n",curBNLayer,q, delta_beta[curBNLayer][q]);
+				// }
+
 				CheckError(clEnqueueWriteBuffer(queue, delta_mu_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * delta_mu[curBNLayer].size(),
 					delta_mu[curBNLayer].data(), 0, nullptr, nullptr));
 				CheckError(clEnqueueWriteBuffer(queue, delta_sigma2_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * delta_sigma2[curBNLayer].size(),
@@ -3984,6 +4422,83 @@ void Net::setupBatchNormCLMems(int num_threads, const vector<int>& thread_sizes,
 	#endif
 }
 
+void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& thread_sizes)
+{
+
+	#ifdef _DEBUG
+	printf("Start setupBatchNormCLMems [");
+	printf("%d", thread_sizes[0]);
+	for(int i = 1; i < thread_sizes.size(); i++)
+		printf(",%d", thread_sizes[i]);
+	printf("]... ");
+	#endif
+	cl_int error;
+	int numBNLayers = 0;
+	for(int i=0; i < __layers.size(); i++)
+		if(__layers[i]->layerType == BATCH_NORM_LAYER)
+			numBNLayers++;
+
+	//these are all vector<cl_mem>
+	gamma.resize(numBNLayers);
+	beta.resize(numBNLayers);
+
+	//have same number of mus and sigmas as we do gammas and betas
+	mu.resize(numBNLayers);
+	mu_cl.resize(numBNLayers);
+	sigma_squared.resize(numBNLayers);
+	sigma_squared_cl.resize(numBNLayers);
+
+	bn_x.resize(num_threads);
+	for(int t = 0; t < num_threads; t++)
+	{
+		bn_x[t].resize(thread_sizes[t]);
+		for(int a = 0; a < thread_sizes[t]; a++)
+		{
+			bn_x[t][a].resize(numBNLayers);
+		}
+	}
+
+	int curBNLayer = 0;
+	int maxsize = 0;
+	for(int i = 0; i < __layers.size(); i++)
+	{
+		if(__layers[i]->layerType == BATCH_NORM_LAYER)
+		{
+			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
+			vector<double> zeros(batch->gamma.size(),0);
+			// if(batch->gamma.size() > maxsize)
+			// 	maxsize = batch->gamma.size();
+			if(__neuronSizes[i] > maxsize)
+				maxsize = __neuronSizes[i];
+			//size of gamma and beta is given by the BatchNormLayer->gamma/beta.size()
+			gamma[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->gamma.data(), &error); CheckError(error);
+			beta[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->beta.size(), batch->beta.data(), &error); CheckError(error);
+
+			mu[curBNLayer].resize(batch->gamma.size());
+			sigma_squared[curBNLayer].resize(batch->gamma.size());
+			mu_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->gamma.size(), nullptr, &error); CheckError(error);
+			sigma_squared_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->gamma.size(), nullptr, &error); CheckError(error);
+
+			for(int t = 0; t < num_threads; t++)
+			{
+				for(int a = 0; a < thread_sizes[t]; a++)
+				{
+					bn_x[t][a][curBNLayer].resize(__neuronSizes[i]);
+				}
+			}
+
+			curBNLayer++;
+		}
+	}
+	vector<mutex> temp(maxsize);
+	mtx_a.swap(temp);
+
+	#ifdef _DEBUG
+	printf("done\n");
+	printf("num mutexes in mtx_a is %d\n", maxsize);
+	#endif
+}
+
 void Net::pullGammaAndBeta()
 {
 	cl_int error;
@@ -4010,6 +4525,12 @@ void Net::updateGammaAndBeta()
 	{
 		if(__layers[i]->layerType == BATCH_NORM_LAYER)
 		{
+			// for(int q = 0; q < delta_gamma[curBNLayer].size(); q++)
+			// {
+			// 	printf("deltab[%d][%d] = %lf\n",curBNLayer,q, delta_beta[curBNLayer][q]);
+			// }
+
+			// printf("update gamma/beta layer %d\n", i);
 			CheckError(clSetKernelArg(updateGammaAndBetaKernel, 0, sizeof(cl_mem), &gamma[curBNLayer]));
 			CheckError(clSetKernelArg(updateGammaAndBetaKernel, 1, sizeof(cl_mem), &beta[curBNLayer]));
 			CheckError(clSetKernelArg(updateGammaAndBetaKernel, 2, sizeof(cl_mem), &delta_gamma_cl[curBNLayer]));
@@ -4018,9 +4539,12 @@ void Net::updateGammaAndBeta()
 			globalWorkSize[0] = delta_gamma[curBNLayer].size();
 			CheckError(clEnqueueNDRangeKernel(queue, updateGammaAndBetaKernel, 1, nullptr,
 				globalWorkSize, nullptr, 0, nullptr, nullptr));
+			clFinish(queue);
+
+			curBNLayer++;
 		}
 	}
-	clFinish(queue);
+	// clFinish(queue);
 }
 
 int Net::getNumBatchNormLayers()
@@ -4051,6 +4575,9 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 
 	printf("MINIBATCH GRADIENT DESCENT WITH BATCH NORMALIZATION\n");
+
+	bnClassCorrect.resize(__neuronSizes.back());
+	bnClassTotal.resize(__neuronSizes.back());
 
 	int numThreads = 12;
 	if(batchSize < numThreads)
@@ -4135,8 +4662,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	}
 
 	// vector<vector<double> > confidences;
-	double prevError = numeric_limits<double>::max();
-	double curError;
+	double bestAccuracy = 0;
 
 	if(epochs == -1)
  	{
@@ -4174,16 +4700,24 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		}
 	}
 
+	__setEAndVar = true;
+
 	////////////////////////////
 	// start of training
 	// start of epochs
 	////////////////////////////
 	
 	printf("Run for %d epochs on %d threads\n", epochs,numThreads);
+	int lastTrainIndex;
 	for(int e = 0; e < epochs; e++)
 	{
 		starttime = time(NULL);
 		bnNumCorrect = 0;
+		for(int i = 0; i < bnClassCorrect.size(); i++)
+		{
+			bnClassCorrect[i] = 0;
+			bnClassTotal[i] = 0;
+		}
 		//adjust learning rate
 		if(e % 10 == 0 && e != 0)
 		{
@@ -4201,14 +4735,25 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			pullWeights = false;
 			break;
 		}
+
+		for(int i = 0; i < __layers.size(); i++)
+			if(__layers[i]->layerType == BATCH_NORM_LAYER)
+			{
+				BatchNormLayer* batch = (BatchNormLayer*)__layers[i];
+				for(int j = 0; j < batch->e.size(); j++)
+				{
+					batch->e[j] = 0;
+					batch->var[j] = 0;
+				}
+			}
 		
 		int numCorrect = 0;
 		int imsDone = 0;
 		spinlock_barrier* barrier_ptr = &barrier;
 		vector<int> starts(numThreads);
-
-		int lastTrainIndex = trainingData.size() - trainingData.size() % batchSize;
-		for(int r = 0; r < lastTrainIndex; r += batchSize) // the ones that don't nicely fit in a batch will be discarded
+		lastTrainIndex = trainingData.size() - trainingData.size() % batchSize;
+		int batchesDone = 0;
+		for(int r = 0; r < lastTrainIndex; r += batchSize, batchesDone++) // the ones that don't nicely fit in a batch will be discarded
 		{
 			//reset the accumulated derivatives to 0
 			zeroMem(gradients_weights, gradients_weights_sizes);
@@ -4216,7 +4761,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 			pullGammaAndBeta(); //to calc xhat in feedForward_BN
 
-			printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
+			// printf("Doing %d-%d of %lu\n",r,r+batchSize-1, trainingData.size() - batchSize);
 			//do the feedForward and see if it was right
 			int start = r, end;
 			vector<thread> thr(numThreads);
@@ -4273,36 +4818,208 @@ void Net::batchNormTrain(int batchSize, int epochs)
 
 		endtime = time(NULL);
 	 	//beginning of this line is at the top of the epoch loop
-	 	cout << "Accuracy on training data: " << bnNumCorrect << " out of " << lastTrainIndex - 1 << " (" << trueVals.size() << "). " << 100.0*bnNumCorrect/(lastTrainIndex-1) << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
-	 	cout << "Num zeros: " << bnNumZeros << endl;
-	 	bnNumZeros = 0;
+	 	double accuracy = 100.0*bnNumCorrect/(lastTrainIndex-1);
+	 	cout << "Accuracy on training data: " << bnNumCorrect << " out of " << lastTrainIndex - 1 << " (" << trueVals.size() << "). " << accuracy << "%  " << convnet::secondsToString(endtime-starttime) << " seconds" << endl;
+	 	for(int i = 0; i < bnClassCorrect.size(); i++)
+	 	{
+	 		printf("\tClass %d (%10s) - %d of %d, %lf%%\n", i, __trueNames[i].c_str(), bnClassCorrect[i],bnClassTotal[i], 100.0 * bnClassCorrect[i]/bnClassTotal[i]);
+	 	}
+	 	// cout << "Num zeros: " << bnNumZeros << endl;
+	 	// bnNumZeros = 0;
+
+	 	if(accuracy > bestAccuracy)
+	 	{
+	 		bestAccuracy = accuracy;
+	 		if(__saveNet)
+			{
+				pullGammaAndBeta();
+				double divideE = batchesDone;
+				double timesVar = batchSize/(divideE * (batchSize-1));
+				for(int i = 0; i < __layers.size(); i++)
+				{
+					if(__layers[i]->layerType == BATCH_NORM_LAYER)
+					{
+						BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
+						for(int j = 0; j < batch->e.size(); j++)
+						{
+							batch->e[j] /= divideE;
+							batch->var[j] *= timesVar;
+						}
+					}
+				}
+				save(__saveName.c_str());
+			}
+	 	}
+
 	 	if(__testData.size() != 0)
 	 	{
 	 		printf("\tTest Set. ");
 	 		run(); //this will update __confidences
-	 		curError = 0;
 	 		int testCorrect = 0;
 	 		for(int c = 0; c < __confidences.size(); c++)
 	 		{
-	 			for(int im = 0; im < __confidences[c].size(); im++)
-	 				curError += __confidences[c][im];
 		 		if(getMaxElementIndex(__confidences[c]) == __testTrueIndexes[c])
 		 			testCorrect++;
 		 	}
 	 		double testAccuracy = testCorrect/(double)__testData.size() * 100.0;
 	 		printf("Accuracy on test data: %d out of %lu. %lf%%\n",testCorrect,__testData.size(), testAccuracy);
-
-	 		//stop training when the curError is greater than the previous data and accuracy is more than 80
-	 		if(curError > prevError && testAccuracy >= 80.0)
-	 			break;
-	 		prevError = curError;
 	 	}
 	}// end of all epochs
-	if(pullWeights) // only false if batchSize > trainingData.size()
-		pullCLWeights();
+
 	//clean up anything we may have messed with in order to use run.
 	__confidences.resize(__data.size());
 	__isTraining = false;
+
+	if(__saveNet)
+		load(__saveName.c_str());
+
+	
+}
+
+/***************************
+*
+* A batchNorm train function training does minibatch training with batch normalization.
+* Public
+*
+***************************/
+void Net::batchNormRun()
+{
+	setbuf(stdout, NULL);
+	// if(getNumBatchNormLayers() > 0)
+	// 	__preprocessType = __PREPROCESS_BATCH_NORM;
+
+	if(!__isTraining)
+ 	{
+ 		// printf("Not training\n");
+ 		__dataPointer = &__data;
+ 	}
+
+ 	__confidences.resize(__dataPointer->size());
+
+
+	printf("BATCH NORMALIZATION RUN\n");
+
+	int batchSize = __dataPointer->size();
+	printf("batch Size is %d\n", batchSize);
+
+	int numThreads = 12;
+	if(batchSize < numThreads)
+		numThreads = batchSize;
+	vector<int> thread_sizes(numThreads);
+
+	for(int mini = 0, i = 0; mini < batchSize; mini++, i = (i+1)%numThreads)
+		thread_sizes[i]++;
+
+	for(int i = 0; i < thread_sizes.size(); i++)
+		printf("size %d: %d\n", i,thread_sizes[i]);
+	#ifdef _DEBUG
+	printf("thread sizes set, %d\n",__isFinalized);
+	#endif
+
+	if(!__isFinalized)
+	{
+		finalize(); // this also sets __maxNeuronSize
+	}
+
+	if(__preprocessType == __PREPROCESS_INDIVIDUAL)
+ 	{
+	 	if(!__trainingDataPreprocessed)
+	 		//preprocessTrainingDataCollective();
+	        preprocessTrainingDataIndividual();
+	    if(__testData.size() != 0 && !__testDataPreprocessed)
+	    	preprocessTestDataIndividual();
+	}
+	else if(__preprocessType == __PREPROCESS_COLLECTIVE) // __preprocessCollective
+	{
+		if(!__trainingDataPreprocessed)
+			preprocessTrainingDataCollective();
+		if(!__testDataPreprocessed)
+			preprocessTestDataCollective();
+	}
+	else
+	{
+		printf("NO PREPROCESSING OF TRAINING DATA\n");
+	}
+
+	setupBatchNormCLMems_running(numThreads, thread_sizes);
+
+
+	//layerNeeds -> 3D
+	//prevNeurons, neurons -> 2D
+	//kernels, queue, denom, velocities -> 1D
+	//barrier -> 1
+
+	vector<vector<cl_mem> > p(numThreads), n(numThreads);
+	vector<vector<cl_mem*> > prevNeurons(numThreads), neurons(numThreads);
+	vector<Kernels> kernels(numThreads);
+	vector<cl_command_queue> queues(numThreads);
+	vector<cl_mem> denoms(numThreads);
+	cl_int error;
+
+	spinlock_barrier barrier(numThreads);
+
+	for(int t = 0; t < numThreads; t++)
+	{
+		//2D and 3D inits
+		p[t].resize(thread_sizes[t]);
+		n[t].resize(thread_sizes[t]);
+		prevNeurons[t].resize(thread_sizes[t]);
+		neurons[t].resize(thread_sizes[t]);
+
+		for(int s = 0; s < thread_sizes[t]; s++)
+		{
+			//finalize sets __maxNeuronSize
+			p[t][s] = clCreateBuffer(__context, CL_MEM_READ_WRITE,
+				sizeof(double) * __maxNeuronSize, nullptr, &error); CheckError(error);
+			n[t][s] = clCreateBuffer(__context, CL_MEM_READ_WRITE,
+				sizeof(double) * __maxNeuronSize, nullptr, &error); CheckError(error);
+			prevNeurons[t][s] = &(p[t][s]);
+			neurons[t][s] = &(n[t][s]);
+		}
+
+		//1D inits
+		buildKernels(kernels[t],__device);
+		queues[t] = clCreateCommandQueue(__context, __deviceIds[__device], 0, &error); CheckError(error);
+		denoms[t] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double), nullptr, &error); CheckError(error);
+	}
+
+	vector<vector<double>* > trainingData(0);
+
+
+	////////////////////////////
+	// start of run
+	// start of epochs
+	////////////////////////////
+	
+	spinlock_barrier* barrier_ptr = &barrier;
+	vector<int> starts(numThreads);
+
+	// pullGammaAndBeta(); //to calc xhat in feedForward_BN
+	//do the feedForward
+	int start = 0, end;
+	vector<thread> thr(numThreads);
+	//feedforward
+	#ifdef _DEBUG
+	printf("Start threadify feedforward... ");
+	#endif
+	for(int t = 0; t < numThreads; t++) //thread-ify the batch
+	{
+		end = start + thread_sizes[t];
+		starts[t] = start;
+		vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
+		thr[t] = thread([=, &kernels, &queues, &denoms]
+		 {feedForward_BN_running(numThreads, batchSize, t, start, end, __dataPointer, pptr, nptr,//prevNeurons[t], neurons[t],
+			ref(queues[t]), ref(denoms[t]), ref(kernels[t]), barrier_ptr);});
+		start = end;
+	}
+	for(int t = 0; t < numThreads; t++)
+		thr[t].join();
+
+	//the threads set __confidences
+
+	#ifdef _DEBUG
+	printf("feedforward joined\n");
+	#endif
 }
 
 /*****************************
@@ -6530,6 +7247,7 @@ void Net::buildKernels(Kernels& k, int device)
 	k.updateWeightsKernel = clCreateKernel(CNTraining, "update_weights", &error); CheckError(error);
 	k.updateWeightsMomentKernel = clCreateKernel(CNTraining, "update_weights_moment", &error); CheckError(error);
 	k.updateBiasesKernel = clCreateKernel(CNTraining, "update_biases", &error); CheckError(error);
+	k.batchNormRunKernel = clCreateKernel(CNTraining, "batch_norm_run", &error); CheckError(error);
 	k.batchNormKernel = clCreateKernel(CNTraining, "batch_norm", &error); CheckError(error);
 	k.batchNormBackKernel = clCreateKernel(CNTraining, "batch_norm_back", &error); CheckError(error);
 	k.updateGammaAndBetaKernel = clCreateKernel(CNTraining, "update_gamma_and_beta", &error); CheckError(error);
@@ -7672,16 +8390,18 @@ void Net::initVelocities(vector<cl_mem>& velocities)
 void Net::addData(const vector<imVector>& data)
 {
 	printf("Adding %lu data of size %lu x %lu x %lu\n", data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size());
-	for(int d = 0; d < data.size(); d++)
+	int oldSize = __data.size();
+	__data.resize(__data.size() + data.size());
+	for(int d = 0, o = oldSize; d < data.size(); d++, o++)
 	{
-		__data.resize(__data.size() + 1);
-		__data.back().resize(__neuronSizes[0]);
+		__data[o].resize(__neuronSizes[0]);
 		int dat = 0;
 		for(int i=0; i < data[d].size(); i++)
 			for(int j=0; j < data[d][i].size(); j++)
 				for(int k=0; k < data[d][i][j].size(); k++)
-					__data.back()[dat++] = data[d][i][j][k];
+					__data[o][dat++] = data[d][i][j][k];
 	}
+	printf("new size is %lu\n",__data.size());
 	__confidences.resize(__confidences.size() + __data.size());
 	__dataPreprocessed = false;
 }
@@ -8502,9 +9222,10 @@ bool Net::load(const char* filename)
 			}
 			else if(line == "BATCH_NORM_LAYER")
 			{
+				getline(file,line); lineNum++;
 				bool byFeatureMap = false;
-				int gamma_size = -1, beta_size = -1,featFound = 0;
-				string gamma = "", beta = "";
+				int gamma_size = -1, featFound = 0;
+				string gamma="", beta="", e="", var="";
 				while(line != "END_BATCH_NORM_LAYER")
 				{
 					if(line.find("byFeatureMap=1") != string::npos)
@@ -8519,12 +9240,14 @@ bool Net::load(const char* filename)
 					}
 					else if(line.find("gamma_size=") != string::npos)
 						gamma_size = stoi(line.substr(line.find('=')+1));
-					else if(line.find("beta_size=") != string::npos)
-						beta_size = stoi(line.substr(line.find('=')+1));
 					else if(line.find("gamma=") != string::npos)
 						gamma = line.substr(line.find('=')+1);
 					else if(line.find("beta=") != string::npos)
 						beta = line.substr(line.find('=')+1);
+					else if(line.find("e=") != string::npos)
+						e = line.substr(line.find('=')+1);
+					else if(line.find("var=") != string::npos)
+						var = line.substr(line.find('=')+1);
 					else
 					{
 						cout << "Improper file structure while getting BatchNormLayer args at line " << lineNum << ". Exiting load.";
@@ -8549,11 +9272,6 @@ bool Net::load(const char* filename)
 					printf("Layer ending on line %d: BatchNormLayer - Unable to find gamma_size or gamma_size < 1.\n",lineNum);
 					file.close(); return false;
 				}
-				else if(beta_size < 1)
-				{
-					printf("Layer ending on line %d: BatchNormLayer - Unable to find beta_size or beta_size < 1.\n",lineNum);
-					file.close(); return false;
-				}
 				else if(gamma == "")
 				{
 					printf("Layer ending on line %d: BatchNormLayer - Unable to find gamma.\n",lineNum);
@@ -8564,8 +9282,18 @@ bool Net::load(const char* filename)
 					printf("Layer ending on line %d: BatchNormLayer - Unable to find beta.\n",lineNum);
 					file.close(); return false;
 				}
+				else if(e == "")
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Unable to find e.\n",lineNum);
+					file.close(); return false;
+				}
+				else if(var == "")
+				{
+					printf("Layer ending on line %d: BatchNormLayer - Unable to find var.\n",lineNum);
+					file.close(); return false;
+				}
 
-				bool success = addBatchNormLayer(byFeatureMap,gamma_size,gamma,beta_size,beta);
+				bool success = addBatchNormLayer(byFeatureMap,gamma_size,gamma,beta,e,var);
 				if(!success)
 				{
 					printf("Layer ending on line %d: BatchNormLayer - Failed to successfully add BatchNormLayer.\n",lineNum);
@@ -9094,8 +9822,6 @@ bool Net::save(const char* filename)
 			}
 			out += '\n';
 
-			sprintf(data,"%lu\n",batch->beta.size());
-			out += "beta_size="; out += data;
 			out += "beta=";
 			for(int g = 0; g < batch->beta.size(); g++)
 			{
@@ -9103,6 +9829,21 @@ bool Net::save(const char* filename)
 				out += data;
 			}
 			out += '\n';
+			out += "e=";
+			for(int g = 0; g < batch->e.size(); g++)
+			{
+				sprintf(data,"%lf,",batch->e[g]);
+				out += data;
+			}
+			out += '\n';
+			out += "var=";
+			for(int g = 0; g < batch->var.size(); g++)
+			{
+				sprintf(data,"%lf,",batch->var[g]);
+				out += data;
+			}
+			out += '\n';
+
 
 			out += "END_BATCH_NORM_LAYER\n";
 		}

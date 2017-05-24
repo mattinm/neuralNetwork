@@ -568,7 +568,7 @@ int main(int argc, char** argv)
 		printf("Test are %d x %d x %d\n", testDims[0],testDims[1],testDims[2]);
 
 	int maxSize = 10000; //max number of items read before adding to net. prevents having too many duplicate items when reading in.
-	vector<imVector> training_data(maxSize), test_data(maxSize);
+	vector<imVector> training_data(maxSize), test_data(numTest);
 	vector<string> training_names(maxSize), test_names(numTest);
 	int i, j;
 	for(i = 0, j = 0; j < numTraining; i++, j++)
@@ -595,37 +595,32 @@ int main(int argc, char** argv)
 	training_names.resize(0); training_names.shrink_to_fit();
 
 	printf("done adding training data\n");
-
+	printf("numTest = %d\n", numTest);
 	for(i = 0, j= 0; j < numTest; i++, j++) // i and j declared above the training portion
 	{
 		if(byCount)
 			test_names[i] = getNextImage_byCount(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType,test_label_dims[0]);
 		else
 			test_names[i] = getNextImage(test_data_in, test_label_in, test_data[i], testDims[0],testDims[1],testDims[2], test_data_convType, test_label_convType);
-		if(i % maxSize == 0 && i != 0)
-		{
-			net.addData(test_data);
-			// test_data.clear();
-			i = 0;
-		}
 	}
-	test_data.resize(i);
 	if(i > 0)
+	{
 		net.addData(test_data);
+	}
 
 	test_data.resize(0); test_data.shrink_to_fit();
 
 
-	readChar(training_label_in);
-	if(training_label_in.eof())
-	//if(readChar(training_label_in) == EOF)
-	{
-		printf("EOF\n");
-	}
-	else 
-	{
-		printf("Not EOF\n");
-	}
+	// readChar(training_label_in);
+	// if(training_label_in.eof())
+	// //if(readChar(training_label_in) == EOF)
+	// {
+	// 	printf("EOF\n");
+	// }
+	// else 
+	// {
+	// 	printf("Not EOF\n");
+	// }
 
 	training_label_in.close();
 	training_data_in.close();
@@ -685,6 +680,7 @@ int main(int argc, char** argv)
 		{
 			int trueIndex = net.getIndexFromName(test_names[i]);
 			// printf("%d %d\n", predictions[i], trueIndex);
+			printf("%d %d\n", predictions[i],trueIndex);
 			if(predictions[i] == trueIndex)
 			{
 				numCorrect++;

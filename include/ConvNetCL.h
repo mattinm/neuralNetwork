@@ -112,6 +112,8 @@ private: 	// structs
 	struct BatchNormLayer : Layer{
 		std::vector<double> gamma;
 		std::vector<double> beta;
+		std::vector<double> e;
+		std::vector<double> var;
 		bool byFeatureMap = true; //if false, by activation
 	};
 
@@ -167,7 +169,7 @@ private: 	// structs
 		cl_kernel divideEqualsKernel;
 		cl_kernel zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, 
 			updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel, batchNormKernel, batchNormBackKernel, 
-			updateGammaAndBetaKernel;
+			updateGammaAndBetaKernel, batchNormRunKernel;
 	};
 
 	static int check_counter(int count);
@@ -269,7 +271,7 @@ private: 	// members
 		// std::atomic<int> mu_reset_done = false;
 		std::mutex mtx, gw_mtx, gb_mtx; //mutex, gradient_weights_mutex, gradient_biases_mutex;
 		std::vector<std::mutex> mtx_a;
-		int thread_count = 0;
+		// int thread_count = 0;
 		bool mu_reset_done = false;
 
 		std::vector<std::vector<std::vector<std::vector<double> > > > bn_x, bn_xhat;
@@ -287,7 +289,9 @@ private: 	// members
 		std::vector<cl_mem> delta_gamma_cl; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<cl_mem> delta_beta_cl;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::mutex bnNumCorrect_mtx;
+		std::vector<int> bnClassCorrect, bnClassTotal;
 		int bnNumCorrect, bnNumZeros = 0;
+		bool __setEAndVar = true;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -309,7 +313,7 @@ private: 	// members
 		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel,
 		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel,
 		zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel,
-		batchNormKernel, batchNormBackKernel, updateGammaAndBetaKernel;
+		batchNormRunKernel, batchNormKernel, batchNormBackKernel, updateGammaAndBetaKernel;
 
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
@@ -437,7 +441,7 @@ private:	// functions
 
 	//functions dealing with layers
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad, const std::string& weightsAndBias);
-	bool addBatchNormLayer(bool byFeatureMap, int gamma_size, const std::string& gamma, int beta_size, const std::string& beta);
+	bool addBatchNormLayer(bool byFeatureMap, int gamma_size, const std::string& gamma, const std::string& beta, const std::string& e, const std::string& var);
 	void pushBackLayerSize(int width, int height, int depth);
 
 	//weights and biases
@@ -520,9 +524,13 @@ private:	// functions
 		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
 		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases, const std::vector<cl_mem>& bn_x_cl);
 	void setupBatchNormCLMems(int num_threads, const std::vector<int>& thread_sizes, std::vector<std::vector<cl_mem> > &bn_x_cl);
+	void setupBatchNormCLMems_running(int num_threads, const std::vector<int>& thread_sizes);
 	void pullGammaAndBeta();
 	void updateGammaAndBeta();
 	int getNumBatchNormLayers();
+	void batchNormRun();
+	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
+	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
 
 };
 
