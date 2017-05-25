@@ -292,6 +292,7 @@ private: 	// members
 		std::vector<int> bnClassCorrect, bnClassTotal;
 		int bnNumCorrect, bnNumZeros = 0;
 		bool __setEAndVar = true;
+		double moveAlpha = 0.1;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;

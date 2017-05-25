@@ -2350,7 +2350,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 				{
 					for(int m = 0; m < mu[curBNLayer].size(); m++)
 					{
-						batch->e[m] += mu[curBNLayer][m];
+						batch->e[m] = moveAlpha * mu[curBNLayer][m] + (1 - moveAlpha) * batch->e[m];
 						// printf("bntrain mu[%d][%d] %lf\n", curBNLayer,m,mu[curBNLayer][m]);
 						// printf("bntrain e[%d] %lf\n",m,batch->e[m]);
 						// getchar();
@@ -2411,7 +2411,8 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 
 				if(__setEAndVar)
 					for(int m = 0; m < sigma_squared[curBNLayer].size(); m++)
-						batch->var[m] += sigma_squared[curBNLayer][m];
+						// batch->var[m] += sigma_squared[curBNLayer][m];
+						batch->var[m] = moveAlpha * sigma_squared[curBNLayer][m] + (1 - moveAlpha) * batch->var[m];
 
 				thread_count = 0;
 			}
@@ -4719,7 +4720,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			bnClassTotal[i] = 0;
 		}
 		//adjust learning rate
-		if(e % 10 == 0 && e != 0)
+		if(e % 1 == 0 && e != 0)
 		{
 			__learningRate *= .5;
 			printf("\tChanged learning rate from %.3e to %.3e before starting epoch %d\n",__learningRate*2,__learningRate,e);
@@ -4833,20 +4834,21 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	 		if(__saveNet)
 			{
 				pullGammaAndBeta();
-				double divideE = batchesDone;
-				double timesVar = batchSize/(divideE * (batchSize-1));
-				for(int i = 0; i < __layers.size(); i++)
-				{
-					if(__layers[i]->layerType == BATCH_NORM_LAYER)
-					{
-						BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
-						for(int j = 0; j < batch->e.size(); j++)
-						{
-							batch->e[j] /= divideE;
-							batch->var[j] *= timesVar;
-						}
-					}
-				}
+				pullCLWeights();
+				// double divideE = batchesDone;
+				// double timesVar = batchSize/(divideE * (batchSize-1));
+				// for(int i = 0; i < __layers.size(); i++)
+				// {
+				// 	if(__layers[i]->layerType == BATCH_NORM_LAYER)
+				// 	{
+				// 		BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
+				// 		for(int j = 0; j < batch->e.size(); j++)
+				// 		{
+				// 			batch->e[j] /= divideE;
+				// 			batch->var[j] *= timesVar;
+				// 		}
+				// 	}
+				// }
 				save(__saveName.c_str());
 			}
 	 	}
@@ -4921,25 +4923,17 @@ void Net::batchNormRun()
 		finalize(); // this also sets __maxNeuronSize
 	}
 
-	if(__preprocessType == __PREPROCESS_INDIVIDUAL)
+ 	if(!__dataPreprocessed)
  	{
-	 	if(!__trainingDataPreprocessed)
-	 		//preprocessTrainingDataCollective();
-	        preprocessTrainingDataIndividual();
-	    if(__testData.size() != 0 && !__testDataPreprocessed)
-	    	preprocessTestDataIndividual();
-	}
-	else if(__preprocessType == __PREPROCESS_COLLECTIVE) // __preprocessCollective
-	{
-		if(!__trainingDataPreprocessed)
-			preprocessTrainingDataCollective();
-		if(!__testDataPreprocessed)
-			preprocessTestDataCollective();
-	}
-	else
-	{
-		printf("NO PREPROCESSING OF TRAINING DATA\n");
-	}
+ 		// if(__preprocessIndividual)
+ 		if(__preprocessType == __PREPROCESS_INDIVIDUAL)
+ 			preprocessDataIndividual();
+ 		else if(__preprocessType == __PREPROCESS_COLLECTIVE)
+ 			preprocessDataCollective();
+ 		else
+			printf("NO PREPROCESSING OF TRAINING DATA\n");
+ 	}
+	
 
 	setupBatchNormCLMems_running(numThreads, thread_sizes);
 

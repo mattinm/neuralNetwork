@@ -580,6 +580,7 @@ int main(int argc, char** argv)
 		if(i % maxSize == 0 && i != 0)
 		{
 			net.addTrainingData(training_data,training_names);
+			// net.addTestData(training_data,training_names);
 			// training_data.clear();
 			// training_names.clear();
 			i = 0;
@@ -589,7 +590,10 @@ int main(int argc, char** argv)
 	training_data.resize(i);
 	training_names.resize(i);
 	if(i > 0)
+	{
 		net.addTrainingData(training_data, training_names);
+		// net.addTestData(training_data,training_names);
+	}
 
 	training_data.resize(0); training_data.shrink_to_fit();
 	training_names.resize(0); training_names.shrink_to_fit();
@@ -680,7 +684,6 @@ int main(int argc, char** argv)
 		{
 			int trueIndex = net.getIndexFromName(test_names[i]);
 			// printf("%d %d\n", predictions[i], trueIndex);
-			printf("%d %d\n", predictions[i],trueIndex);
 			if(predictions[i] == trueIndex)
 			{
 				numCorrect++;
