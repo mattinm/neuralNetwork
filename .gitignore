@@ -253,7 +253,7 @@ ConfigFiles/
 Data/
 Data
 ImageBinaries/
-NetConfigs/
+NetConfigs*/
 Screenshots/
 Z_BadSrc/
 wildlife_db_info
@@ -270,5 +270,8 @@ geeseImages*/
 old/
 src/Blob_compare_error*.csv
 msi_true_counts.csv
-EScience2017/
+EScience2017
+z*
+z*/
 Full_loop/
+NetConfigs

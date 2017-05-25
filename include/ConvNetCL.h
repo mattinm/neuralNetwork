@@ -191,14 +191,17 @@ private: 	// structs
 	  {
 	    unsigned int gen = m_generation.load();
 
+	    mut.lock();
 	    if (--m_count == 0)
 	    {
 	      if (m_generation.compare_exchange_weak(gen, gen + 1))
 	      {
 	        m_count = m_count_reset_value;
 	      }
+	      mut.unlock();
 	      return;
 	    }
+	    mut.unlock();
 
 	    while ((gen == m_generation) && (m_count != 0))
 	      std::this_thread::yield();
@@ -207,6 +210,7 @@ private: 	// structs
 	private:
 	  std::atomic<unsigned int> m_count;
 	  std::atomic<unsigned int> m_generation;
+	  std::mutex mut;
 	  unsigned int m_count_reset_value;
 	};
 
@@ -272,7 +276,7 @@ private: 	// members
 		std::mutex mtx, gw_mtx, gb_mtx; //mutex, gradient_weights_mutex, gradient_biases_mutex;
 		std::vector<std::mutex> mtx_a;
 		// int thread_count = 0;
-		bool mu_reset_done = false;
+		// bool mu_reset_done = false;
 
 		std::vector<std::vector<std::vector<std::vector<double> > > > bn_x, bn_xhat;
 
@@ -293,6 +297,8 @@ private: 	// members
 		int bnNumCorrect, bnNumZeros = 0;
 		bool __setEAndVar = true;
 		double moveAlpha = 0.1;
+		bool setupBatchNormCLMems_running_done = false;
+		bool setupBatchNormCLMems_done = false;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -462,6 +468,7 @@ private:	// functions
 
 	//training
 	void setupLayerNeeds(std::vector<cl_mem>& layerNeeds);
+	void destroyVectorCLMems(std::vector<cl_mem>& vect);
 	void getTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals);
 	void initVelocities(std::vector<cl_mem>& velocities);
 	void pullCLWeights();
@@ -532,6 +539,7 @@ private:	// functions
 	void batchNormRun();
 	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
 	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
+	void destroyBatchNormCLMems();
 
 };
 

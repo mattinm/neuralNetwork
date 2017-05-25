@@ -133,7 +133,7 @@ int getNextRow()
 	{
 		out = curRow;
 		curRow += stride;
-		// printf("Giving row %d of %d (%d)\n", out,__rows - inputHeight, __rows);
+		printf("Giving row %d of %d (%d)\n", out,__rows - inputHeight, __rows);
 	}
 	else
 	{
