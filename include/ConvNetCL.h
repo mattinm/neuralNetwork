@@ -282,7 +282,7 @@ private: 	// members
 
 		std::vector<std::vector<double> > mu, delta_mu;
 		std::vector<std::vector<double> > sigma_squared, delta_sigma2; //is delta_sigma_squared
-		std::vector<cl_mem> mu_cl, delta_mu_cl;
+		std::vector<cl_mem> mu_cl, delta_mu_cl; // one cl_mem per BNLayer
 		std::vector<cl_mem> sigma_squared_cl, delta_sigma2_cl;
 
 

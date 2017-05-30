@@ -2799,7 +2799,6 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 	//do housekeeping to make sure everything is sized right
 	size_t ss = prevNeurons->size();
 	int amount = end - start;
-	// static int thread_count = 0;
 	if(ss != neurons->size() || amount > ss) // if we have extra mem allocated that we don't use I guess that's ok
 	{
 		printf("Feed forward with batch normalization: Inconsistent sizes\n");
@@ -2837,17 +2836,6 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 		if(__layers[i]->layerType == BATCH_NORM_LAYER)
 		{
 			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
-
-			//write mu and sigma_squared to gpu
-			if(thread_num == 0)
-			{
-				CheckError(clEnqueueWriteBuffer(queue, mu_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * mu[curBNLayer].size(),
-					batch->e.data(), 0, nullptr, nullptr));
-				CheckError(clEnqueueWriteBuffer(queue, sigma_squared_cl[curBNLayer], CL_TRUE, 0, sizeof(double) * sigma_squared[curBNLayer].size(),
-					batch->var.data(), 0, nullptr, nullptr));
-			}
-
-			barrier->count_down_and_wait();
 
 			////////////////
 			// Calculate output of BN layer on GPU
@@ -3001,30 +2989,9 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 			}
 			clFinish(queue);
 		}
-		
-
-		// cout << "Forward Layer " << i << endl;
-		// CheckError(clEnqueueReadBuffer(queue, (*neurons), CL_TRUE, 0, sizeof(double) * __neuronSizes[i],
-		// 	test.data(), 0, nullptr, nullptr));
-		// for(int j=0; j< __neuronSizes[i]; j++)
-		// {
-		// 	cout << test[j] << ", ";
-		// }
-		// cout << endl << endl;
-		// getchar();
-
 	}
-	// vector<double> soft(__neuronSizes.back());
 	for(int a = 0, i = start; a < amount; a++, i++)
 	{
-		// CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
-		//  	soft.data(), 0, nullptr, nullptr));
-		// stringstream ss("");
-		// for(int s = 0; s < __neuronSizes.back(); s++)
-		// 	ss << soft[s] << ", ";
-		// ss << endl;
-		// printf("pre-soft: %s\n", ss.str().c_str());
-
 		#ifdef _DEBUG
 		printf("Thread %d.%d: start softmax... \n",thread_num,a);
 		#endif
@@ -3034,17 +3001,7 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 		CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 		 	__confidences[i].data(), 0, nullptr, nullptr));
 
-
-
-		// ss.str(string());
-		// for(int s = 0; s < __neuronSizes.back(); s++)
-		// 	ss << soft[s] << ", ";
-		// ss << endl;
-		// printf("soft: %s\n", ss.str().c_str());
-
 	}
-
-	// printf("end feed\n");
 }
 
 
@@ -4506,8 +4463,8 @@ void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& threa
 
 			mu[curBNLayer].resize(batch->gamma.size());
 			sigma_squared[curBNLayer].resize(batch->gamma.size());
-			mu_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->gamma.size(), nullptr, &error); CheckError(error);
-			sigma_squared_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE, sizeof(double) * batch->gamma.size(), nullptr, &error); CheckError(error);
+			mu_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->e.data(), &error); CheckError(error);
+			sigma_squared_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->var.data(), &error); CheckError(error);
 
 			for(int t = 0; t < num_threads; t++)
 			{

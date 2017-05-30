@@ -669,7 +669,7 @@ int main(int argc, char** argv)
 	if(cmd_test_count > 0)
 	{
 		//net.addData(test_data);
-
+		printf("start run\n");
 		net.run();
 
 		vector<int> predictions;
