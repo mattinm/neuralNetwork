@@ -705,11 +705,10 @@ __kernel void batch_norm_run(__global double* prevNeurons, __global double* neur
 	// printf("bnr e %lf, var %lf\n", e[k], var[k]);
 	double rootVarPlusEps = pow(var[k] + EPSILON,0.5);
 	double gam = gamma[k];
-	// if(sigma_squared[k] < 0) printf("why?\n");
+	// if(var[k] < 0) printf("why?\n");
 	double front = gam * prevNeurons[x] / rootVarPlusEps;
 	double back = beta[k] - gam * e[k] / rootVarPlusEps;
 	// if(isnan(prevNeurons[x])) printf("nan px\n");
-	// if(isnan(xhat)) printf("nan xhat\n");
 
 	neurons[x] = front + back;
 	
@@ -723,14 +722,10 @@ __kernel void batch_norm(__global double* prevNeurons, __global double* neurons,
 	int k = x;
 	if(depth > 0)
 		k = x % depth;
-	// if(sigma_squared[k] < 0) printf("why?\n");
 	double xhat = (prevNeurons[x] - mu[k])/pow(sigma_squared[k] + EPSILON, 0.5);
-	// if(isnan(prevNeurons[x])) printf("nan px\n");
-	// if(isnan(xhat)) printf("nan xhat\n");
-
-	neurons[x] = gamma[k] * xhat + beta[k];
-	
-	// if(isnan(neurons[x])) printf("nan y\n");
+	// if(x == 0)
+	// 	printf("xhat[0] gpu: %lf\n",xhat);
+	neurons[x] = gamma[k] * xhat + beta[k];	
 }
 
 __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dNeurons, int depth, __global double* gamma, __global double* mu, 
@@ -741,9 +736,11 @@ __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dN
 	if(depth > 0)
 		k = i % depth;
 	double delta_xhat = dNeurons[i] * gamma[k];
-	double delta_x = delta_xhat * 1/pow(sigma2[k] + EPSILON, 0.5) + delta_sigma2[k] * 2 * (bn_x[i] - mu[k]) / minibatch_size
-		+ delta_mu[k] / minibatch_size;
-	dNeurons[i] = delta_x;
+	// double delta_x = delta_xhat / pow(sigma2[k] + EPSILON, 0.5) + delta_sigma2[k] * 2 * (bn_x[i] - mu[k]) / minibatch_size
+	// 	+ delta_mu[k] / minibatch_size;
+	double delta_x = delta_xhat / pow(sigma2[k] + EPSILON, 0.5) + (delta_sigma2[k] * 2.0 * (bn_x[i] - mu[k])
+		+ delta_mu[k]) / minibatch_size;
+	prevdNeurons[i] = delta_x;
 
 }
 

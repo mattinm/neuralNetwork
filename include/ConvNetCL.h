@@ -295,7 +295,6 @@ private: 	// members
 		std::mutex bnNumCorrect_mtx;
 		std::vector<int> bnClassCorrect, bnClassTotal;
 		int bnNumCorrect, bnNumZeros = 0;
-		bool __setEAndVar = true;
 		double moveAlpha = 0.1;
 		bool setupBatchNormCLMems_running_done = false;
 		bool setupBatchNormCLMems_done = false;
@@ -333,6 +332,9 @@ private: 	// members
 
 	//delete r1v,r2v
 	// std::vector<int> r1v, r2v;
+
+
+	std::mutex error_mtx;
 
 public: 	// functions
 	//Constructors and Destructors
@@ -537,8 +539,8 @@ private:	// functions
 	void updateGammaAndBeta();
 	int getNumBatchNormLayers();
 	void batchNormRun();
-	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons, 
-	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
+	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons, 
+	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void destroyBatchNormCLMems();
 
 };
