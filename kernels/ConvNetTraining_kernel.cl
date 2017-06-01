@@ -562,7 +562,7 @@ __kernel void softmax_back(__global double* dNeurons, __global double* neurons, 
 		dNeurons[i] = neurons[i];
 	}
 
-	// printf("SoftBack - Class %d: gradient %lf\n",i,dNeurons[i]);
+	// printf("SoftBack - Class %d: gradient %lf, trueVal %d\n",i,dNeurons[i],trueVal);
 }
 
 
@@ -723,9 +723,11 @@ __kernel void batch_norm(__global double* prevNeurons, __global double* neurons,
 	if(depth > 0)
 		k = x % depth;
 	double xhat = (prevNeurons[x] - mu[k])/pow(sigma_squared[k] + EPSILON, 0.5);
+	// printf("index: %d x: %lf gamma: %lf beta: %lf mu: %lf sigma2: %lf depth: %d xhat: %lf y: %lf\n", x,prevNeurons[x],gamma[k],beta[k],mu[k],sigma_squared[k],depth,xhat,gamma[k] * xhat + beta[k]);
 	// if(x == 0)
 	// 	printf("xhat[0] gpu: %lf\n",xhat);
 	neurons[x] = gamma[k] * xhat + beta[k];	
+	// neurons[x] = gamma[k] * prevNeurons[x] + beta[k];
 }
 
 __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dNeurons, int depth, __global double* gamma, __global double* mu, 
@@ -742,11 +744,17 @@ __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dN
 		+ delta_mu[k]) / minibatch_size;
 	prevdNeurons[i] = delta_x;
 
+	// prevdNeurons[i] = 1.0 / pow(sigma2[k] + EPSILON, 0.5) * delta_xhat;
+	// printf("index: %d sigma2: %lf gamma: %lf depth: %d -- dn %lf -> pdn %lf\n", i, sigma2[k], gamma[k], depth, dNeurons[i], prevdNeurons[i]);
+	// prevdNeurons[i] = dNeurons[i] * gamma[k];
 }
 
 __kernel void update_gamma_and_beta(__global double* gamma, __global double* beta, __global double* delta_gamma, __global double* delta_beta, double stepSize)
 {
 	int i = get_global_id(0);
-	gamma[i] += delta_gamma[i] * stepSize;
-	beta[i] += delta_beta[i] * stepSize;
+	// double og = gamma[i], ob = beta[i];
+	gamma[i] -= delta_gamma[i] * stepSize;
+	beta[i] -= delta_beta[i] * stepSize;
+
+	// printf("index: %d og: %lf ng: %lf ob: %lf nb: %lf --- dg: %lf db: %lf\n", i, og, gamma[i], ob, beta[i], delta_gamma[i], delta_beta[i]);
 }

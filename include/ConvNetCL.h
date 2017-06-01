@@ -218,12 +218,12 @@ private: 	// structs
 private: 	// members
 	bool __inited = false;
 	//hyperparameters
-	double __learningRate = 1e-4;
+	double __learningRate = 1e-3;
 	double __RELU_CAP = 5000.0;
 	double __LEAKY_RELU_CONST = 0.01;
-	double __l2Lambda = 0.05;
-	double __MOMENT_CONST = 0.9;
-	double __MAX_NORM_CAP = 3.0;
+	double __l2Lambda = 0.01;
+	double __MOMENT_CONST = 0.5;
+	double __MAX_NORM_CAP = 6.0;
 	
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer
@@ -298,6 +298,7 @@ private: 	// members
 		double moveAlpha = 0.1;
 		bool setupBatchNormCLMems_running_done = false;
 		bool setupBatchNormCLMems_done = false;
+		double bnTotalError;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;

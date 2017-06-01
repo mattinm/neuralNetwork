@@ -656,15 +656,16 @@ int main(int argc, char** argv)
 	{
 		//net.addTrainingData(training_data,training_names);
 		net.printTrainingDistribution();
+		int batchSize = 256;
 
 		// if(epochs == -1)
-		// 	net.miniBatchTrain(64,10);
+		// 	net.miniBatchTrain(batchSize,10);
 		// else
-		// 	net.miniBatchTrain(64,epochs);
+		// 	net.miniBatchTrain(batchSize,epochs);
 		if(epochs == -1)
-			net.batchNormTrain(8);
+			net.batchNormTrain(batchSize);
 		else
-			net.batchNormTrain(8,epochs);
+			net.batchNormTrain(batchSize,epochs);
 	}
 	if(cmd_test_count > 0)
 	{
