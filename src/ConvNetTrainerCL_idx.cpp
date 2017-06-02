@@ -580,7 +580,7 @@ int main(int argc, char** argv)
 		if(i % maxSize == 0 && i != 0)
 		{
 			net.addTrainingData(training_data,training_names);
-			// net.addTestData(training_data,training_names);
+			net.addTestData(training_data,training_names);
 			// training_data.clear();
 			// training_names.clear();
 			i = 0;
@@ -592,7 +592,7 @@ int main(int argc, char** argv)
 	if(i > 0)
 	{
 		net.addTrainingData(training_data, training_names);
-		// net.addTestData(training_data,training_names);
+		net.addTestData(training_data,training_names);
 	}
 
 	training_data.resize(0); training_data.shrink_to_fit();
@@ -656,7 +656,7 @@ int main(int argc, char** argv)
 	{
 		//net.addTrainingData(training_data,training_names);
 		net.printTrainingDistribution();
-		int batchSize = 256;
+		int batchSize = 32;
 
 		// if(epochs == -1)
 		// 	net.miniBatchTrain(batchSize,10);

@@ -904,11 +904,11 @@ bool Net::finalize()
 	{
 		//build the program
 			//running
-		const char* foptions = "-cl-mad-enable";
+		// const char* foptions = "-cl-mad-enable";
 		const cl_device_id* deviceToBuild = &(__deviceIds[q]);
 
 		CNForward = CreateProgram(LoadKernel(CNForwardPath.c_str()), __context, RUNNING_PROGRAM);
-		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, foptions, nullptr, nullptr));
+		CheckError(clBuildProgram(CNForward, 1, deviceToBuild, nullptr, nullptr, nullptr));
 		//training
 		CNTraining = CreateProgram(LoadKernel(CNTrainingPath.c_str()), __context, TRAINING_PROGRAM);
 		CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
@@ -2326,22 +2326,10 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			// printf("\n");
 			for(int a = 0; a < amount; a++)
 			{
-				assert(bn_x[thread_num][a][curBNLayer].size() == __neuronSizes[i]);
+				// assert(bn_x[thread_num][a][curBNLayer].size() == __neuronSizes[i]);
 				CheckError(clEnqueueReadBuffer(queue, *(*prevNeurons)[a], CL_TRUE, 0, sizeof(double) * bn_x[thread_num][a][curBNLayer].size(), 
 					bn_x[thread_num][a][curBNLayer].data(), 0, nullptr, nullptr));
-
-				// printf("Thread %d.%d: pre BN: ",thread_num,a);
-				// for(int j = 0; j < __neuronSizes[i]; j++)
-				// {
-				// 	printf("%lf, ", bn_x[thread_num][a][curBNLayer][j]);
-				// 	// bn_x[thread_num][a][curBNLayer][j] = j;
-				// }
-				// printf("\n");
 			}
-			// getchar();
-
-			
-
 
 			//add calculate the sums for mu
 			int depth = __neuronDims[i][2];
@@ -2375,10 +2363,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			{
 				mu[curBNLayer][m] /= adjusted_minibatch_size;
 				batch->e[m] = moveAlpha * mu[curBNLayer][m] + (1 - moveAlpha) * batch->e[m];
-
-				// printf("%lf, ", mu[curBNLayer][m]);
 			}
-			// printf("\n"); getchar();
 			if(thread_num < mu_remainder)
 			{
 				int m = mu_rstart + thread_num;
@@ -2433,19 +2418,18 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			//do divisions for sigma_squared
 			// div = batch->byFeatureMap ? minibatch_size * __neuronDims[i][0] * __neuronDims[i][1] : minibatch_size;
 			// printf("Sigma squared: \n");
+			double unbiased_variance_ratio = minibatch_size / (minibatch_size - 1);
 			for(int m = mu_start; m < mu_end; m++)
 			{
 				sigma_squared[curBNLayer][m] /= adjusted_minibatch_size;
-				batch->var[m] = moveAlpha * sigma_squared[curBNLayer][m] + (1 - moveAlpha) * batch->var[m];
-
-				// printf("%lf, ", sigma_squared[curBNLayer][m]);
+				batch->var[m] = moveAlpha * unbiased_variance_ratio * sigma_squared[curBNLayer][m] + (1 - moveAlpha) * batch->var[m];
 			}
 			// printf("\n"); getchar();
 			if(thread_num < mu_remainder)
 			{
 				int m = mu_rstart + thread_num;
 				sigma_squared[curBNLayer][m] /= adjusted_minibatch_size;
-				batch->var[m] = moveAlpha * sigma_squared[curBNLayer][m] + (1 - moveAlpha) * batch->var[m];
+				batch->var[m] = moveAlpha * unbiased_variance_ratio * sigma_squared[curBNLayer][m] + (1 - moveAlpha) * batch->var[m];
 			}
 
 			#ifdef _DEBUG
@@ -2756,6 +2740,11 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
  		CheckError(clEnqueueWriteBuffer(queue, *(*prevNeurons), CL_TRUE, 0,
 				sizeof(double) * __neuronSizes[0],
 				__dataPointer->at(start + a).data(), 0, nullptr, nullptr));
+
+ 		// printf("image %d: ", start + a);
+ 		// for(int v = 0; v < __dataPointer->at(start + a).size(); v++)
+ 		// 	printf("%lf, ", __dataPointer->at(start + a)[v]);
+ 		// printf("\n");
 
 		int curConvLayer = 0, curBNLayer = 0;
 		
@@ -4496,27 +4485,17 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	bnClassCorrect.resize(__neuronSizes.back());
 	bnClassTotal.resize(__neuronSizes.back());
 
-	int numThreads = 1;
+	int numThreads = 12;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
-	if(batchSize % numThreads != 0)
+
+	for(int mini = 0, i = 0; mini < batchSize; mini++, i = (i+1)%numThreads)
 	{
-		// thread_sizes[0] = batchSize % numThreads;
-		// int rest = (batchSize - thread_sizes[0])/(numThreads - 1);
-		// for(int i = 1; i < numThreads; i++)
-		// 	thread_sizes[i] = rest; // even distribute across the rest
-		int i = 0;
-		for(int mini = 0, i = 0; mini < batchSize; mini++, i = (i+1)%numThreads)
-		{
-			thread_sizes[i]++;
-		}
+		thread_sizes[i]++;
 	}
-	else
-	{
-		for(int i = 0; i < numThreads; i++)
-			thread_sizes[i] = batchSize / numThreads;
-	}
+
+
 	for(int i = 0; i < thread_sizes.size(); i++)
 		printf("size %d: %d\n", i,thread_sizes[i]);
 	#ifdef _DEBUG
@@ -4639,7 +4618,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		if(e % 1 == 0 && e != 0)
 		{
 			printf("\tChanged learning rate from %.3e ",__learningRate);
-			__learningRate *= .75;
+			__learningRate *= .35;
 			printf("to %.3e before starting epoch %d\n",__learningRate,e);
 		}
 		cout << "Epoch: ";
@@ -4707,7 +4686,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			printf("feedforward joined\n");
 			#endif
 
-			printf("Total Error: %lf\n", bnTotalError);
+			// printf("Total Error: %lf\n", bnTotalError);
 
 
 			//backprop
@@ -4831,7 +4810,7 @@ void Net::batchNormRun()
 	int batchSize = __dataPointer->size();
 	// printf("batch Size is %d\n", batchSize);
 
-	int numThreads = 1;
+	int numThreads = 12;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
@@ -4910,13 +4889,14 @@ void Net::batchNormRun()
 	#ifdef _DEBUG
 	printf("Start threadify feedforward... ");
 	#endif
+	printf("Starting run with %d threads\n", numThreads);
 	for(int t = 0; t < numThreads; t++) //thread-ify the batch
 	{
 		end = start + thread_sizes[t];
 		starts[t] = start;
 		cl_mem **pptr = &(prevNeurons[t]), **nptr = &(neurons[t]);
 		thr[t] = thread([=, &kernels, &queues, &denoms]
-		 {feedForward_BN_running(numThreads, batchSize, t, start, end, __dataPointer, pptr, nptr,//prevNeurons[t], neurons[t],
+		 {feedForward_BN_running(numThreads, batchSize, t, start, end, __dataPointer, pptr, nptr,
 			ref(queues[t]), ref(denoms[t]), ref(kernels[t]));});
 		start = end;
 	}
@@ -4931,11 +4911,6 @@ void Net::batchNormRun()
 
 	prevNeurons.clear();
 	neurons.clear(); // so no dangling pointers
-	// for(int i = 0; i < p.size(); i++)
-	// {
-	// 	destroyVectorCLMems(p[i]);
-	// 	destroyVectorCLMems(n[i]);
-	// }
 
 	for(int i = 0; i < numThreads; i++)
 	{
@@ -8066,6 +8041,7 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 	{
 		if(trainingData.size() == 0) //first time through. find the smallest class size
 		{
+			// printf("getTraining data: train ratio setup\n");
 			__smallestClassSize = -1;
 			__smallestClassIndex = -1;
 			for(int t = 0; t < __trainingData.size(); t++)
@@ -8121,7 +8097,12 @@ void Net::getTrainingData(vector<vector<double>* >& trainingData, vector<double>
 			trueVals.clear();
 			trainingData.resize(totalSize);
 			trueVals.resize(totalSize);
+
+			// printf("totalSize = %d\n", totalSize);
+			// for(int c = 0; c < __trainActualAmounts.size(); c++)
+			// 	printf("act amount %d = %d\n", c,__trainActualAmounts[c]);
 		} //end if(trainingData.size() == 0) //first time through. find the smallest class size
+
 
 		//shuffle all the data
 		for(int t = 0; t < __trainingData.size(); t++)
@@ -8681,11 +8662,15 @@ void Net::preprocessDataIndividual() // thread this
 
 void Net::preprocessDataCollective()
 {
-	// printf("Preprocessing data collectively. Mean %lf Stddev %lf\n", __mean, __stddev);
+	printf("Preprocessing data collectively. Mean %lf Stddev %lf\n", __mean, __stddev);
+	// getchar();
 	for(int i = 0; i < __data.size(); i++)
 	{
 		for(int pix = 0; pix < __data[i].size(); pix++)
+		{
 			__data[i][pix] = (__data[i][pix] - __mean)/__stddev;
+			// printf("preprocessed %lf\n", __data[i][pix]);
+		}
 	}
 }
 

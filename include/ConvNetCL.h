@@ -218,12 +218,12 @@ private: 	// structs
 private: 	// members
 	bool __inited = false;
 	//hyperparameters
-	double __learningRate = 1e-3;
+	double __learningRate = 1e-2;
 	double __RELU_CAP = 5000.0;
 	double __LEAKY_RELU_CONST = 0.01;
 	double __l2Lambda = 0.01;
 	double __MOMENT_CONST = 0.5;
-	double __MAX_NORM_CAP = 6.0;
+	double __MAX_NORM_CAP = 50.0;
 	
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer
