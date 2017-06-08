@@ -20,6 +20,7 @@
 #define EPSILON 1e-8         //small constant so no divide by 0
 
 #define iterations 50        //iterations for exact_exp
+#define MAX_NEURON_SIZE 50000
 
 // END DEFINES
 
@@ -161,15 +162,6 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 			result += dneurons[j];
 		}
 	}
-
-	//slow
-	// for(int j= 0; j < numIndexes; j ++)
-	// {
-	// 	if(maxIndexes[j] == i)
-	// 	{
-	// 		result += dneurons[j];
-	// 	}
-	// }
 
 	prevdNeurons[i] = result;
 }
@@ -384,29 +376,119 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 //////////////////////////
 //MINIBATCH
 //////////////////////////
+// __kernel void convolve_back_weights_no_update_accum(__global double* weights, __global double* prevNeurons, __global double* dneurons,
+// 	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* dweights)
+// {
+// 	// printf("new\n");
+// 	// printf("convolve_back_weights_no_update_accum: array size %d\n",MAX_NEURON_SIZE);
+// 	const int x = get_global_id(0);
+// 	const int numWeightsPerFilter = filterSize * filterSize * depth;
+// 	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
+// 	const int depxstr = depth * stride;
+// 	const int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
+// 	int d = x/numWeightsPerFilter; //myFilter
+// 	int p = x % numWeightsPerFilter; // my place in the filter
+
+// 	int fs2 = filterSize * filterSize;
+// 	int num_weights = fs2 * numFilters;
+// 	int nw = (prevwidth - filterSize) / stride + 1;
+// 	int nw2 = nw * nw;
+// 	int nmove = nw2 / num_weights;
+// 	int remainder = nw2 % num_weights;
+// 	int rstart = nw2 - remainder;
+
+
+// 	__local double testArray[MAX_NEURON_SIZE]; //fill in with dneurons but with depth as the outermost dim instead of the innermost
+	
+
+// 	int nend = x * nmove + nmove;
+// 	// printf("fs2 %d nw %d nw2 %d nmove %d remainder %d rstart %d nstart %d nend %d numFilters %d\n", 
+// 		// fs2,nw,nw2,nmove,remainder,rstart, x * nmove, nend, numFilters);
+// 	for(int n = x * nmove; n < nend; n++)
+// 	{
+// 		int dn_depth = n % numFilters; //numFilters is the depth of dneurons
+// 		// int dn_face_location = (n - dn_depth) / dn_depth;
+// 		int newIndex = dn_depth * fs2 + (n - dn_depth) / dn_depth;// dn_depth + dn_face_location
+// 		// if(newIndex > MAX_NEURON_SIZE)
+// 			// printf("BADDDDDDD\n\n\n\n\n");
+// 		testArray[newIndex] = dneurons[n];
+// 	}
+// 	if(x < remainder)
+// 	{
+// 		int n = x + rstart;
+// 		int dn_depth = n % numFilters; //numFilters is the depth of dneurons
+// 		int newIndex = dn_depth * fs2 + (n - dn_depth) / dn_depth;
+// 		// if(newIndex > MAX_NEURON_SIZE)
+// 			// printf("BADDDDDDD remainder\n\n\n\n\n");
+// 		testArray[newIndex] = dneurons[n];
+// 	}
+
+// 	barrier(CLK_LOCAL_MEM_FENCE);
+// 	// printf("post barrier\n");
+
+// 	// printf("t[0] %lf\n", testArray[0]);
+
+// 	double myDerivative = 0;
+// 	int t = d * fs2;
+// 	for(int a=0; a < numBlocksPerRow; a++)
+// 	{
+// 		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
+// 		{
+// 			// printf("t: %d\n", t);
+// 			// if(t > MAX_NEURON_SIZE)
+// 				// printf("BADDDDDDD t\n\n\n\n\n");
+// 			myDerivative += prevNeurons[p] * testArray[t]; //dneurons[d];
+// 			p += depxstr;
+// 			// d += numFilters;
+// 			t++;
+// 		}
+// 		p += toNextBlockDown;
+// 	}
+
+// 	//L2 Reg?
+// 	myDerivative += l2Lambda * weights[x];
+// 	// printf("%d old %lf my %lf new %lf\n", x, dweights[x],myDerivative,dweights[x]+myDerivative);
+
+// 	dweights[x] += myDerivative;
+// 	// printf("end\n");
+// }
+
+//original
 __kernel void convolve_back_weights_no_update_accum(__global double* weights, __global double* prevNeurons, __global double* dneurons,
 	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* dweights)
 {
-	
+	// printf("ori\n");
 	const int x = get_global_id(0);
 	const int numWeightsPerFilter = filterSize * filterSize * depth;
 	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	const int depxstr = depth * stride;
 	const int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
-
-	int d = x/numWeightsPerFilter; //myFilter
-	int p = x % numWeightsPerFilter; // my place in the filter
 	double myDerivative = 0;
 
+	// int d = x/numWeightsPerFilter; //myFilter
+	// int p = x % numWeightsPerFilter; // my place in the filter
+	// for(int a=0; a < numBlocksPerRow; a++)
+	// {
+	// 	for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
+	// 	{
+	// 		myDerivative += prevNeurons[p] * dneurons[d];
+	// 		p += depxstr;
+	// 		d += numFilters;
+	// 	}
+	// 	p += toNextBlockDown;
+	// }
+
+	__global double *pptr = prevNeurons + x % numWeightsPerFilter;
+	__global double *dptr = dneurons + x/numWeightsPerFilter;
 	for(int a=0; a < numBlocksPerRow; a++)
 	{
 		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
 		{
-			myDerivative += prevNeurons[p] * dneurons[d];
-			p += depxstr;
-			d += numFilters;
+			myDerivative += *pptr * *dptr;
+			pptr += depxstr;
+			dptr += numFilters;
 		}
-		p += toNextBlockDown;
+		pptr += toNextBlockDown;
 	}
 
 	//L2 Reg?

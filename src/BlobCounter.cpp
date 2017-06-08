@@ -12,6 +12,8 @@ int getMSI(string filename)
 {
 	int startMSIIndex = filename.find("msi");
 	int nextUnderscore = filename.find("_",startMSIIndex);
+	if(nextUnderscore == string::npos)
+		nextUnderscore = filename.find(".",startMSIIndex);
 	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
 	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
 }

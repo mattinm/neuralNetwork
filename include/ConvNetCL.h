@@ -79,6 +79,9 @@
 #define ANT_LEAK_LINEAR_DECREASE 1
 #define ANT_LEAK_EXPONENTIAL_DECREASE 2
 
+//macro
+#define CheckError(error) {if((error) != CL_SUCCESS){printf("OpenCL call failed with error %d\n",(error)); assert(0);}}
+
 class Net{
 public:     // structs
 	// struct ClassInfo{
@@ -140,6 +143,7 @@ private: 	// structs
 	struct Kernels{
 		~Kernels();
 		bool built = false;
+		cl_program CNForward, CNTraining;
 		cl_kernel reluKernelF;
 		cl_kernel leakyReluKernelF;
 		cl_kernel convKernelF;
@@ -172,6 +176,24 @@ private: 	// structs
 			updateGammaAndBetaKernel, batchNormRunKernel;
 	};
 
+	class BNRunMems{
+	public:
+		BNRunMems();
+		BNRunMems(int numThreads, Net* parent);
+		~BNRunMems();
+		int getNumThreads() const;
+		void load(int numThreads, Net* parent);
+		std::vector<cl_mem> p, n;
+		std::vector<cl_mem*> prevNeurons, neurons;
+		std::vector<Kernels> kernels;
+		std::vector<cl_command_queue> queues;
+		std::vector<cl_mem> denoms;
+	private:
+		int numThreads = -1;
+		Net* parent = nullptr;
+		void destroy();
+	};
+
 	static int check_counter(int count);
 
 	//from https://www.daniweb.com/programming/software-development/threads/498822/c-11-thread-equivalent-of-pthread-barrier
@@ -189,9 +211,8 @@ private: 	// structs
 
 	  void count_down_and_wait()
 	  {
+	  	mut.lock();
 	    unsigned int gen = m_generation.load();
-
-	    mut.lock();
 	    if (--m_count == 0)
 	    {
 	      if (m_generation.compare_exchange_weak(gen, gen + 1))
@@ -203,8 +224,19 @@ private: 	// structs
 	    }
 	    mut.unlock();
 
-	    while ((gen == m_generation) && (m_count != 0))
-	      std::this_thread::yield();
+	    bool cont = true;
+	    while (cont)
+	    {
+	    	mut.lock();
+	    	if((gen == m_generation) && (m_count != 0))
+	     		std::this_thread::yield();
+	     	else
+	     		cont = false;
+	     	mut.unlock();
+	     }
+
+	    // while ((gen == m_generation) && (m_count != 0))
+	    //   std::this_thread::yield();
 	  }
 
 	private:
@@ -218,12 +250,14 @@ private: 	// structs
 private: 	// members
 	bool __inited = false;
 	//hyperparameters
-	double __learningRate = 1e-2;
+	double __learningRate = 1e-3;
 	double __RELU_CAP = 5000.0;
 	double __LEAKY_RELU_CONST = 0.01;
 	double __l2Lambda = 0.01;
-	double __MOMENT_CONST = 0.5;
+	double __MOMENT_CONST = 0.9;
 	double __MAX_NORM_CAP = 50.0;
+
+	bool __programs_already_created = false;
 	
 	//members dealing with layers
 	std::vector<Layer*> __layers;  //[0] is input layer
@@ -299,6 +333,7 @@ private: 	// members
 		bool setupBatchNormCLMems_running_done = false;
 		bool setupBatchNormCLMems_done = false;
 		double bnTotalError;
+		BNRunMems bnrunmems;
 
 	//OpenCL related members
 	cl_uint __platformIdCount;
@@ -335,7 +370,7 @@ private: 	// members
 	// std::vector<int> r1v, r2v;
 
 
-	std::mutex error_mtx;
+	std::mutex error_mtx, __program_creation_mutex;
 
 public: 	// functions
 	//Constructors and Destructors
@@ -519,7 +554,7 @@ private:	// functions
 		const std::vector<cl_mem>& velocities, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, bool BP);
 
 	//OpenCL functions
-	void CheckError(cl_int error);
+	// void CheckError(cl_int error);
 	std::string LoadKernel(const char* name);
 	cl_program CreateProgram(std::string source, cl_context& context, int programNum = -1);
 
@@ -543,6 +578,11 @@ private:	// functions
 	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons, 
 	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void destroyBatchNormCLMems();
+
+
+	int getMaxNeuronSize() const;
+	void convertGreyscale(std::vector<double>& image);
+	void makeTrainingGreyscale();
 
 };
 

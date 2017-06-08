@@ -12,6 +12,8 @@ def getMSI(filename):
         return filename;
 	startMSIIndex = filename.find("msi");
 	nextUnderscore = filename.find("_",startMSIIndex);
+	if(nextUnderscore == -1):
+		nextUnderscore = filename.find(".",startMSIIndex);
 	return filename[startMSIIndex+3:nextUnderscore]
 
 # def sum(array):

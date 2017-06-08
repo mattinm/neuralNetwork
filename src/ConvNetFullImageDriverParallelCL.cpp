@@ -17,6 +17,7 @@
 #include <time.h>
 #include <thread>
 #include <pthread.h>
+#include <cassert>
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
 #else
@@ -131,9 +132,14 @@ int getNextRow()
 	int out;
 	if(curRow < fullMat.rows - inputHeight)
 	{
+		if(curRow != 0)
+		{
+			printf("\33[2K\r");
+		}
 		out = curRow;
 		curRow += stride;
-		printf("Giving row %d of %d (%d)\n", out,__rows - inputHeight, __rows);
+
+		printf("Giving row %d of %d (%d)", out,__rows - inputHeight, __rows);
 	}
 	else
 	{
@@ -311,7 +317,7 @@ void breakUpImage(const char* imageName)
 		}
 	}
 
-
+	printf("\33[2K\r");
 	if(__separate_outputs)
 	{
 		//make the output Mats
@@ -351,6 +357,7 @@ void breakUpImage(const char* imageName)
 		const string noExtension = origName.substr(0,dot);
 		const string extension = origName.substr(dot+1);
 
+		
 		for(int k = 0; k < numClasses; k++)
 		{
 			sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
@@ -358,6 +365,7 @@ void breakUpImage(const char* imageName)
 			// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
 			// else
 			// 	sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
+
 			printf("Writing %s\n", outName);
 			imwrite(outName,*(outputMats[k]));
 		}
@@ -452,6 +460,8 @@ int main(int argc, char** argv)
 			}
 		}
 	}
+
+	assert(stride > 0);
 
 	// printf("jump %d stride %d\n", jump, stride);
 
@@ -567,7 +577,7 @@ int main(int argc, char** argv)
 	for(int i=0; i < filenames.size(); i++)
 	{
 		starttime = time(NULL);
-		cout << filenames[i];
+		cout << filenames[i] << endl;
 		breakUpImage(filenames[i].c_str());
 		endtime = time(NULL);
 		cout << " - Time for image: " << secondsToString(endtime - starttime) << endl;

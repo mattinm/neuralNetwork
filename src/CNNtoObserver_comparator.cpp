@@ -144,6 +144,8 @@ int getMSI(string filename)
 {
 	int startMSIIndex = filename.find("msi");
 	int nextUnderscore = filename.find("_",startMSIIndex);
+	if(nextUnderscore == string::npos)
+		nextUnderscore = filename.find(".",startMSIIndex);
 	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
 	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
 }
@@ -434,6 +436,9 @@ int main(int argc, char** argv)
 
 	bool origDoOutput = doOutput;
 
+	vector<Box> missedBoxes;
+	vector<int> missedBoxMSIs;
+
 	for(; a < argc; a++)
 	{
 		doOutput = origDoOutput; // in case we turn it off because we can't find the original image
@@ -514,8 +519,18 @@ int main(int argc, char** argv)
 
 				if(box.species_id == WHITE_PHASE && (float)phaseCount[WHITE_PHASE]/size > MATCHING_PERCENT)
 					locations[msi].boxes[i].matched = true;
-				else if(box.species_id == BLUE_PHASE && (float)phaseCount[BLUE_PHASE]/size > MATCHING_PERCENT)
+				else if(box.species_id == WHITE_PHASE)
+				{
+					missedBoxes.push_back(locations[msi].boxes[i]);
+					missedBoxMSIs.push_back(msi);
+				}
+				if(box.species_id == BLUE_PHASE && (float)phaseCount[BLUE_PHASE]/size > MATCHING_PERCENT)
 					locations[msi].boxes[i].matched = true;
+				else if(box.species_id == BLUE_PHASE)
+				{
+					missedBoxes.push_back(locations[msi].boxes[i]);
+					missedBoxMSIs.push_back(msi);
+				}
 
 				//if we are doing output AND if image is not matched, pull for training
 				if(doOutput && locations[msi].boxes[i].matched == false)
@@ -917,6 +932,15 @@ int main(int argc, char** argv)
 		printf("   Species %7d: Percent BG classifed as species - %3.2lf%%\n", ratio->first, ratio->second);
 	}
 	printf("Percentage of all pixels that are BG: %.2lf%%\n", 100.0 * total_background_count/total_pixel_count);
+
+	if(missedBoxes.size() > 0)
+	{
+		printf("List of missed species MSIs and locations\n");
+		for(int i = 0; i < missedBoxes.size(); i++)
+		{
+			printf("MSI %d: species %d at (%d, %d)\n", missedBoxMSIs[i],missedBoxes[i].species_id,missedBoxes[i].cx,missedBoxes[i].cy);
+		}
+	}
 
 
 	return 0;

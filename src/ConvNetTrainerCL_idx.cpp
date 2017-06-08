@@ -20,6 +20,8 @@ unordered_map<string, bool> excludes;
  *	Helper Functions
  ***********************/
 
+
+
 char readChar(ifstream& in)
 {
 	char num[1];
@@ -92,6 +94,16 @@ void resize3DVector(vector<vector<vector<double> > > &vect, int width, int heigh
             vect[i][j].resize(depth);
         }
     }
+}
+
+void convertGreyscale(imVector& image)
+{
+	imVector greyImage;
+	resize3DVector(greyImage, image.size(),image[0].size(),1);
+	for(int i = 0; i < greyImage.size(); i++)
+		for(int j = 0; j < greyImage[i].size(); j++)
+			greyImage[i][j][0] = .21 * image[i][j][0] + .72 * image[i][j][1] + .07 * image[i][j][2];
+	image = greyImage;
 }
 
 int convertDataType(int dataType)
@@ -334,11 +346,11 @@ int main(int argc, char** argv)
 		printf("        -train_label=path/to/train/labels.idx   Path to training labels\n");
 		printf("        -test_data=path/to/test/data.idx        Path to test data\n");
 		printf("        -test_label=path/to/test/labels.idx     Path to test labels\n");
-		printf("        -byCount                                IDXs are Marshall's with the counts instead of labels\n");
+		printf("        -byCount                                Use if IDXs are Marshall's with the counts instead of labels\n");
 		printf("        -showImages                             Shows each image as read in. For image verification purposes.\n");
 		printf("        -exclude=<string>                       Adds the string as a class name to be excluded from CNN. Says all excluded class images are background. Can be used multiple times.\n");
 		printf("        -epochs=<int>                           Amount of epochs to train for. Default: until it isn't getting better.\n");
-		printf("    GROUP: All or none. Note: the amount of colon (:) separted values must be the same for both args.\n");
+		printf("    GROUP: All or none. Note: the amount of colon (:) separated values must be the same for both args.\n");
 		printf("        -trainRatio_classes=name1:name2:...     The class names for the train ratio.\n");
 		printf("        -trainRatio_amounts=int1:int2:...       The amounts for the train ratio.\n");
 		printf("    END GROUP\n");
@@ -352,6 +364,7 @@ int main(int argc, char** argv)
 	string train_data_path, test_data_path, train_label_path, test_label_path;
 	char * netConfig_path = argv[1];
 	char * saveName = argv[2];
+	bool greyscale = false;
 
 	// printf("FROM PROGRAM: %s %s\n", netConfig_path, saveName);
 	bool byCount = false;
@@ -474,7 +487,8 @@ int main(int argc, char** argv)
 		for(int i = 0; i < train_data_numDims - 1; i++)
 			trainDims[i] = readBigEndianInt(training_data_in);
 
-		train_label_dims.resize(train_label_numDims);
+		train_label_dims.resize(train_label_numDims - 1);
+		// printf("train label num dims == %d\n", train_label_numDims);
 		for(int i = 0; i < train_label_numDims - 1; i++)
 			train_label_dims[i] = readBigEndianInt(training_label_in);
 	}
@@ -528,9 +542,12 @@ int main(int argc, char** argv)
 
 	// if(byCount)
 	// {
+	if(true)
+	{
 		net.setTrueNameIndex("-1",0);
 		net.setTrueNameIndex("2",1);
 		net.setTrueNameIndex("1000000",2);
+	}
 
 	net.printLayerDims();
 	// }
@@ -573,26 +590,38 @@ int main(int argc, char** argv)
 	int i, j;
 	for(i = 0, j = 0; j < numTraining; i++, j++)
 	{
-		if(byCount)
-			training_names[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
-		else
-			training_names[i] = getNextImage(training_data_in, training_label_in, training_data[i], trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
+		// printf("i %d j %d\n", i,j);
 		if(i % maxSize == 0 && i != 0)
 		{
+			if(greyscale)
+			{
+				printf("DOING GREYSCALE\n");
+				for(int k = 0; k < training_data.size(); k++)
+					convertGreyscale(training_data[k]);
+			}
+			printf("lets add some data\n");
 			net.addTrainingData(training_data,training_names);
-			net.addTestData(training_data,training_names);
+			// net.addTestData(training_data,training_names);
 			// training_data.clear();
 			// training_names.clear();
 			i = 0;
 		}
+		if(byCount)
+			training_names[i] = getNextImage_byCount(training_data_in, training_label_in, training_data[i],trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType,train_label_dims[0]);
+		else
+			training_names[i] = getNextImage(training_data_in, training_label_in, training_data[i], trainDims[0],trainDims[1],trainDims[2],train_data_convType, train_label_convType);
+
 	}
 	//add leftover data
 	training_data.resize(i);
 	training_names.resize(i);
 	if(i > 0)
 	{
+		if(greyscale)
+			for(int k = 0; k < training_data.size(); k++)
+				convertGreyscale(training_data[k]);
 		net.addTrainingData(training_data, training_names);
-		net.addTestData(training_data,training_names);
+		// net.addTestData(training_data,training_names);
 	}
 
 	training_data.resize(0); training_data.shrink_to_fit();
@@ -666,11 +695,13 @@ int main(int argc, char** argv)
 			net.batchNormTrain(batchSize);
 		else
 			net.batchNormTrain(batchSize,epochs);
+		// if(epochs == -1)
+		// 	net.train();
+		// else
+		// 	net.train(epochs);
 	}
 	if(cmd_test_count > 0)
 	{
-		//net.addData(test_data);
-		printf("start run\n");
 		net.run();
 
 		vector<int> predictions;
