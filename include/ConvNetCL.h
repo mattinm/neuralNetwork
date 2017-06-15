@@ -28,6 +28,8 @@
  	#include "CL/cl.h"
 #endif
 
+// #define NET_SHOW_ERRORS 0
+
 //defines for preprocessing
 #define __PREPROCESS_INDIVIDUAL 0
 #define __PREPROCESS_COLLECTIVE 1
@@ -39,6 +41,7 @@
 #define MAX_POOL_LAYER 1
 #define ACTIV_LAYER 2
 #define BATCH_NORM_LAYER 3
+#define AVG_POOL_LAYER 4
 
 //defines for ActivTypes
 #define RELU 0
@@ -121,6 +124,11 @@ private: 	// structs
 	};
 
 	struct MaxPoolLayer : Layer{
+		int stride;
+		int poolSize;
+	};
+
+	struct AvgPoolLayer : Layer{
 		int stride;
 		int poolSize;
 	};
@@ -372,6 +380,10 @@ private: 	// members
 
 	std::mutex error_mtx, __program_creation_mutex;
 
+	#ifdef NET_SHOW_ERRORS
+	std::mutex show_error_mtx;
+	#endif
+
 public: 	// functions
 	//Constructors and Destructors
 	Net();
@@ -390,6 +402,7 @@ public: 	// functions
 	bool addConvLayer(int numFilters, int stride, int filterSize, int pad);
 	bool addBatchNormLayer(bool byFeatureMap = true);
 	bool addMaxPoolLayer(int poolSize, int stride);
+	bool addAvgPoolLayer(int poolSize, int stride);
 	bool addFullyConnectedLayer(int outputSize);
 	bool setActivType(int activationType);
 	void setAutoActivLayer(bool isAuto);

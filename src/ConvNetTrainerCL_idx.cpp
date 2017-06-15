@@ -195,7 +195,7 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 	// cout << retval << endl;
 
 	//show image and trueVal
-	if(showImages)
+	if(showImages && retval == "-1")
 	{
 		Mat show(x,y,CV_8UC3);
 		for(int i = 0; i < x; i++)
@@ -203,9 +203,9 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 			for(int j = 0; j < y; j++)
 			{
 				Vec3b& outPix = show.at<Vec3b>(i,j);
-				outPix[0] = dest[i][j][0];
+				outPix[0] = dest[i][j][2];
 				outPix[1] = dest[i][j][1];
-				outPix[2] = dest[i][j][2];
+				outPix[2] = dest[i][j][0];
 			}
 		}
 		char name[10];
@@ -588,6 +588,10 @@ int main(int argc, char** argv)
 	vector<imVector> training_data(maxSize), test_data(numTest);
 	vector<string> training_names(maxSize), test_names(numTest);
 	int i, j;
+
+	bool doubleWhites = false;
+	vector<imVector> moreWhites;
+	vector<string> moreWhites_labels;
 	for(i = 0, j = 0; j < numTraining; i++, j++)
 	{
 		// printf("i %d j %d\n", i,j);
@@ -599,8 +603,22 @@ int main(int argc, char** argv)
 				for(int k = 0; k < training_data.size(); k++)
 					convertGreyscale(training_data[k]);
 			}
-			printf("lets add some data\n");
+			// printf("lets add some data\n");
 			net.addTrainingData(training_data,training_names);
+			if(doubleWhites)
+			{
+				for(int w = 0; w < training_data.size(); w++)
+				{
+					if(training_names[w] == "2")
+					{
+						moreWhites.push_back(training_data[w]);
+						moreWhites_labels.push_back("2");
+					}
+				}
+				net.addTrainingData(moreWhites,moreWhites_labels);
+				moreWhites.clear();
+				moreWhites_labels.clear();
+			}
 			// net.addTestData(training_data,training_names);
 			// training_data.clear();
 			// training_names.clear();
@@ -621,6 +639,20 @@ int main(int argc, char** argv)
 			for(int k = 0; k < training_data.size(); k++)
 				convertGreyscale(training_data[k]);
 		net.addTrainingData(training_data, training_names);
+		if(doubleWhites)
+		{
+			for(int w = 0; w < training_data.size(); w++)
+			{
+				if(training_names[w] == "2")
+				{
+					moreWhites.push_back(training_data[w]);
+					moreWhites_labels.push_back("2");
+				}
+			}
+			net.addTrainingData(moreWhites,moreWhites_labels);
+			moreWhites.clear();
+			moreWhites_labels.clear();
+		}
 		// net.addTestData(training_data,training_names);
 	}
 
@@ -641,7 +673,7 @@ int main(int argc, char** argv)
 		net.addData(test_data);
 	}
 
-	test_data.resize(0); test_data.shrink_to_fit();
+	// test_data.resize(0); test_data.shrink_to_fit();
 
 
 	// readChar(training_label_in);
@@ -720,6 +752,26 @@ int main(int argc, char** argv)
 			{
 				numCorrect++;
 				numCorrectClass[trueIndex]++;
+			}
+			else if(showImages)
+			{
+				int x = testDims[0], y = testDims[1];
+				Mat show(x,y,CV_8UC3);
+				for(int l = 0; l < x; l++)
+				{
+					for(int j = 0; j < y; j++)
+					{
+						Vec3b& outPix = show.at<Vec3b>(l,j);
+						outPix[0] = test_data[i][l][j][0];
+						outPix[1] = test_data[i][l][j][1];
+						outPix[2] = test_data[i][l][j][2];
+					}
+				}
+				char name[10];
+				sprintf(name,"True name %s",test_names[i].c_str());
+				imshow(name,show);
+				waitKey(0);
+				imcount++;
 			}
 			numTotalClass[trueIndex]++;
 		}

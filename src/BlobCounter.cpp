@@ -25,6 +25,8 @@ int main(int argc, char** argv)
 	if(argc == 1)
 	{
 		printf("Use: ./BlobCounter im1.jpg im2.png ...\n");
+		printf("   Optional: must go before listing of images:\n");
+		printf("   -show      Shows the images and which blobs were picked up.\n");
 		return 0;
 	}
 

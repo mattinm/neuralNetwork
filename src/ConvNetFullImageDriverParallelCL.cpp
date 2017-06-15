@@ -543,9 +543,18 @@ int main(int argc, char** argv)
 	//init all nets
 	for(int i = 0; i < getNumDevices(); i++)
 	{
-		// printf("%d\n", i);
+		printf("%d\n", i);
 		nets.push_back(new Net(__netName));	
 	}
+	// vector<thread> thr(getNumDevices());
+	// nets.resize(thr.size());
+	// for(int i = 0; i < thr.size(); i++)
+	// {
+	// 	thr[i] = thread([=] { nets[i] = new Net(__netName); });
+	// }
+	// for(int i = 0; i < thr.size(); i++)
+	// 	thr[i].join();
+
 	fullImages.resize(nets.size());
 	deviceActive.resize(nets.size());
 
@@ -576,6 +585,8 @@ int main(int argc, char** argv)
 
 	for(int i=0; i < filenames.size(); i++)
 	{
+		if(i != 0 && i % 50 == 0)
+			sleep(15);
 		starttime = time(NULL);
 		cout << filenames[i] << endl;
 		breakUpImage(filenames[i].c_str());

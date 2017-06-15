@@ -50,6 +50,9 @@ target_link_libraries (MNIST_test ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
 add_executable (Overlay Overlay.cpp)
 target_link_libraries(Overlay ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
 
+add_executable(SeeUserObs SeeUserObs.cpp)
+target_link_libraries(SeeUserObs ${OpenCV_LIBS} ConvNetCL)
+
 add_executable(SmoteIDX SmoteIDX.cpp)
 target_link_libraries(SmoteIDX ${OpenCV_LIBS})
 

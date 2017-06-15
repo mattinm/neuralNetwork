@@ -326,6 +326,20 @@ void Net::copyLayers(const Net& other)
 			const ActivLayer* act = (ActivLayer*)other.__layers[l];
 			addActivLayer(act->activationType);
 		}
+		else if(other.__layers[l]->layerType == BATCH_NORM_LAYER)
+		{
+			const BatchNormLayer *otherBatch = (BatchNormLayer*)other.__layers[l];
+			addBatchNormLayer(otherBatch->byFeatureMap);
+			BatchNormLayer *batch = (BatchNormLayer*)__layers.back();
+
+			for(int g = 0; g < batch->gamma.size(); g++)
+			{
+				batch->gamma[g] = otherBatch->gamma[g];
+				batch->beta[g] = otherBatch->beta[g];
+				batch->e[g] = otherBatch->e[g];
+				batch->var[g] = otherBatch->var[g];
+			}
+		}
 	}
 	// printf("end copyLayers\n");
 }
@@ -641,6 +655,38 @@ bool Net::addMaxPoolLayer(int poolSize, int stride)
 
 	MaxPoolLayer* pool = new MaxPoolLayer();
 	pool->layerType = MAX_POOL_LAYER;
+	pool->stride = stride;
+	pool->poolSize = poolSize;
+
+	__layers.push_back(pool);
+	pushBackLayerSize(newWidth, newHeight, newDepth);
+	__isFinalized = false;
+	return true;
+}
+
+/*****************************
+*
+* Adds an Avg Pooling Layer.
+* Public
+*
+*****************************/
+bool Net::addAvgPoolLayer(int poolSize, int stride)
+{
+	int prevWidth  = __neuronDims.back()[0];
+	int prevHeight = __neuronDims.back()[1];
+	int prevDepth  = __neuronDims.back()[2];
+
+	int widthNumer  = prevWidth - poolSize;
+	int heightNumer = prevHeight- poolSize;
+	if(widthNumer % stride != 0 || heightNumer % stride != 0) //incorrect hyperparameters
+		return false;
+
+	int newWidth = widthNumer/stride + 1;
+	int newHeight = heightNumer/stride + 1;
+	int newDepth = prevDepth;
+
+	AvgPoolLayer* pool = new AvgPoolLayer();
+	pool->layerType = AVG_POOL_LAYER;
 	pool->stride = stride;
 	pool->poolSize = poolSize;
 
@@ -2664,6 +2710,14 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 	vector<int> myclasstotal(__neuronSizes.back(),0);
 	vector<double> soft(__neuronSizes.back());
 	double error = 0;
+
+	#ifdef NET_SHOW_ERRORS
+	static int calls = 0;
+	{
+		lock_guard<mutex> guard(show_error_mtx);
+		calls++;
+	}
+	#endif
 	for(int a = 0; a < amount; a++)
 	{
 		// CheckError(clEnqueueReadBuffer(queue, *(*neurons)[a], CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
@@ -2688,6 +2742,36 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 			numCorrect++;
 			myclasscorrect[predict]++;
 		}
+		#ifdef NET_SHOW_ERRORS
+		else
+		{
+			lock_guard<mutex> guard(show_error_mtx);
+			if(calls > 3 * num_threads * (trainingData.size() / minibatch_size))
+			{
+				Mat show(__neuronDims[0][0],__neuronDims[0][1],CV_8UC3);
+				int k = 0;
+				for(int i = 0; i < __neuronDims[0][0]; i++)
+					for(int j = 0; j < __neuronDims[0][1]; j++)
+					{
+						Vec3b& outPix = show.at<Vec3b>(i,j);
+						outPix[0] = (unsigned char)(trainingData[start + a]->at(k++) * __stddev + __mean);
+						outPix[1] = (unsigned char)(trainingData[start + a]->at(k++) * __stddev + __mean);
+						outPix[2] = (unsigned char)(trainingData[start + a]->at(k++) * __stddev + __mean);
+						// printf("pix - %d %d %d\n",outPix[0],outPix[1],outPix[2]);
+					}
+
+				char name[10];
+				sprintf(name,"%d",(int)trueVals[start + a]);
+				printf("name %s\n", name);
+				cv::Size siz(50,50);
+				// resize(show,show,siz);
+				// imshow("name",show);
+				imwrite("wrongImage.png",show);
+				// waitKey(0);
+				getchar();
+			}
+		}
+		#endif
 		myclasstotal[actual]++;
 
 		// printf("im %d: soft %lf %lf %lf - actual %d, predict %d\n", start + a, soft[0], soft[1], soft[2], actual, predict);
@@ -4661,7 +4745,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		if(e % 1 == 0 && e != 0)
 		{
 			printf("\tChanged learning rate from %.3e ",__learningRate);
-			__learningRate *= .35;
+			__learningRate *= .75;
 			printf("to %.3e before starting epoch %d\n",__learningRate,e);
 		}
 		cout << "Epoch: ";
@@ -4837,7 +4921,7 @@ void Net::batchNormRun()
 
 	int batchSize = __dataPointer->size();
 
-	int numThreads = 12;
+	int numThreads = 4;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
@@ -8400,7 +8484,9 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<str
 	if(trainingData.size() != trueVals.size())
 		return false;
 
+	#ifdef _DEBUG
 	printf("Adding %lu training data of size %lu x %lu x %lu\n", trainingData.size(), trainingData[0].size(), trainingData[0][0].size(), trainingData[0][0][0].size());
+	#endif
 
 	// printf("sizes %lu & %lu\n", trainingData.size(),trueVals.size());
 	int inputSize = __neuronSizes[0];
@@ -8423,9 +8509,9 @@ bool Net::addTrainingData(const vector<imVector>& trainingData, const vector<str
 				}
 	}
 
-	// #ifdef _DEBUG
+	#ifdef _DEBUG
 	printf("done adding training data\n");
-	// #endif
+	#endif
 
 	// __numClasses = __trueNames.size();
 	return true;

@@ -166,6 +166,52 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 	prevdNeurons[i] = result;
 }
 
+//num threads should be the size of the neurons after the maxPool
+__kernel void avgPool(__global double* prevNeurons, __global double* neurons,
+	int prevwidth, int prevdepth, int poolsize, int stride)
+{
+	//getting the start index of a flattened 3d array for maxPool
+	int x = get_global_id(0);
+	int i = x;
+	int strxdep = stride * prevdepth;
+	int i_div_dep = i / prevdepth;
+	int numBlocksPerRow = (prevwidth - poolsize)/stride + 1; 
+
+	i = (i_div_dep/numBlocksPerRow * prevwidth * strxdep + i%prevdepth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
+	
+	int amountToNextLayer = (prevwidth - poolsize) * prevdepth;
+	double sum = 0;
+	for(int row = 0; row < poolsize; row++)
+	{
+		for(int col = 0; col < poolsize; col++)
+		{
+			sum += prevNeurons[i];
+			i += prevdepth;
+		}
+		i += amountToNextLayer;
+	}
+	sum /= poolsize * poolsize;
+	neurons[x] = sum;
+}
+
+//run for each neuron in prevdNeurons
+__kernel void avgPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes, int depth)
+{
+	const int i = get_global_id(0);
+	double result = 0;
+	
+	//good
+	for(int j= i % depth; j < numIndexes; j += depth)
+	{
+		if(maxIndexes[j] == i)
+		{
+			result += dneurons[j];
+		}
+	}
+
+	prevdNeurons[i] = result;
+}
+
 /*************************************************
 *
 *	Convolution kernels (and Zero Padding)
