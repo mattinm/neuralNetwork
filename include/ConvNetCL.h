@@ -98,8 +98,8 @@ private: 	// structs
 
 	struct ConvLayer : Layer{
 		// int layerType = CONV_LAYER;
-		double* weights = nullptr;
-		double* biases = nullptr;
+		float* weights = nullptr;
+		float* biases = nullptr;
 		int numWeights;
 		int numBiases;
 		int numNeurons;
@@ -116,10 +116,10 @@ private: 	// structs
 	};
 
 	struct BatchNormLayer : Layer{
-		std::vector<double> gamma;
-		std::vector<double> beta;
-		std::vector<double> e;
-		std::vector<double> var;
+		std::vector<float> gamma;
+		std::vector<float> beta;
+		std::vector<float> e;
+		std::vector<float> var;
 		bool byFeatureMap = true; //if false, by activation
 	};
 
@@ -141,8 +141,8 @@ private: 	// structs
 		double trainAccuracy = 0;
 		double testAccuracy = 0;
 		double trainError = DBL_MAX;
-		std::vector<double*> weights; //weights[convLayer][weight]
-		std::vector<double*> biases;
+		std::vector<float*> weights; //weights[convLayer][weight]
+		std::vector<float*> biases;
 
 		~WeightHolder();
 		void clearWeights();
@@ -258,7 +258,7 @@ private: 	// structs
 private: 	// members
 	bool __inited = false;
 	//hyperparameters
-	double __learningRate = 1e-3;
+	float __learningRate = 1e-3;
 	double __RELU_CAP = 5000.0;
 	double __LEAKY_RELU_CONST = 0.01;
 	double __l2Lambda = 0.01;
@@ -290,13 +290,13 @@ private: 	// members
 		bool __testDataPreprocessed = false;
 		// bool __preprocessIndividual = false;
 		int __preprocessType = __PREPROCESS_COLLECTIVE;
-		double __mean = 0;
-		double __stddev = 0;
+		float __mean = 0;
+		float __stddev = 0;
 		unsigned long __trainingSize = 0;
 		bool __isTraining = false;
-		std::vector<std::vector<std::vector<double>* > > __trainingData; // class<list of<pointers_to_flattenedImages> >
+		std::vector<std::vector<std::vector<float>* > > __trainingData; // class<list of<pointers_to_flattenedImages> >
 		std::vector<std::string> __trueNames; // parallel vector of class names for __trainingData
-		std::vector<std::vector<double> > __testData;
+		std::vector<std::vector<float> > __testData;
 		std::vector<double> __testTrueIndexes; // parallel vector to __testData that has the trueVal indexes for the data
 		bool __useMomentum = true;
 		int __trainingType = TRAIN_AS_IS;
@@ -306,8 +306,8 @@ private: 	// members
 		bool __saveNet = false;
 		//running
 		bool __dataPreprocessed = false;
-		std::vector<std::vector<double> > __data; // list of<flattened images>
-		std::vector<std::vector<double> > *__dataPointer;
+		std::vector<std::vector<float> > __data; // list of<flattened images>
+		std::vector<std::vector<float> > *__dataPointer;
 		std::vector<std::vector<double> > __confidences; // image<list of confidences for each class<confidence> > 
 
 		std::vector<int> __trainRatioAmounts;
@@ -320,18 +320,18 @@ private: 	// members
 		// int thread_count = 0;
 		// bool mu_reset_done = false;
 
-		std::vector<std::vector<std::vector<std::vector<double> > > > bn_x, bn_xhat;
+		std::vector<std::vector<std::vector<std::vector<float> > > > bn_x, bn_xhat;
 
-		std::vector<std::vector<double> > mu, delta_mu;
-		std::vector<std::vector<double> > sigma_squared, delta_sigma2; //is delta_sigma_squared
+		std::vector<std::vector<float> > mu, delta_mu;
+		std::vector<std::vector<float> > sigma_squared, delta_sigma2; //is delta_sigma_squared
 		std::vector<cl_mem> mu_cl, delta_mu_cl; // one cl_mem per BNLayer
 		std::vector<cl_mem> sigma_squared_cl, delta_sigma2_cl;
 
 
 		std::vector<cl_mem> gamma; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<cl_mem> beta;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
-		std::vector<std::vector<double> > delta_gamma;
-		std::vector<std::vector<double> > delta_beta;
+		std::vector<std::vector<float> > delta_gamma;
+		std::vector<std::vector<float> > delta_beta;
 		std::vector<cl_mem> delta_gamma_cl; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<cl_mem> delta_beta_cl;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::mutex bnNumCorrect_mtx;
@@ -509,6 +509,7 @@ private:	// functions
 	//functions dealing with data
 	int getTrueValIndex(const std::string& trueVal, bool allowAppends = true);
 	int getMaxElementIndex(const std::vector<double>& vect) const;
+	int getMaxElementIndex(const std::vector<float>& vect) const;
 	int getMaxElementIndex(const std::vector<int>& vect) const;
 	void preprocessDataIndividual();
 	void preprocessDataCollective();
@@ -520,13 +521,13 @@ private:	// functions
 	//training
 	void setupLayerNeeds(std::vector<cl_mem>& layerNeeds);
 	void destroyVectorCLMems(std::vector<cl_mem>& vect);
-	void getTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals);
+	void getTrainingData(std::vector<std::vector<float>* >& trainingData, std::vector<double>& trueVals);
 	void initVelocities(std::vector<cl_mem>& velocities);
 	void pullCLWeights();
 	void pullCLWeights(Net* net, const std::vector<cl_mem>& clWeights, const cl_command_queue& queue);
 	void pushCLWeights(std::vector<Layer*>& layers, const std::vector<cl_mem>& clWeights, const std::vector<cl_mem>& clBiases, const cl_command_queue& queue, cl_bool block);
-	void shuffleTrainingData(std::vector<std::vector<double>* >& trainingData, std::vector<double>& trueVals, int times = 1);
-	void shuffleData(std::vector<std::vector<double>* >& trainingData, int times = 1);
+	void shuffleTrainingData(std::vector<std::vector<float>* >& trainingData, std::vector<double>& trueVals, int times = 1);
+	void shuffleData(std::vector<std::vector<float>* >& trainingData, int times = 1);
 	void trainSetup();
 	void trainSetup(std::vector<cl_mem>& layerNeeds, std::vector<cl_mem>& velocities);
 	void feedForward(std::vector<cl_mem>& layerNeeds);
@@ -577,7 +578,7 @@ private:	// functions
 	void updateWeights(std::vector<cl_mem>& gradients_weights, std::vector<cl_mem>& gradients_biases, std::vector<cl_mem>& velocities);
 
 	//batchnorm training
-	void feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const std::vector<std::vector<double>* >& trainingData, const std::vector<double>& trueVals, int start, int end, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons,
+	void feedForward_BN(const int num_threads, const int minibatch_size, const int thread_num, const std::vector<std::vector<float>* >& trainingData, const std::vector<double>& trueVals, int start, int end, std::vector<cl_mem*>* prevNeurons, std::vector<cl_mem*>* neurons,//cl_mem** prevNeurons, cl_mem** neurons,
 		const std::vector<std::vector<cl_mem> >& layerNeeds, const cl_command_queue& queue, const cl_mem& denom, const Kernels& k, spinlock_barrier* barrier);
 	void backprop_noUpdate_BN(const int num_threads, const int minibatch_size, const int thread_num, const int start, const int amount, const std::vector<double>& trueVals, std::vector<cl_mem*> *prevNeurons, std::vector<cl_mem*> *neurons,
 		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
@@ -588,13 +589,13 @@ private:	// functions
 	void updateGammaAndBeta();
 	int getNumBatchNormLayers();
 	void batchNormRun();
-	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons, 
+	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<float> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons, 
 	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void destroyBatchNormCLMems();
 
 
 	int getMaxNeuronSize() const;
-	void convertGreyscale(std::vector<double>& image);
+	void convertGreyscale(std::vector<float>& image);
 	void makeTrainingGreyscale();
 
 };

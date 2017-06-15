@@ -24,14 +24,14 @@
 
 // END DEFINES
 
-double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell
+float exact_exp(float z) { //from the EXACT CNN builder from Travis Desell
     bool is_negative = z < 0;
     if (is_negative) z = -z;
 
     // exp(x) = sum (k = 0 to inf) z^k/k!
-    double result = 1.0 + z;
+    float result = 1.0 + z;
 
-    double prev = z;
+    float prev = z;
     for (short k = 2; k < iterations; k++) {
         prev *= (z / k);
         result += prev;
@@ -50,7 +50,7 @@ double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell
 *
 *************************************************/
 
-__kernel void relu(__global double* prevNeurons, __global double* neurons, __global double* dneuronInfo)
+__kernel void relu(__global float* prevNeurons, __global float* neurons, __global float* dneuronInfo)
 {
 	const int i = get_global_id(0);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
@@ -69,7 +69,7 @@ __kernel void relu(__global double* prevNeurons, __global double* neurons, __glo
 }
 
 //prevNeurons is the set of neurons in the prev layer, the set you are writing into
-__kernel void relu_back(__global double* prevdNeurons, __global double* dneurons, __global double* dneuronInfo)
+__kernel void relu_back(__global float* prevdNeurons, __global float* dneurons, __global float* dneuronInfo)
 {
 	const int i = get_global_id(0);
 	prevdNeurons[i] = dneuronInfo[i] * dneurons[i];	
@@ -77,11 +77,11 @@ __kernel void relu_back(__global double* prevdNeurons, __global double* dneurons
 
 
 //numthreads should be size of neurons and prevNeurons (should be same)
-__kernel void leakyRelu(__global double* prevNeurons, __global double* neurons, __global double* dneuronInfo)
+__kernel void leakyRelu(__global float* prevNeurons, __global float* neurons, __global float* dneuronInfo)
 {
 	const int i = get_global_id(0);
-	double newVal;
-	double dneur = LEAKY_RELU_CONST;
+	float newVal;
+	float dneur = LEAKY_RELU_CONST;
 	if(prevNeurons[i] >= 0) 
 	{
 		newVal = prevNeurons[i];
@@ -103,7 +103,7 @@ __kernel void leakyRelu(__global double* prevNeurons, __global double* neurons, 
 	dneuronInfo[i] = dneur;
 }
 
-__kernel void leakyRelu_back(__global double* prevdNeurons, __global double* dneurons, __global double* dneuronInfo)
+__kernel void leakyRelu_back(__global float* prevdNeurons, __global float* dneurons, __global float* dneuronInfo)
 {
 	const int i = get_global_id(0);
 	prevdNeurons[i] = dneuronInfo[i] * dneurons[i];
@@ -116,7 +116,7 @@ __kernel void leakyRelu_back(__global double* prevdNeurons, __global double* dne
 *************************************************/
 
 //num threads should be the size of the neurons after the maxPool
-__kernel void maxPool(__global double* prevNeurons, __global double* neurons,
+__kernel void maxPool(__global float* prevNeurons, __global float* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride, __global int* maxIndexes)
 {
 	//getting the start index of a flattened 3d array for maxPool
@@ -130,7 +130,7 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 	
 	int amountToNextLayer = (prevwidth - poolsize) * prevdepth;
 	int maxIndex = i;
-	double maxVal = prevNeurons[i];
+	float maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
 		for(int col = 0; col < poolsize; col++)
@@ -149,10 +149,10 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 }
 
 //run for each neuron in prevdNeurons
-__kernel void maxPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes, int depth)
+__kernel void maxPool_back(__global float* prevdNeurons, __global float* dneurons, __global int* maxIndexes, int numIndexes, int depth)
 {
 	const int i = get_global_id(0);
-	double result = 0;
+	float result = 0;
 	
 	//good
 	for(int j= i % depth; j < numIndexes; j += depth)
@@ -167,7 +167,7 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 }
 
 //num threads should be the size of the neurons after the maxPool
-__kernel void avgPool(__global double* prevNeurons, __global double* neurons,
+__kernel void avgPool(__global float* prevNeurons, __global float* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride)
 {
 	//getting the start index of a flattened 3d array for maxPool
@@ -180,7 +180,7 @@ __kernel void avgPool(__global double* prevNeurons, __global double* neurons,
 	i = (i_div_dep/numBlocksPerRow * prevwidth * strxdep + i%prevdepth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
 	
 	int amountToNextLayer = (prevwidth - poolsize) * prevdepth;
-	double sum = 0;
+	float sum = 0;
 	for(int row = 0; row < poolsize; row++)
 	{
 		for(int col = 0; col < poolsize; col++)
@@ -195,10 +195,10 @@ __kernel void avgPool(__global double* prevNeurons, __global double* neurons,
 }
 
 //run for each neuron in prevdNeurons
-__kernel void avgPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes, int depth)
+__kernel void avgPool_back(__global float* prevdNeurons, __global float* dneurons, __global int* maxIndexes, int numIndexes, int depth)
 {
 	const int i = get_global_id(0);
-	double result = 0;
+	float result = 0;
 	
 	//good
 	for(int j= i % depth; j < numIndexes; j += depth)
@@ -219,8 +219,8 @@ __kernel void avgPool_back(__global double* prevdNeurons, __global double* dneur
 *************************************************/
 
 //can keep the padded vals by using the calling code
-__kernel void convolve(__global double* prevNeurons, __global double* neurons,
-	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride,
+__kernel void convolve(__global float* prevNeurons, __global float* neurons,
+	__global float* weights, __global float* biases, int numFilters, int filterSize, int stride,
 	 int prevwidth, int prevdepth)
 {
 	//calculated const variables. same for all threads
@@ -239,8 +239,8 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 	int h = ((myBlock/numBlocksPerRow) * prevwidth * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);//myStartIndex
 	// int h = myStartIndex;
 
-	double result = 0;
-	__global double* curWeight = &(weights[j]);
+	float result = 0;
+	__global float* curWeight = &(weights[j]);
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
@@ -253,8 +253,8 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 	neurons[i] = result + biases[myFilter];
 }
 
-__kernel void convolve_back_neurons(__global double* prevdNeurons, __global double* dneurons,
-	__global double* weights, int numFilters, int filterSize, int stride, int prevwidth, int depth)
+__kernel void convolve_back_neurons(__global float* prevdNeurons, __global float* dneurons,
+	__global float* weights, int numFilters, int filterSize, int stride, int prevwidth, int depth)
 {
 	
 	//calculated const variables and calculations used a lot
@@ -269,7 +269,7 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 	int start = 0; 
 	int origStart;
 	int d = 0;
-	double result = 0;
+	float result = 0;
 	int endlayer;
 	int placeInFilter;
 
@@ -308,8 +308,8 @@ __kernel void convolve_back_neurons(__global double* prevdNeurons, __global doub
 }
 
 
-__kernel void convolve_back_weights(__global double* weights, __global double* prevNeurons, __global double* dneurons,
-	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize)
+__kernel void convolve_back_weights(__global float* weights, __global float* prevNeurons, __global float* dneurons,
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, float stepSize)
 {
 	
 	const int x = get_global_id(0);
@@ -320,7 +320,7 @@ __kernel void convolve_back_weights(__global double* weights, __global double* p
 
 	int d = x/numWeightsPerFilter; //myFilter
 	int p = x % numWeightsPerFilter; // my place in the filter
-	double myDerivative = 0;
+	float myDerivative = 0;
 
 	for(int a=0; a < numBlocksPerRow; a++)
 	{
@@ -337,7 +337,7 @@ __kernel void convolve_back_weights(__global double* weights, __global double* p
 	myDerivative += l2Lambda * weights[x];
 
 	//max-norm
-	double myWeight = weights[x];
+	float myWeight = weights[x];
 	myWeight -= stepSize * myDerivative;
 	if(myWeight > MAX_NORM_CAP)
 		weights[x] = MAX_NORM_CAP;
@@ -350,8 +350,8 @@ __kernel void convolve_back_weights(__global double* weights, __global double* p
 	//weights[x] -= stepSize * myDerivative;
 	
 }
-__kernel void convolve_back_weights_moment(__global double* weights, __global double* prevNeurons, __global double* dneurons,
-	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* velocity)
+__kernel void convolve_back_weights_moment(__global float* weights, __global float* prevNeurons, __global float* dneurons,
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, float stepSize, __global float* velocity)
 {
 	
 	const int x = get_global_id(0);
@@ -362,7 +362,7 @@ __kernel void convolve_back_weights_moment(__global double* weights, __global do
 
 	int d = x/numWeightsPerFilter; //myFilter
 	int p = x % numWeightsPerFilter; // my place in the filter
-	double myDerivative = 0;
+	float myDerivative = 0;
 
 	for(int a=0; a < numBlocksPerRow; a++)
 	{
@@ -379,16 +379,16 @@ __kernel void convolve_back_weights_moment(__global double* weights, __global do
 	myDerivative += l2Lambda * weights[x];// * weights[x];
 
 	//normal momentum
-	//double myVel = velocity[x];
+	//float myVel = velocity[x];
 	//myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
 
 	//Nesterov Accelerated Momentum
-	double myVel = velocity[x];
-	double prevVel = myVel;
+	float myVel = velocity[x];
+	float prevVel = myVel;
 	myVel = MOMENT_CONST * myVel - stepSize * myDerivative;
 
 	//max-norm
-	double myWeight = weights[x];
+	float myWeight = weights[x];
 	//myWeight += myVel; //normal momentum
 	myWeight += -MOMENT_CONST * prevVel + (1+MOMENT_CONST) * myVel; // Nesterov Momentum
 	if(myWeight > MAX_NORM_CAP)
@@ -400,15 +400,15 @@ __kernel void convolve_back_weights_moment(__global double* weights, __global do
 }
 
 //should have numBiases work units
-__kernel void convolve_back_biases(__global double* biases, __global double* dneurons, int dneuronSize, 
-	int dneuronDepth, double stepSize)
+__kernel void convolve_back_biases(__global float* biases, __global float* dneurons, int dneuronSize, 
+	int dneuronDepth, float stepSize)
 {
 	
 	const int i = get_global_id(0);
 	const int dneurFaceSize = dneuronSize/dneuronDepth;
 
 	int j = i;//%dneuronDepth //which filter we're in. dont need % because there is only one bias per filter
-	double myDerivative = 0;
+	float myDerivative = 0;
 	for(int a = 0; a< dneurFaceSize; a++) // calc myDerivative
 	{
 		myDerivative += dneurons[j];
@@ -422,8 +422,8 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 //////////////////////////
 //MINIBATCH
 //////////////////////////
-// __kernel void convolve_back_weights_no_update_accum(__global double* weights, __global double* prevNeurons, __global double* dneurons,
-// 	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* dweights)
+// __kernel void convolve_back_weights_no_update_accum(__global float* weights, __global float* prevNeurons, __global float* dneurons,
+// 	int depth, int stride, int prevwidth, int filterSize, int numFilters, float stepSize, __global float* dweights)
 // {
 // 	// printf("new\n");
 // 	// printf("convolve_back_weights_no_update_accum: array size %d\n",MAX_NEURON_SIZE);
@@ -444,7 +444,7 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 // 	int rstart = nw2 - remainder;
 
 
-// 	__local double testArray[MAX_NEURON_SIZE]; //fill in with dneurons but with depth as the outermost dim instead of the innermost
+// 	__local float testArray[MAX_NEURON_SIZE]; //fill in with dneurons but with depth as the outermost dim instead of the innermost
 	
 
 // 	int nend = x * nmove + nmove;
@@ -474,7 +474,7 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 
 // 	// printf("t[0] %lf\n", testArray[0]);
 
-// 	double myDerivative = 0;
+// 	float myDerivative = 0;
 // 	int t = d * fs2;
 // 	for(int a=0; a < numBlocksPerRow; a++)
 // 	{
@@ -500,8 +500,8 @@ __kernel void convolve_back_biases(__global double* biases, __global double* dne
 // }
 
 //original
-__kernel void convolve_back_weights_no_update_accum(__global double* weights, __global double* prevNeurons, __global double* dneurons,
-	int depth, int stride, int prevwidth, int filterSize, int numFilters, double stepSize, __global double* dweights)
+__kernel void convolve_back_weights_no_update_accum(__global float* weights, __global float* prevNeurons, __global float* dneurons,
+	int depth, int stride, int prevwidth, int filterSize, int numFilters, float stepSize, __global float* dweights)
 {
 	// printf("ori\n");
 	const int x = get_global_id(0);
@@ -509,7 +509,7 @@ __kernel void convolve_back_weights_no_update_accum(__global double* weights, __
 	const int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	const int depxstr = depth * stride;
 	const int toNextBlockDown = filterSize*depth + prevwidth*depth*(stride-1);
-	double myDerivative = 0;
+	float myDerivative = 0;
 
 	// int d = x/numWeightsPerFilter; //myFilter
 	// int p = x % numWeightsPerFilter; // my place in the filter
@@ -524,8 +524,8 @@ __kernel void convolve_back_weights_no_update_accum(__global double* weights, __
 	// 	p += toNextBlockDown;
 	// }
 
-	__global double *pptr = prevNeurons + x % numWeightsPerFilter;
-	__global double *dptr = dneurons + x/numWeightsPerFilter;
+	__global float *pptr = prevNeurons + x % numWeightsPerFilter;
+	__global float *dptr = dneurons + x/numWeightsPerFilter;
 	for(int a=0; a < numBlocksPerRow; a++)
 	{
 		for(int b = 0; b < numBlocksPerRow; b++) //change to b < numBlocksPerCol to allow for non-square images. would need prevheight
@@ -545,15 +545,15 @@ __kernel void convolve_back_weights_no_update_accum(__global double* weights, __
 }
 
 //should have numBiases work units
-__kernel void convolve_back_biases_no_update_accum(__global double* biases, __global double* dneurons, int dneuronSize, 
-	int dneuronDepth, double stepSize, __global double* dbiases)
+__kernel void convolve_back_biases_no_update_accum(__global float* biases, __global float* dneurons, int dneuronSize, 
+	int dneuronDepth, float stepSize, __global float* dbiases)
 {
 	
 	const int i = get_global_id(0);
 	const int dneurFaceSize = dneuronSize/dneuronDepth;
 
 	int j = i;//%dneuronDepth //which filter we're in. dont need % because there is only one bias per filter
-	double myDerivative = 0;
+	float myDerivative = 0;
 	for(int a = 0; a< dneurFaceSize; a++) // calc myDerivative
 	{
 		myDerivative += dneurons[j];
@@ -565,16 +565,16 @@ __kernel void convolve_back_biases_no_update_accum(__global double* biases, __gl
 
 }
 
-__kernel void zero_out(__global double* mem)
+__kernel void zero_out(__global float* mem)
 {
 	mem[get_global_id(0)] = 0;
 }
 
-__kernel void update_weights(__global double* weights, __global double* dweights, double stepSize)
+__kernel void update_weights(__global float* weights, __global float* dweights, float stepSize)
 {
 	const int x = get_global_id(0);
 
-	double myWeight = weights[x];
+	float myWeight = weights[x];
 	myWeight -= stepSize * dweights[x];
 	if(myWeight > MAX_NORM_CAP)
 		weights[x] = MAX_NORM_CAP;
@@ -586,17 +586,17 @@ __kernel void update_weights(__global double* weights, __global double* dweights
 	// printf("%d %lf %lf\n", x, dweights[x], weights[x]);
 }
 
-__kernel void update_weights_moment(__global double* weights, __global double* dweights, double stepSize, __global double* velocity)
+__kernel void update_weights_moment(__global float* weights, __global float* dweights, float stepSize, __global float* velocity)
 {
 	const int x = get_global_id(0);
 
 	//Nesterov Accelerated Momentum
-	double myVel = velocity[x];
-	double prevVel = myVel;
+	float myVel = velocity[x];
+	float prevVel = myVel;
 	myVel = MOMENT_CONST * myVel - stepSize * dweights[x];
 
 	//max-norm
-	double myWeight = weights[x];
+	float myWeight = weights[x];
 	//myWeight += myVel; //normal momentum
 	myWeight += -MOMENT_CONST * prevVel + (1+MOMENT_CONST) * myVel; // Nesterov Momentum
 	if(myWeight > MAX_NORM_CAP)
@@ -607,7 +607,7 @@ __kernel void update_weights_moment(__global double* weights, __global double* d
 		weights[x] = myWeight;
 }
 
-__kernel void update_biases(__global double* biases, __global double* dbiases, double stepSize)
+__kernel void update_biases(__global float* biases, __global float* dbiases, float stepSize)
 {
 	const int i = get_global_id(0);
 	biases[i] -= stepSize * dbiases[i];
@@ -617,7 +617,7 @@ __kernel void update_biases(__global double* biases, __global double* dbiases, d
 //END MINIBATCH
 //////////////////////////
 
-__kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
+__kernel void zeroPad(__global float *prevNeurons, __global float *neurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
 	const int x = get_global_id(0);
@@ -642,7 +642,7 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 }
 
 // run on each of the padded dneurons. NOT prevdNeurons!
-__kernel void zeroPad_back(__global double* prevdNeurons, __global double* dneurons, int pad, int prevwidth,
+__kernel void zeroPad_back(__global float* prevdNeurons, __global float* dneurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
 	const int x = get_global_id(0);
@@ -670,14 +670,14 @@ __kernel void zeroPad_back(__global double* prevdNeurons, __global double* dneur
 *
 *************************************************/
 
-__kernel void softmax(__global double *prevNeurons, __global double *neurons, double denominator)
+__kernel void softmax(__global float *prevNeurons, __global float *neurons, float denominator)
 {
 	int i = get_global_id(0);
 	neurons[i] = exact_exp(prevNeurons[i])/denominator;
 }
 
 //pushes the derivatives into prevdNeurons
-__kernel void softmax_back(__global double* dNeurons, __global double* neurons, int trueVal)
+__kernel void softmax_back(__global float* dNeurons, __global float* neurons, int trueVal)
 {
 	int i = get_global_id(0);
 
@@ -700,19 +700,19 @@ __kernel void softmax_back(__global double* dNeurons, __global double* neurons, 
 *
 *************************************************/
 
-__kernel void copyArray(__global double* source, __global double* dest)
+__kernel void copyArray(__global float* source, __global float* dest)
 {
 	int x = get_global_id(0);
 	dest[x] = source[x];
 }
 
 //make this 2 kernels? one to get max, one to subtract? Prob not worth it without a lot of classes
-__kernel void maxSubtraction(__global double* source, int size)
+__kernel void maxSubtraction(__global float* source, int size)
 {
 	if(size <= 0)
 		return;
-	double max = source[0];
-	double cur;
+	float max = source[0];
+	float cur;
 	for(int i = 1; i < size; i ++)
 	{
 		cur = source[i];
@@ -723,23 +723,23 @@ __kernel void maxSubtraction(__global double* source, int size)
 		source[i] -= max;
 }
 
-__kernel void vectorESum(__global double* source, int size, __global double* denom)
+__kernel void vectorESum(__global float* source, int size, __global float* denom)
 {
 	if(size <= 0)
 		return;
-	double sum = 0;
+	float sum = 0;
 	for(int i=0; i < size; i++)
 		sum += exact_exp(source[i]);
 	*denom = sum;
 }
 
-__kernel void plusEquals(__global double* dest, __global double* src)
+__kernel void plusEquals(__global float* dest, __global float* src)
 {
 	int x = get_global_id(0);
 	dest[x] += src[x];
 }
 
-__kernel void divideEquals(__global double* dest, int num)
+__kernel void divideEquals(__global float* dest, int num)
 {
 	int x = get_global_id(0);
 	dest[x] /= num;
@@ -752,7 +752,7 @@ __kernel void divideEquals(__global double* dest, int num)
 *
 *************************************************/
 
-__kernel void reluF(__global double* prevNeurons, __global double* neurons)
+__kernel void reluF(__global float* prevNeurons, __global float* neurons)
 {
 	const int i = get_global_id(0);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
@@ -764,11 +764,11 @@ __kernel void reluF(__global double* prevNeurons, __global double* neurons)
 }
 
 //numthreads should be size of neurons and prevNeurons (should be same)
-__kernel void leakyReluF(__global double* prevNeurons, __global double* neurons)
+__kernel void leakyReluF(__global float* prevNeurons, __global float* neurons)
 {
 	const int i = get_global_id(0);
-	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
-	double newVal;
+	//float newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
+	float newVal;
 	if(prevNeurons[i] >= 0) 
 		newVal = prevNeurons[i];
 	else 
@@ -782,7 +782,7 @@ __kernel void leakyReluF(__global double* prevNeurons, __global double* neurons)
 		neurons[i] = RELU_CAP;
 }
 
-__kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
+__kernel void maxPoolF(__global float* prevNeurons, __global float* neurons,
 	int prevwidth, int prevdepth, int poolsize, int stride)
 {
 	int width = prevwidth;
@@ -803,7 +803,7 @@ __kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
 	i = (i_div_dep/numBlocksPerRow * width * strxdep + i%depth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
 	
 	int amountToNextLayer = (width - poolsize) * depth;
-	double maxVal = prevNeurons[i];
+	float maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
 		for(int col = 0; col < poolsize; col++)
@@ -823,19 +823,19 @@ __kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
 *
 *************************************************/
 
-__kernel void batch_norm_run(__global double* prevNeurons, __global double* neurons, const __global double* gamma, const __global double* beta, 
-	const __global double* e, const __global double* var, int depth)
+__kernel void batch_norm_run(__global float* prevNeurons, __global float* neurons, const __global float* gamma, const __global float* beta, 
+	const __global float* e, const __global float* var, int depth)
 {
 	int x = get_global_id(0);
 	int k = x;
 	if(depth > 0)
 		k = x % depth;
 	// printf("bnr e %lf, var %lf\n", e[k], var[k]);
-	double rootVarPlusEps = pow(var[k] + EPSILON,0.5);
-	double gam = gamma[k];
+	float rootVarPlusEps = pow(var[k] + EPSILON,0.5);
+	float gam = gamma[k];
 	// if(var[k] < 0) printf("why?\n");
-	double front = gam * prevNeurons[x] / rootVarPlusEps;
-	double back = beta[k] - gam * e[k] / rootVarPlusEps;
+	float front = gam * prevNeurons[x] / rootVarPlusEps;
+	float back = beta[k] - gam * e[k] / rootVarPlusEps;
 	// if(isnan(prevNeurons[x])) printf("nan px\n");
 
 	neurons[x] = front + back;
@@ -843,14 +843,14 @@ __kernel void batch_norm_run(__global double* prevNeurons, __global double* neur
 	// if(isnan(neurons[x])) printf("nan y\n");
 }
 
-__kernel void batch_norm(__global double* prevNeurons, __global double* neurons, const __global double* gamma, const __global double* beta, 
-	const __global double* mu, const __global double* sigma_squared, int depth)
+__kernel void batch_norm(__global float* prevNeurons, __global float* neurons, const __global float* gamma, const __global float* beta, 
+	const __global float* mu, const __global float* sigma_squared, int depth)
 {
 	int x = get_global_id(0);
 	int k = x;
 	if(depth > 0)
 		k = x % depth;
-	double xhat = (prevNeurons[x] - mu[k])/pow(sigma_squared[k] + EPSILON, 0.5);
+	float xhat = (prevNeurons[x] - mu[k])/pow(sigma_squared[k] + EPSILON, 0.5);
 	// printf("index: %d x: %lf gamma: %lf beta: %lf mu: %lf sigma2: %lf depth: %d xhat: %lf y: %lf\n", x,prevNeurons[x],gamma[k],beta[k],mu[k],sigma_squared[k],depth,xhat,gamma[k] * xhat + beta[k]);
 	// if(x == 0)
 	// 	printf("xhat[0] gpu: %lf\n",xhat);
@@ -858,17 +858,17 @@ __kernel void batch_norm(__global double* prevNeurons, __global double* neurons,
 	// neurons[x] = gamma[k] * prevNeurons[x] + beta[k];
 }
 
-__kernel void batch_norm_back(__global double* prevdNeurons, __global double* dNeurons, int depth, __global double* gamma, __global double* mu, 
-	__global double* sigma2, __global double* delta_mu, __global double* delta_sigma2, __global double* bn_x, int minibatch_size)
+__kernel void batch_norm_back(__global float* prevdNeurons, __global float* dNeurons, int depth, __global float* gamma, __global float* mu, 
+	__global float* sigma2, __global float* delta_mu, __global float* delta_sigma2, __global float* bn_x, int minibatch_size)
 {
 	int i = get_global_id(0);
 	int k = i;
 	if(depth > 0)
 		k = i % depth;
-	double delta_xhat = dNeurons[i] * gamma[k];
-	// double delta_x = delta_xhat / pow(sigma2[k] + EPSILON, 0.5) + delta_sigma2[k] * 2 * (bn_x[i] - mu[k]) / minibatch_size
+	float delta_xhat = dNeurons[i] * gamma[k];
+	// float delta_x = delta_xhat / pow(sigma2[k] + EPSILON, 0.5) + delta_sigma2[k] * 2 * (bn_x[i] - mu[k]) / minibatch_size
 	// 	+ delta_mu[k] / minibatch_size;
-	double delta_x = delta_xhat / pow(sigma2[k] + EPSILON, 0.5) + (delta_sigma2[k] * 2.0 * (bn_x[i] - mu[k])
+	float delta_x = delta_xhat / pow(sigma2[k] + EPSILON, 0.5) + (delta_sigma2[k] * 2.0 * (bn_x[i] - mu[k])
 		+ delta_mu[k]) / minibatch_size;
 	prevdNeurons[i] = delta_x;
 
@@ -877,10 +877,10 @@ __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dN
 	// prevdNeurons[i] = dNeurons[i] * gamma[k];
 }
 
-__kernel void update_gamma_and_beta(__global double* gamma, __global double* beta, __global double* delta_gamma, __global double* delta_beta, double stepSize)
+__kernel void update_gamma_and_beta(__global float* gamma, __global float* beta, __global float* delta_gamma, __global float* delta_beta, float stepSize)
 {
 	int i = get_global_id(0);
-	// double og = gamma[i], ob = beta[i];
+	// float og = gamma[i], ob = beta[i];
 	gamma[i] -= delta_gamma[i] * stepSize;
 	beta[i] -= delta_beta[i] * stepSize;
 
