@@ -541,19 +541,19 @@ int main(int argc, char** argv)
 	setbuf(stdout,0);
 
 	//init all nets
-	for(int i = 0; i < getNumDevices(); i++)
-	{
-		printf("%d\n", i);
-		nets.push_back(new Net(__netName));	
-	}
-	// vector<thread> thr(getNumDevices());
-	// nets.resize(thr.size());
-	// for(int i = 0; i < thr.size(); i++)
+	// for(int i = 0; i < getNumDevices(); i++)
 	// {
-	// 	thr[i] = thread([=] { nets[i] = new Net(__netName); });
+	// 	printf("%d\n", i);
+	// 	nets.push_back(new Net(__netName));	
 	// }
-	// for(int i = 0; i < thr.size(); i++)
-	// 	thr[i].join();
+	vector<thread> thr(getNumDevices());
+	nets.resize(thr.size());
+	for(int i = 0; i < thr.size(); i++)
+	{
+		thr[i] = thread([=] { nets[i] = new Net(__netName); });
+	}
+	for(int i = 0; i < thr.size(); i++)
+		thr[i].join();
 
 	fullImages.resize(nets.size());
 	deviceActive.resize(nets.size());
