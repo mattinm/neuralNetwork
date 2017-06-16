@@ -551,10 +551,10 @@ bool Net::addBatchNormLayer(bool byFeatureMap, int gamma_size, const string& gam
 	vector<string> var_array = convnet::split(var,',');
 	for(int i = 0; i < gamma_size; i++)
 	{
-		batch->gamma[i] = stod(gamma_array[i]);
-		batch->beta[i] = stod(beta_array[i]);
-		batch->e[i] = stod(e_array[i]);
-		batch->var[i] = stod(var_array[i]);
+		batch->gamma[i] = stof(gamma_array[i]);
+		batch->beta[i] = stof(beta_array[i]);
+		batch->e[i] = stof(e_array[i]);
+		batch->var[i] = stof(var_array[i]);
 	}
 
 	__layers.push_back(batch);
@@ -1658,7 +1658,14 @@ void Net::getCalculatedClasses(vector<int>& dest) const
 *****************************/
 void Net::getConfidences(vector<vector<double> >& confidences) const
 {
- 	confidences = __confidences;
+ 	// confidences = __confidences;
+ 	confidences.resize(__confidences.size());
+ 	for(int i = 0; i < __confidences.size(); i++)
+ 	{
+ 		confidences[i].resize(__confidences[i].size());
+ 		for(int j = 0; j < __confidences[i].size(); j++)
+ 			confidences[i][j] = __confidences[i][j];
+ 	}
 }
 
 /*****************************
@@ -3028,9 +3035,9 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 		CheckError(clEnqueueReadBuffer(queue, **neurons, CL_TRUE, 0, sizeof(float) * __neuronSizes.back(),
 		 	__confidences[start + a].data(), 0, nullptr, nullptr));
 
-		stringstream ss;
-		for(int c = 0; c < __confidences[start + a].size(); c++)
-			ss << __confidences[start + a][c] << ", ";
+		// stringstream ss;
+		// for(int c = 0; c < __confidences[start + a].size(); c++)
+		// 	ss << __confidences[start + a][c] << ", ";
 		// printf("%d.%d: conf %s\n", thread_num, a, ss.str().c_str());
 
 
@@ -4521,7 +4528,7 @@ void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& threa
 		if(__layers[i]->layerType == BATCH_NORM_LAYER)
 		{
 			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
-			vector<double> zeros(batch->gamma.size(),0);
+			vector<float> zeros(batch->gamma.size(),0);
 			// if(batch->gamma.size() > maxsize)
 			// 	maxsize = batch->gamma.size();
 			if(__neuronSizes[i] > maxsize)
@@ -4999,7 +5006,7 @@ void Net::batchNormRun()
 		end = start + thread_sizes[t];
 		starts[t] = start;
 		cl_mem **pptr = &(bnrunmems.prevNeurons[t]), **nptr = &(bnrunmems.neurons[t]);
-		thr[t] = thread([=]// &kernels, &queues, &denoms]
+		thr[t] = thread([=]
 		 {feedForward_BN_running(numThreads, batchSize, t, start, end, __dataPointer, pptr, nptr,
 			ref(bnrunmems.queues[t]), ref(bnrunmems.denoms[t]), ref(bnrunmems.kernels[t]));});
 		start = end;
@@ -9114,7 +9121,7 @@ bool Net::load(const char* filename)
 			else if(line.find("MEAN") != string::npos)
 			{
 				loc = line.find("=") + 1;
-				__mean = stod(line.substr(loc));
+				__mean = stof(line.substr(loc));
 				if(__mean != 0)
 					// __preprocessIndividual = false;
 					__preprocessType = __PREPROCESS_COLLECTIVE;
@@ -9125,7 +9132,7 @@ bool Net::load(const char* filename)
 			else if(line.find("STDDEV") != string::npos)
 			{
 				loc = line.find("=") + 1;
-				__stddev = stod(line.substr(loc));
+				__stddev = stof(line.substr(loc));
 			}
 			else if(line.find("TRAINING_SIZE") != string::npos)
 			{

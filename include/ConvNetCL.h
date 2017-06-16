@@ -308,7 +308,7 @@ private: 	// members
 		bool __dataPreprocessed = false;
 		std::vector<std::vector<float> > __data; // list of<flattened images>
 		std::vector<std::vector<float> > *__dataPointer;
-		std::vector<std::vector<double> > __confidences; // image<list of confidences for each class<confidence> > 
+		std::vector<std::vector<float> > __confidences; // image<list of confidences for each class<confidence> > 
 
 		std::vector<int> __trainRatioAmounts;
 		std::vector<int> __trainActualAmounts;
@@ -337,7 +337,7 @@ private: 	// members
 		std::mutex bnNumCorrect_mtx;
 		std::vector<int> bnClassCorrect, bnClassTotal;
 		int bnNumCorrect, bnNumZeros = 0;
-		double moveAlpha = 0.1;
+		float moveAlpha = 0.1;
 		bool setupBatchNormCLMems_running_done = false;
 		bool setupBatchNormCLMems_done = false;
 		double bnTotalError;
