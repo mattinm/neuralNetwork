@@ -3720,7 +3720,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 			#ifdef _DEBUG
 			printf("Thread %d: Backprop - read delta y %d\n", thread_num,i);
 			#endif
-			vector<vector<double> >delta_y(amount);
+			vector<vector<float> >delta_y(amount);
 			for(int a = 0; a < amount; a++)
 			{
 				// printf("Thread %d.%d: delta_y ", thread_num,a);
@@ -3782,7 +3782,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					{
 						for(int feat = d; feat < __neuronSizes[i]; feat += depth)
 						{
-							double delta_xhat = delta_y[a][feat] * batch->gamma[d];
+							float delta_xhat = delta_y[a][feat] * batch->gamma[d];
 							int x_i = bn_x[thread_num][a][curBNLayer][feat];
 							sum += delta_xhat * (bn_x[thread_num][a][curBNLayer][feat] - mu[curBNLayer][d])
 								* -0.5 * pow(sigma_squared[curBNLayer][d] + 1e-8, -1.5);
@@ -3799,7 +3799,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					lock_guard<mutex> guard(mtx_a[feat]);
 					for(int a = 0; a < amount; a++)
 					{
-						double delta_xhat = delta_y[a][feat] * batch->gamma[feat];
+						float delta_xhat = delta_y[a][feat] * batch->gamma[feat];
 						int x_i = bn_x[thread_num][a][curBNLayer][feat];
 						delta_sigma2[curBNLayer][feat] += delta_xhat * (bn_x[thread_num][a][curBNLayer][feat] - mu[curBNLayer][feat])
 							* -0.5 * pow(sigma_squared[curBNLayer][feat] + 1e-8, -1.5);
@@ -3822,7 +3822,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					{
 						for(int feat = d; feat < __neuronSizes[i]; feat += depth)
 						{
-							double delta_xhat = delta_y[a][feat] * batch->gamma[d];
+							float delta_xhat = delta_y[a][feat] * batch->gamma[d];
 							int x_i = bn_x[thread_num][a][curBNLayer][feat];
 							sum += -delta_xhat / pow(sigma_squared[curBNLayer][d] + 1e-8,0.5) 
 								+ delta_sigma2[curBNLayer][d] * -2 * (x_i - mu[curBNLayer][d]) / m_num_features;
@@ -3839,7 +3839,7 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 					double sum = 0;
 					for(int a = 0; a < amount; a++)
 					{
-						double delta_xhat = delta_y[a][feat] * batch->gamma[feat];
+						float delta_xhat = delta_y[a][feat] * batch->gamma[feat];
 						int x_i = bn_x[thread_num][a][curBNLayer][feat];
 						sum += -delta_xhat / pow(sigma_squared[curBNLayer][feat] + 1e-8,0.5) 
 					 		+ delta_sigma2[curBNLayer][feat] * -2 * (x_i - mu[curBNLayer][feat]) / (minibatch_size);
