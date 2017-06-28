@@ -382,20 +382,22 @@ int main(int argc, char** argv)
 				//draw rectangles for visual confirmation of matching
 				Scalar color;
 				if(box.species_id == WHITE_PHASE)
-					color = Scalar(255,255,255);
+					color = Scalar(0,0,255);
 				else if(box.species_id == BLUE_PHASE)
 				{
+					continue;
 					color = Scalar(255,0,0);
 				}
 				else
 					color = Scalar(0,0,0);
 				rectangle(im,Point(box.x,box.y),Point(box.ex,box.ey),color,3);
 			}
-
+			imwrite("user_obs_image.png",im);
 			//for showing images as they come with matched reds and green (not whether greens are matched) locations
 			cv::Size mysizeMatched(750,750 * im.rows / im.cols);
 			resize(im,im,mysizeMatched);
 			imshow("image",im);
+
 			waitKey(0); // if also showing missed background, show all at once
 		}
 	}

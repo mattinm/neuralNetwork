@@ -2326,11 +2326,11 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 	//load in original images
 	for(int i = start, j = 0; i < end; i++, j++)
 	{
- 		CheckError(clEnqueueWriteBuffer(queue, *(prevNeurons->at(j)), CL_TRUE, 0,
+ 		CheckError(clEnqueueWriteBuffer(queue, *(prevNeurons->at(j)), CL_FALSE, 0,
 				sizeof(double) * __neuronSizes[0],
 				trainingData[i]->data(), 0, nullptr, nullptr));
-		clFinish(queue);
 	}
+	clFinish(queue);
 
 	// printf("start feed\n");
 	int curConvLayer = 0, curBNLayer = 0;
@@ -2682,12 +2682,12 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 							nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					}
 				}
-
+				clFinish(queue);
 				temp = (*neurons)[a];
 				(*neurons)[a] = (*prevNeurons)[a];
 				(*prevNeurons)[a] = temp;
 			}
-			clFinish(queue);
+			
 		}
 		
 
@@ -2811,7 +2811,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 /*****************************
 *
 * Batch Normalization feed forward method for running. Assumes multiple versions running concurrently.
-* Does multiple images concurrently but sequentially by layer instead of sequentially by image
+* Does multiple images sequentially by image
 * Doesn't use the class level variables (except weights and biases). 
 *
 * start is inclusive start index in trainingData
@@ -4612,7 +4612,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	bnClassCorrect.resize(__neuronSizes.back());
 	bnClassTotal.resize(__neuronSizes.back());
 
-	int numThreads = 12;
+	int numThreads = 1;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);

@@ -17,6 +17,7 @@
 #include <time.h>
 #include <thread>
 #include <pthread.h>
+#include <unordered_map>
 #include <cassert>
 #ifdef __APPLE__
  	#include "OpenCL/opencl.h"
@@ -55,6 +56,7 @@ int numClasses;
 vector<imVector> fullImages;
 vector<Net*> nets;
 vector<bool> deviceActive;
+unordered_map<int, char> excludeDevices;
 
 char* __netName;
 
@@ -400,6 +402,7 @@ void breakUpImage(const char* imageName)
 						else
 							outPix[1] = 0;
 					}
+					// printf("%d %d %d\n", outPix[0],outPix[1],outPix[2]);
 				}
 			}
 		}
@@ -430,13 +433,14 @@ int checkExtensions(char* filename)
 
 int main(int argc, char** argv)
 {
-	if(argc < 3 || 5 < argc)
+	if(argc < 3)
 	{
 		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt ImageOrFolderPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
-		printf("   stride=<int>        Stride across image. Defaults to 1.\n");
-		printf("   -separate_outputs   Puts the prediction for each class in a separate image. Default for Nets with more than 3 classes.\n");
-		printf("   -rgb                Has ConvNetCL read in the Mats as RGB instead of OpenCV standard BGR.\n");
+		printf("   stride=<int>          Stride across image. Defaults to 1.\n");
+		printf("   -separate_outputs     Puts the prediction for each class in a separate image. Default for Nets with more than 3 classes.\n");
+		printf("   -rgb                  Has ConvNetCL read in the Mats as RGB instead of OpenCV standard BGR.\n");
+		printf("   -excludeDevice=<int>  Excludes the specified OpenCL device from use. Repeatable.\n");
 		return -1;
 	}
 	time_t starttime, endtime;
@@ -453,6 +457,8 @@ int main(int argc, char** argv)
 				__separate_outputs = true;
 			else if(arg.find("-rgb") != string::npos)
 				rgb = true;
+			else if(arg.find("-excludeDevice=") != string::npos)
+				excludeDevices[stoi(arg.substr(arg.find('=')+1))] = 1;
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
@@ -543,7 +549,7 @@ int main(int argc, char** argv)
 	//init all nets
 	for(int i = 0; i < getNumDevices(); i++)
 	{
-		printf("%d\n", i);
+		// printf("%d\n", i);
 		nets.push_back(new Net(__netName));	
 	}
 	// vector<thread> thr(getNumDevices());
@@ -571,7 +577,12 @@ int main(int argc, char** argv)
 	for(int i = 0 ; i < nets.size(); i++)
 	{
 		// nets[i]->setConstantMem(true);
-		if(nets[i]->setDevice(i) && nets[i]->finalize())
+		if(excludeDevices.find(i) != excludeDevices.end())
+		{
+			deviceActive[i] = false;
+			delete nets[i];
+		}
+		else if(nets[i]->setDevice(i) && nets[i]->finalize())
 		{
 			deviceActive[i] = true;
 			printf("Thread using device %d\n",i);
