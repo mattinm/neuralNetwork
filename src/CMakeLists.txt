@@ -8,12 +8,14 @@ if (BUILD_DYNAMIC)
     add_library (ConvNetEvent SHARED ConvNetEvent.cpp ConvNetCommon.cpp)
     add_library (ConvNetSeam SHARED ConvNetSeam.cpp ConvNetCommon.cpp)
     add_library (Seamcarver SHARED Seamcarver.cpp)
+    add_library (IDX_lib SHARED IDX.cpp)
 else ()
     add_library (ConvNetCL STATIC ConvNetCommon.cpp ConvNetCL.cpp)
     #add_library (ConvNet STATIC ConvNet.cpp ConvNetCommon.cpp)
     add_library (ConvNetEvent STATIC ConvNetEvent.cpp ConvNetCommon.cpp)
     add_library (ConvNetSeam STATIC ConvNetSeam.cpp ConvNetCommon.cpp)
     add_library (Seamcarver STATIC Seamcarver.cpp)
+    add_library (IDX_lib STATIC IDX.cpp)
 endif ()
 
 ######
@@ -22,6 +24,9 @@ endif ()
 
 add_executable (BlobCounter BlobCounter.cpp)
 target_link_libraries(BlobCounter ${OpenCV_LIBS})
+
+add_executable (CombineIDX_Thesis CombineIDX_Thesis.cpp)
+target_link_libraries(CombineIDX_Thesis ${OpenCV_LIBS} IDX_lib)
 
 add_executable (ConvNetTrainerCL_idx ConvNetTrainerCL_idx.cpp)
 target_link_libraries(ConvNetTrainerCL_idx ${OpenCL_LIBRARIES} ConvNetCL ${OpenCV_LIBS})
