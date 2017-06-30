@@ -309,9 +309,9 @@ void writeMatToIDX(ofstream& out, const Mat& frame, uint8_t dataType)
 		for(int j = 0; j < frame.cols; j++)
 		{
 			const Vec3b& pix = frame.at<Vec3b>(i,j);
-			out.put(pix[0]);
-			out.put(pix[1]);
 			out.put(pix[2]);
+			out.put(pix[1]);
+			out.put(pix[0]);
 		}
 	// out.flush();
 }
@@ -679,8 +679,14 @@ int main(int argc, char** argv)
 					if(exclude.find(box.species_id) != exclude.end()) //if the species is found in exclude
 						continue;
 
-					for(int x = box.x; x < box.ex; x++)
-						for(int y = box.y; y < box.ey; y++)
+					int xstart = box.x - 10 < 0 ? 0 : box.x - 10;
+					int xend = box.ex + 10 >= im.cols ? im.cols - 1 : box.ex + 10;
+					int ystart = box.y - 10 < 0 ? 0 : box.y - 10;
+					int yend = box.ey + 10 >= im.cols ? im.rows - 1 : box.ey + 10;
+					// for(int x = box.x; x < box.ex; x++)
+					// 	for(int y = box.y; y < box.ey; y++)
+					for(int x = xstart; x < xend; x++)
+						for(int y = ystart; y < yend; y++)
 						{
 							Vec3b& pix = im.at<Vec3b>(y,x);
 							pix[0] = 0;

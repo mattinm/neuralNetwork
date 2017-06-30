@@ -20,8 +20,6 @@ unordered_map<string, bool> excludes;
  *	Helper Functions
  ***********************/
 
-
-
 char readChar(ifstream& in)
 {
 	char num[1];

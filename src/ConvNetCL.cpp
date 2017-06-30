@@ -4612,7 +4612,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	bnClassCorrect.resize(__neuronSizes.back());
 	bnClassTotal.resize(__neuronSizes.back());
 
-	int numThreads = 1;
+	int numThreads = 10;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
@@ -8384,7 +8384,7 @@ void Net::initVelocities(vector<cl_mem>& velocities)
 //running
 void Net::addData(const vector<imVector>& data)
 {
-	printf("Adding %lu data of size %lu x %lu x %lu\n", data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size());
+	// printf("Adding %lu data of size %lu x %lu x %lu\n", data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size());
 	int oldSize = __data.size();
 	__data.resize(__data.size() + data.size());
 	for(int d = 0, o = oldSize; d < data.size(); d++, o++)
@@ -8449,15 +8449,58 @@ void Net::clearData()
 
 void Net::setData(const vector<imVector>& data)
 {
-	clearData();
-	addData(data);
+	// clearData();
+	// addData(data);
+	int oldSize = __data.size();
+	__data.resize(data.size());
+	__confidences.resize(data.size());
+	// printf("Setting %lu data of size %lu x %lu x %lu\n", data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size());
+	for(int d = 0; d < data.size(); d++)
+	{
+		if(d >= oldSize)
+			__data[d].resize(__neuronSizes[0]);
+		int dat = 0;
+		for(int i=0; i < data[d].size(); i++)
+			for(int j=0; j < data[d][i].size(); j++)
+				for(int k=0; k < data[d][i][j].size(); k++)
+					__data[d][dat++] = data[d][i][j][k];
+	}
+	// printf("new size is %lu\n",__data.size());
+	__confidences.resize(__confidences.size() + __data.size());
+	__dataPreprocessed = false;
 }
 
 void Net::setData(const vector<Mat>& data, bool rgb)
 {
-	// cout << "Set data mat" << endl;
-	clearData();
-	addData(data,rgb);
+	// clearData();
+	// addData(data,rgb);
+	int oldSize = __data.size();
+	__data.resize(data.size());
+	__confidences.resize(data.size());
+	for(int d = oldSize; d < __data.size(); d++)
+		__data[d].resize(__neuronSizes[0]);
+	for(int d = 0; d < data.size(); d++)
+	{
+		int dat = 0; 
+		for(int i = 0; i < data[d].rows; i++)
+			for(int j = 0; j < data[d].cols; j++)
+			{
+				const Vec3b& curPixel = data[d].at<Vec3b>(i,j);
+				if(rgb)
+				{
+					__data[d][dat++] = curPixel[2];
+					__data[d][dat++] = curPixel[1];
+					__data[d][dat++] = curPixel[0];
+				}
+				else
+				{
+					__data[d][dat++] = curPixel[0];
+					__data[d][dat++] = curPixel[1];
+					__data[d][dat++] = curPixel[2];
+				}
+			}
+	}
+	__dataPreprocessed = false;
 }
 
 // void Net::setClassNames(vector<string> names, vector<int> trueVals)
