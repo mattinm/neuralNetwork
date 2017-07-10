@@ -5,47 +5,87 @@
 using namespace std;
 using namespace cv;
 
-IDX::IDX() {}
+template<typename T>
+IDX<T>::IDX() {}
 
-IDX::IDX(const char* filename)
+template<typename T>
+IDX<T>::IDX(const char* filename)
 {
 	load(filename);
 }
 
-IDX::~IDX()
+template<typename T>
+IDX<T>::~IDX()
 {
 	destroy();
 }
 
-void IDX::destroy()
+template<typename T>
+void IDX<T>::destroy()
 {
-	data.clear();
-	data.shrink_to_fit();
+	_data.clear();
+	_data.shrink_to_fit();
 	num_data = 0;
 }
 
 template<typename T>
-vector<T>& operator[](int x)
+vector<T>& IDX<T>::operator[](int x)
 {
 	if(x < 0 || num_data <= x)
-		throw IDXIndexOutOfBoundsException();
-	if(type == 0x08)
-		loadData<unsigned char>(in);
-	else if(type == 0x09)
-		loadData<char>(in);
-	else if(type == 0x0B)
-		loadData<short>(in);
-	else if(type == 0x0C)
-		loadData<int>(in);
-	else if(type == 0x0D)
-		loadData<float>(in);
-	else if(type == 0x0E)
-		loadData<double>(in);
+		throw idxIndexOutOfBoundsException;
+
+	return _data[x];
 }
 
+template<typename T>
+void IDX<T>::erase(int x)
+{
+	if(x < 0 || num_data <= x)
+		throw idxIndexOutOfBoundsException;
+
+	_data.erase(_data.begin() + x);
+	num_data--;
+}
 
 template<typename T>
-void IDX::load(const char* filename)
+void IDX<T>::erase(vector<int> v)
+{
+	//sort in descending order
+	sort(v.begin(), v.end(), 
+		[](const int& first, const int& second) -> bool
+		{
+			return first > second;
+		});
+
+	//erasing in descending order should preserve index values
+	for(int i = 0; i < v.size(); i++)
+		this->erase(v[i]);
+}
+
+template<typename T>
+void IDX<T>::getFlatData(vector<T>& dest)
+{
+	dest.resize(flatsize * _data.size());
+	int d = 0;
+	for(int i = 0; i < _data.size(); i++)
+		for(int j = 0; j < flatsize; j++)
+			dest[d++] = _data[i][j];
+}
+
+template<typename T>
+void IDX<T>::getData(vector<vector<T> >& dest)
+{
+	dest = _data;
+}
+
+template<typename T>
+vector<vector<T> >* IDX<T>::data()
+{
+	return &_data;
+}
+
+template<typename T>
+void IDX<T>::load(const char* filename)
 {
 	if(type != 0)
 		destroy();
@@ -61,27 +101,30 @@ void IDX::load(const char* filename)
 
 	//dimensions. Assume first dim is number of items, rest of dims is size of (num_dims-1)-dimensional items
 	num_data = readBigEndianInt(in);
-	dims.resize(num_dims - 1);
 	flatsize = 1;
+
+	dims.resize(num_dims - 1);
 	for(int i = 0; i < num_dims - 1; i++)
 	{
 		dims[i] = readBigEndianInt(in);
 		flatsize *= dims[i];
 	}
 
-	//read in data
-	if(type == 0x08)
-		loadData<T, unsigned char>(in);
-	else if(type == 0x09)
-		loadData<T, char>(in);
-	else if(type == 0x0B)
-		loadData<T, short>(in);
-	else if(type == 0x0C)
-		loadData<T, int>(in);
-	else if(type == 0x0D)
-		loadData<T, float>(in);
-	else if(type == 0x0E)
-		loadData<T, double>(in);
+
+
+	//read in _data
+	if(type == IDX_UCHAR)
+		loadData<unsigned char>(in);
+	else if(type == IDX_CHAR)
+		loadData<char>(in);
+	else if(type == IDX_SHORT)
+		loadData<short>(in);
+	else if(type == IDX_INT)
+		loadData<int>(in);
+	else if(type == IDX_FLOAT)
+		loadData<float>(in);
+	else if(type == IDX_DOUBLE)
+		loadData<double>(in);
 	else
 	{
 		printf("Unknown type! Exiting. \"%s\"!\n",filename);
@@ -89,84 +132,72 @@ void IDX::load(const char* filename)
 	}
 }
 
-void IDX::append(const char* filename)
+template<typename T>
+template<typename OtherType>
+void IDX<T>::loadData(ifstream& in)
 {
-	append(IDX(filename));
+	_data.resize(num_data);
+
+	//get each _data item
+	for(int i = 0; i < num_data; i++)
+	{
+		_data[i].resize(flatsize);
+		for(int j = 0; j < flatsize; j++)
+			_data[i][j] = (T)read<OtherType>(in);
+		if(in.eof())
+			throw notEnoughDataException;
+	}
 }
-IDX& IDX::operator+=(const IDX& other)
+
+template<typename T>
+void IDX<T>::append(const char* filename)
+{
+	append(IDX<T>(filename));
+}
+
+template<typename T>
+IDX<T>& IDX<T>::operator+=(const IDX<T>& other)
 {
 	append(other);
 	return *this;
 }
-void IDX::append(const IDX& other)
+
+template<typename T>
+void IDX<T>::append(const IDX<T>& other)
 {
 	checkType(type);
 	checkType(other.type);
 	if(!checkDimsWithMe(other))
 		throw inconsistentDimsException;
 
+
 	//add to num_data
 	num_data += other.num_data;
 
-	//read in data
-	if(type == 0x08)
-		appendData<unsigned char>(other);
-	else if(type == 0x09)
-		appendData<char>(other);
-	else if(type == 0x0B)
-		appendData<short>(other);
-	else if(type == 0x0C)
-		appendData<int>(other);
-	else if(type == 0x0D)
-		appendData<float>(other);
-	else if(type == 0x0E)
-		appendData<double>(other);
-}
-
-template<typename MyType>
-void IDX::appendData(const IDX& other)
-{
-	if(other.type == 0x08)
-		appendData<unsigned char, MyType>(other);
-	else if(other.type == 0x09)
-		appendData<char, MyType>(other);
-	else if(other.type == 0x0B)
-		appendData<short, MyType>(other);
-	else if(other.type == 0x0C)
-		appendData<int, MyType>(other);
-	else if(other.type == 0x0D)
-		appendData<float, MyType>(other);
-	else if(other.type == 0x0E)
-		appendData<double, MyType>(other);
-}
-
-template<typename OtherType, typename MyType>
-void IDX::appendData(const IDX& other)
-{
-	vector<vector<MyType> > *myData = (vector<vector<MyType> > *)data;
-	vector<vector<OtherType> > *otherData = (vector<vector<OtherType> > *)other.data;
-
-	size_t oldSize = myData->size();
-	myData->resize(num_data); //should never be smaller than before
-	for(int m = oldSize, o = 0; m < num_data; m++, o++)
+	size_t oldSize = _data.size();
+	_data.resize(num_data);
+	for(size_t m = oldSize, o = 0; m < num_data; m++, o++)
 	{
-		myData->at(m).resize(flatsize);
-		for(int j = 0; j < flatsize; j++)
-			myData->at(m)[j] = otherData->at(o)[j];
+		_data[m].resize(flatsize);
+		for(size_t j = 0; j < flatsize; j++)
+			_data[m][j] = other._data[o][j];
 	}
 }
 
-
-void IDX::getDims(vector<int32_t>& dest) const
+template<typename T>
+void IDX<T>::getDims(vector<int32_t>& dest) const
 {
 	dest = dims;
 }
-int32_t IDX::getNumData() const
+
+template<typename T>
+int32_t IDX<T>::getNumData() const
 {
 	return num_data;
 }
 
-bool IDX::checkDimsWithMe(const IDX& other)
+template<typename T>
+bool IDX<T>::checkDimsWithMe(const IDX<T>& other)
 {
 	bool good = dims.size() == other.dims.size();
 	if(!good) 
@@ -177,32 +208,30 @@ bool IDX::checkDimsWithMe(const IDX& other)
 	return true;
 }
 
-template<typename T, typename OtherType>
-void IDX::loadData(ifstream& in)
+template<typename T>
+void IDX<T>::write(const char* filename)
 {
-	data.resize(num_data)
-
-	//get each data item
-	for(int i = 0; i < num_data; i++)
-	{
-		data[i].resize(flatsize);
-		for(int j = 0; j < flatsize; j++)
-			data[i][j] = (T)read<OtherType>(in);
-		if(in.eof())
-			throw notEnoughDataException;
-	}
-}
-
-void IDX::write(const char* filename)
-{
-	checkType(this->type);
-	write(filename,this->type);
+	write<T>(filename);
 }
 
 template<typename T>
-void IDX::write(const char* filename, unsigned char type)
+void IDX<T>::write(const string& filename)
 {
-	//check type for validity, also if this->type is not valid it means an IDX hasn't been loaded
+	write<T>(filename.c_str());
+}
+
+template<typename T>
+template<typename OutType>
+void IDX<T>::write(const string& filename)
+{
+	write<OutType>(filename.c_str());
+}
+
+template<typename T>
+template<typename OutType>
+void IDX<T>::write(const char* filename)
+{
+	//if this->type is not valid it means an IDX hasn't been loaded
 	checkType(type);
 
 	//open ofstream
@@ -211,34 +240,34 @@ void IDX::write(const char* filename, unsigned char type)
 	//write magic number (0, 0, type, num_dims)
 	out.put(0);
 	out.put(0);
-	out.put(type);
+	writeType<OutType>(out); // specializations of the template write the correct one
 	out.put(num_dims);
 
 	//write dims as Big Endian Int
 	for(int j = 24; j >= 0; j-=8)
 		out.put(num_data >> j);
-	for(size_t i = 0; i < dims.size(); i++)
+	for(size_t i = 0; i < num_dims-1; i++)
 		for(int j = 24; j >= 0; j-=8)
 			out.put(dims[i] >> j);
 
-	//write data
-	if(type == IDX_UCHAR)
-		writeData<unsigned char>(out,type);
-	else if(type == IDX_CHAR)
-		writeData<char>(out,type);
-	else if(type == IDX_SHORT)
-		writeData<short>(out,type);
-	else if(type == IDX_INT)
-		writeData<int>(out,type);
-	else if(type == IDX_FLOAT)
-		writeData<float>(out,type);
-	else if(type == IDX_DOUBLE)
-		writeData<double>(out,type);
-	//should never be an else due to check at the top
+	//write _data
+	for(int i = 0; i < _data.size(); i++)
+		for(int j = 0; j < _data[i].size(); j++)
+		{
+			OutType dat = (OutType)_data[i][j];
+			out.write(reinterpret_cast<const char *>(&dat),sizeof(OutType));
+		}
 }
 
 template<typename T>
-void addMat(const Mat& mat)
+template<typename OutType>
+void IDX<T>::writeType(ofstream& out)
+{
+	TypeWriter<OutType>::write(out);
+}
+
+template<typename T>
+void IDX<T>::addMat(const Mat& mat)
 {
 	unsigned char chans = 1 + (mat.type() >> CV_CN_SHIFT);
 	if(dims.size() != 3)
@@ -246,109 +275,143 @@ void addMat(const Mat& mat)
 	if(chans != dims[2] || mat.rows != dims[1] || mat.cols != dims[0])
 		throw inconsistentDimsException;
 
-	data.push_back(vector<vector<T> >(flatsize));
+	_data.push_back(vector<T>(flatsize));
 
 	int i = 0;
 	for(int y = 0; y < mat.rows; y++)
 		for(int x = 0; x < mat.cols; x++)
 		{
-			const Vec3b& pix = mat.at(x,y);
-			data.back()[i++] = (T)pix[2];
-			data.back()[i++] = (T)pix[1];
-			data.back()[i++] = (T)pix[0];
-		}
-
-	// //write data
-	// if(this->type == 0x08)
-	// 	addMatData<char>(mat);
-	// else if(this->type == 0x09)
-	// 	addMatData<unsigned char>(mat);
-	// else if(this->type == 0x0B)
-	// 	addMatData<short>(mat);
-	// else if(this->type == 0x0C)
-	// 	addMatData<int>(mat);
-	// else if(this->type == 0x0D)
-	// 	addMatData<float>(mat);
-	// else if(this->type == 0x0E)
-	// 	addMatData<double>(mat);
-}
-
-// template<typename T>
-// void addMatData(const Mat& mat)
-// {
-// 	data.push_back(vector<vector<T> >(flatsize));
-
-// 	int i = 0;
-// 	for(int y = 0; y < mat.rows; y++)
-// 		for(int x = 0; x < mat.cols; x++)
-// 		{
-// 			const Vec3b& pix = mat.at(x,y);
-// 			data.back()[i++] = (T)pix[2];
-// 			data.back()[i++] = (T)pix[1];
-// 			data.back()[i++] = (T)pix[0];
-// 		}
-// }
-
-// template<typename T, typename OutType>
-// void IDX::writeData(ofstream& out, uint8_t outType)
-// {
-// 	//write data
-// 	if(outType == 0x08)
-// 		writeData<char, OutType>(out);
-// 	else if(outType == 0x09)
-// 		writeData<unsigned char, OutType>(out);
-// 	else if(outType == 0x0B)
-// 		writeData<short, OutType>(out);
-// 	else if(outType == 0x0C)
-// 		writeData<int, OutType>(out);
-// 	else if(outType == 0x0D)
-// 		writeData<float, OutType>(out);
-// 	else if(outType == 0x0E)
-// 		writeData<double, OutType>(out);
-// }
-
-template<typename OutType>
-void IDX::writeData(ofstream& out)
-{
-	for(int i = 0; i < data.size(); i++)
-		for(int j = 0; j < data[i].size(); j++)
-		{
-			OutType dat = (OutType)data[i][j];
-			out.write(reinterpret_cast<const char *>(&dat),sizeof(OutType));
+			const Vec3b& pix = mat.at<Vec3b>(x,y);
+			_data.back()[i++] = (T)pix[2];
+			_data.back()[i++] = (T)pix[1];
+			_data.back()[i++] = (T)pix[0];
 		}
 }
 
-void IDX::checkType(uint8_t type)
+template<typename T>
+void IDX<T>::checkType(uint8_t type)
 {
 	if(type == 0x08 || type ==0x09 || (0x0B <= type && type <= 0x0E))
 		return;
 	throw badTypeDimsException;
 }
 
-void IDX::printMetaData() const
+template<typename T>
+void IDX<T>::printMetaData() const
 {
 	stringstream ss;
 	ss << "Filename: " << filename << endl;
 	ss << "Type: 0x" << setfill('0') << setw(2) << std::hex << (int)type << std::dec << endl;
 	ss << "Num Data: " << num_data << endl;
-	ss << "Dims:" << endl;
-	for(int i = 0; i < dims.size(); i++)
-		ss << "\t" << dims[i] << endl;
+	if(dims.size() > 0)
+	{
+		ss << "Dims:" << endl;
+		for(int i = 0; i < dims.size(); i++)
+			ss << "\t" << dims[i] << endl;
+	}
+	else
+		ss << "Dims: each item is one element" << endl;
 	printf("%s\n", ss.str().c_str());
 }
 
-
+template<typename T>
 template<typename ReadType>
-ReadType IDX::read(ifstream& in)
+ReadType IDX<T>::read(ifstream& in)
 {
 	ReadType num;
 	in.read((char*)&num,sizeof(ReadType));
 	return num;
 }
-int IDX::readBigEndianInt(ifstream& in)
+template<typename T>
+int IDX<T>::readBigEndianInt(ifstream& in)
 {
 	int32_t out = 0;
 	for(int i=3; i >= 0; i--)
 		out |= (read<uint8_t>(in) << 8*(i));
 	return out;
 }
+
+template class IDX<unsigned char>;
+template class IDX<char>;
+template class IDX<short>;
+template class IDX<int>;
+template class IDX<float>;
+template class IDX<double>;
+
+template void IDX<unsigned char>::write<unsigned char>(const string& filename);
+template void IDX<unsigned char>::write<unsigned char>(const char* filename);
+template void IDX<unsigned char>::write<char>(const string& filename);
+template void IDX<unsigned char>::write<char>(const char* filename);
+template void IDX<unsigned char>::write<short>(const string& filename);
+template void IDX<unsigned char>::write<short>(const char* filename);
+template void IDX<unsigned char>::write<int>(const string& filename);
+template void IDX<unsigned char>::write<int>(const char* filename);
+template void IDX<unsigned char>::write<float>(const string& filename);
+template void IDX<unsigned char>::write<float>(const char* filename);
+template void IDX<unsigned char>::write<double>(const string& filename);
+template void IDX<unsigned char>::write<double>(const char* filename);
+
+template void IDX<char>::write<unsigned char>(const string& filename);
+template void IDX<char>::write<unsigned char>(const char* filename);
+template void IDX<char>::write<char>(const string& filename);
+template void IDX<char>::write<char>(const char* filename);
+template void IDX<char>::write<short>(const string& filename);
+template void IDX<char>::write<short>(const char* filename);
+template void IDX<char>::write<int>(const string& filename);
+template void IDX<char>::write<int>(const char* filename);
+template void IDX<char>::write<float>(const string& filename);
+template void IDX<char>::write<float>(const char* filename);
+template void IDX<char>::write<double>(const string& filename);
+template void IDX<char>::write<double>(const char* filename);
+
+template void IDX<short>::write<unsigned char>(const string& filename);
+template void IDX<short>::write<unsigned char>(const char* filename);
+template void IDX<short>::write<char>(const string& filename);
+template void IDX<short>::write<char>(const char* filename);
+template void IDX<short>::write<short>(const string& filename);
+template void IDX<short>::write<short>(const char* filename);
+template void IDX<short>::write<int>(const string& filename);
+template void IDX<short>::write<int>(const char* filename);
+template void IDX<short>::write<float>(const string& filename);
+template void IDX<short>::write<float>(const char* filename);
+template void IDX<short>::write<double>(const string& filename);
+template void IDX<short>::write<double>(const char* filename);
+
+template void IDX<int>::write<unsigned char>(const string& filename);
+template void IDX<int>::write<unsigned char>(const char* filename);
+template void IDX<int>::write<char>(const string& filename);
+template void IDX<int>::write<char>(const char* filename);
+template void IDX<int>::write<short>(const string& filename);
+template void IDX<int>::write<short>(const char* filename);
+template void IDX<int>::write<int>(const string& filename);
+template void IDX<int>::write<int>(const char* filename);
+template void IDX<int>::write<float>(const string& filename);
+template void IDX<int>::write<float>(const char* filename);
+template void IDX<int>::write<double>(const string& filename);
+template void IDX<int>::write<double>(const char* filename);
+
+template void IDX<float>::write<unsigned char>(const string& filename);
+template void IDX<float>::write<unsigned char>(const char* filename);
+template void IDX<float>::write<char>(const string& filename);
+template void IDX<float>::write<char>(const char* filename);
+template void IDX<float>::write<short>(const string& filename);
+template void IDX<float>::write<short>(const char* filename);
+template void IDX<float>::write<int>(const string& filename);
+template void IDX<float>::write<int>(const char* filename);
+template void IDX<float>::write<float>(const string& filename);
+template void IDX<float>::write<float>(const char* filename);
+template void IDX<float>::write<double>(const string& filename);
+template void IDX<float>::write<double>(const char* filename);
+
+template void IDX<double>::write<unsigned char>(const string& filename);
+template void IDX<double>::write<unsigned char>(const char* filename);
+template void IDX<double>::write<char>(const string& filename);
+template void IDX<double>::write<char>(const char* filename);
+template void IDX<double>::write<short>(const string& filename);
+template void IDX<double>::write<short>(const char* filename);
+template void IDX<double>::write<int>(const string& filename);
+template void IDX<double>::write<int>(const char* filename);
+template void IDX<double>::write<float>(const string& filename);
+template void IDX<double>::write<float>(const char* filename);
+template void IDX<double>::write<double>(const string& filename);
+template void IDX<double>::write<double>(const char* filename);
