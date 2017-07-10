@@ -147,7 +147,15 @@ int getMSI(string filename)
 	if(nextUnderscore == string::npos)
 		nextUnderscore = filename.find(".",startMSIIndex);
 	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
-	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
+	int ret = -1;
+	try{
+		ret = stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
+	}
+	catch(...)
+	{
+		printf("stoi failed on input '%s' for filename '%s'\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str(),filename.c_str());
+	}
+	return ret;
 }
 
 void readInOriginalFilenames(const string& original_image_folder)
@@ -242,6 +250,15 @@ int getMaxIndex(const Vec3b& pix)
 	if(pix[1] > pix[2])
 		return 1;
 	return 2;
+}
+
+bool containsPointIn(const vector<KeyPoint>& keypoints, const Box& box, int borderSize = 0)
+{
+	Rect rect(box.x + borderSize, box.y + borderSize, box.w, box.h);
+	for(const KeyPoint& point : keypoints)
+		if(point.pt.inside(rect))
+			return true;
+	return false;
 }
 
 //returns species_id of what the pixel matches
@@ -492,6 +509,48 @@ int main(int argc, char** argv)
 		//calculate # obs that match (white and blue)
 		if(numBoxes != 0) // if no boxes, matching and blackout aren't needed. But background misclassify checking is
 		{
+			//do blob detector
+			Mat bordered, hsv_im, low, high;
+
+			int b = 5;
+			copyMakeBorder(im,bordered,b,b,b,b,BORDER_CONSTANT,Scalar(255,0,0));
+			medianBlur(bordered,bordered,3);
+			cvtColor(bordered,hsv_im,COLOR_BGR2HSV);
+
+			//get red part of image
+			inRange(hsv_im, Scalar(0,50,50),Scalar(30,255,255),low);
+			inRange(hsv_im, Scalar(130,50,50),Scalar(179,255,255),high);
+
+			//copy-convert image to B/W where black is where the red was. This helps with the blob detector.
+			Mat redOnly;
+			addWeighted(low, 1., high, 1., 0., redOnly);
+			bitwise_not(redOnly,redOnly);
+
+			//copy-convert image to B/W where black is where the green was
+			Mat greenOnly;
+			inRange(hsv_im, Scalar(45,50,50),Scalar(75,255,255),greenOnly);
+			bitwise_not(greenOnly,greenOnly);
+
+			//run the detector
+			SimpleBlobDetector::Params params;
+			params.filterByColor = true;
+			params.blobColor = 0;
+			params.filterByInertia = false;
+			params.filterByArea = false;
+			params.filterByCircularity = false;
+			params.filterByConvexity = false;
+
+			vector<KeyPoint> redkeypoints, greenkeypoints;
+			#if CV_MAJOR_VERSION < 3
+			SimpleBlobDetector detector(params);
+			detector.detect(redOnly, redkeypoints);
+			detector.detect(greenOnly, greenkeypoints);
+			#else
+			Ptr<SimpleBlobDetector> detector = SimpleBlobDetector::create(params);
+			detector->detect(redOnly, redkeypoints);
+			detector->detect(greenOnly, greenkeypoints);
+			#endif
+
 			// printf("start box matching\n");
 			for(int i = 0; i < numBoxes; i++)
 			{
@@ -511,20 +570,36 @@ int main(int argc, char** argv)
 				// printf("Box %d: x %d y %d ex %d ey %d w %d h %d\n", i,box.x,box.y,box.ex,box.ey,box.w,box.h);
 				// cout<< box.toString() << endl;
 				int size = box.w * box.h;
-				unordered_map<int,int> phaseCount({{WHITE_PHASE,0},{BLUE_PHASE,0},{BACKGROUND,0}});
-				for(int x = box.x; x < box.ex; x++)
-					for(int y = box.y; y < box.ey; y++)
-						phaseCount[match(im.at<Vec3b>(y,x))]++;
+				// unordered_map<int,int> phaseCount({{WHITE_PHASE,0},{BLUE_PHASE,0},{BACKGROUND,0}});
+				// for(int x = box.x; x < box.ex; x++)
+				// 	for(int y = box.y; y < box.ey; y++)
+				// 		phaseCount[match(im.at<Vec3b>(y,x))]++;
 
 
-				if(box.species_id == WHITE_PHASE && (float)phaseCount[WHITE_PHASE]/size > MATCHING_PERCENT)
+				// if(box.species_id == WHITE_PHASE && (float)phaseCount[WHITE_PHASE]/size > MATCHING_PERCENT)
+				// 	locations[msi].boxes[i].matched = true;
+				// else if(box.species_id == WHITE_PHASE)
+				// {
+				// 	missedBoxes.push_back(locations[msi].boxes[i]);
+				// 	missedBoxMSIs.push_back(msi);
+				// }
+				// if(box.species_id == BLUE_PHASE && (float)phaseCount[BLUE_PHASE]/size > MATCHING_PERCENT)
+				// 	locations[msi].boxes[i].matched = true;
+				// else if(box.species_id == BLUE_PHASE)
+				// {
+				// 	missedBoxes.push_back(locations[msi].boxes[i]);
+				// 	missedBoxMSIs.push_back(msi);
+				// }
+
+
+				if(box.species_id == WHITE_PHASE && containsPointIn(redkeypoints,box,b))
 					locations[msi].boxes[i].matched = true;
 				else if(box.species_id == WHITE_PHASE)
 				{
 					missedBoxes.push_back(locations[msi].boxes[i]);
 					missedBoxMSIs.push_back(msi);
 				}
-				if(box.species_id == BLUE_PHASE && (float)phaseCount[BLUE_PHASE]/size > MATCHING_PERCENT)
+				if(box.species_id == BLUE_PHASE && containsPointIn(greenkeypoints,box,b))
 					locations[msi].boxes[i].matched = true;
 				else if(box.species_id == BLUE_PHASE)
 				{
@@ -935,7 +1010,7 @@ int main(int argc, char** argv)
 		ratio->second /= total_background_count;
 		ratio->second *= 100;
 
-		printf("   Species %7d: Percent BG classifed as species - %3.2lf%%\n", ratio->first, ratio->second);
+		printf("   Species %7d: Percent BG classifed as this species - %3.4lf%%\n", ratio->first, ratio->second);
 	}
 	printf("Percentage of all pixels that are BG: %.2lf%%\n", 100.0 * total_background_count/total_pixel_count);
 
