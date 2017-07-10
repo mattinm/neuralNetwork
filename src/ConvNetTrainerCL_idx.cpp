@@ -193,7 +193,7 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 	// cout << retval << endl;
 
 	//show image and trueVal
-	if(showImages && retval == "-1")
+	if(showImages)// && retval == "2")
 	{
 		Mat show(x,y,CV_8UC3);
 		for(int i = 0; i < x; i++)
