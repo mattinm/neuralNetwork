@@ -105,12 +105,7 @@ int main(int argc, char** argv)
 		params.filterByColor = true;
 		params.blobColor = 0;
 		params.filterByInertia = false;
-		// params.minInertiaRatio = 0;
-		// params.maxInertiaRatio = 1;
 		params.filterByArea = false;
-		params.minArea = 0;
-		params.maxArea = 300;
-
 		params.filterByCircularity = false;
 		params.filterByConvexity = false;
 
