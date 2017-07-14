@@ -99,25 +99,15 @@ __kernel void maxPool(__global double* prevNeurons, __global double* neurons,
 __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
 {
-	//int myHeight = myBlock/numBlocksPerRow;
-	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
-	//int myRowShift = (myBlock%numBlocksPerRow) * strxdep;
-
-	//int width = prevwidth;
-	//int depth = prevdepth;
-
 	int i = get_global_id(0);
 	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	
-	//int myFilter = i/(numBlocksPerRow * numBlocksPerRow);
 	int myFilter = i%numFilters;
 	int filterLayerSize = filterSize * prevdepth;
 	int j = myFilter * filterSize * filterLayerSize; // myFilterStartIndex
 	int myBlock = (i/numFilters) % (numBlocksPerRow*numBlocksPerRow);//numBlocksCanFitInSource;
 	
 	int strxdep = stride * prevdepth;
-	//int myStartIndex = ((myBlock/numBlocksPerRow) * width * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
-	//int h = myStartIndex;
 	int h = ((myBlock/numBlocksPerRow) * prevwidth * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
 
 	int amountToNextLayer = (prevwidth - filterSize) * prevdepth;
@@ -132,20 +122,15 @@ __kernel void convolve(__global double* prevNeurons, __global double* neurons,
 		{
 			//result += weights[j++] * prevNeurons[h++];
 			result += *(curWeight++) * prevNeurons[h++];
-			// result = mad(*(curWeight++),prevNeurons[h++],result);
 		}
 		h += amountToNextLayer;
 	}
-	//printf("numFil: %d id: %d myBlock: %d\n",numFilters,get_global_id(0), myBlock);
-	//printf("In convolve. Global id = %d\n\tmyFilter = %d\n\tresult = %f\n",i,myFilter,result);
+	
 	neurons[i] = result + biases[myFilter];
 }
 
 __kernel void convolveConstant(__global double* prevNeurons, __global double* neurons,
 	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
-// __kernel void convolveConstant(__global double* prevNeurons, __global double* neurons,
-// 	__constant double* weights, __constant double* biases, int numFilters, int filterSize, int strxdep, 
-// 	int prevwidth, int amountToNextLayer, int filterLayerSize, int numBlocksPerRow)
 {
 	//int myHeight = myBlock/numBlocksPerRow;
 	//int myRowStartIndex = (myBlock/numBlocksPerRow) * width * strxdep;
@@ -207,7 +192,7 @@ __kernel void softmax_allCL(__global double *prevNeurons, __global double *neuro
 __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, int pad, int prevwidth,
 	int prevheight, int depth)
 {
-	int x = get_global_id(0);
+	const int x = get_global_id(0);
 
 	//turn x into i, j, k
 	const int nw = prevwidth + 2*pad;

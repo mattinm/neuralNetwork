@@ -24,7 +24,7 @@
 
 // END DEFINES
 
-double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell
+double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell. Used because exp is implemented differently on different machines
     bool is_negative = z < 0;
     if (is_negative) z = -z;
 
@@ -830,17 +830,12 @@ __kernel void batch_norm_run(__global double* prevNeurons, __global double* neur
 	int k = x;
 	if(depth > 0)
 		k = x % depth;
-	// printf("bnr e %lf, var %lf\n", e[k], var[k]);
 	double rootVarPlusEps = pow(var[k] + EPSILON,0.5);
 	double gam = gamma[k];
-	// if(var[k] < 0) printf("why?\n");
 	double front = gam * prevNeurons[x] / rootVarPlusEps;
 	double back = beta[k] - gam * e[k] / rootVarPlusEps;
-	// if(isnan(prevNeurons[x])) printf("nan px\n");
 
 	neurons[x] = front + back;
-	
-	// if(isnan(neurons[x])) printf("nan y\n");
 }
 
 __kernel void batch_norm(__global double* prevNeurons, __global double* neurons, const __global double* gamma, const __global double* beta, 
@@ -851,11 +846,8 @@ __kernel void batch_norm(__global double* prevNeurons, __global double* neurons,
 	if(depth > 0)
 		k = x % depth;
 	double xhat = (prevNeurons[x] - mu[k])/pow(sigma_squared[k] + EPSILON, 0.5);
-	// printf("index: %d x: %lf gamma: %lf beta: %lf mu: %lf sigma2: %lf depth: %d xhat: %lf y: %lf\n", x,prevNeurons[x],gamma[k],beta[k],mu[k],sigma_squared[k],depth,xhat,gamma[k] * xhat + beta[k]);
-	// if(x == 0)
-	// 	printf("xhat[0] gpu: %lf\n",xhat);
+
 	neurons[x] = gamma[k] * xhat + beta[k];	
-	// neurons[x] = gamma[k] * prevNeurons[x] + beta[k];
 }
 
 __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dNeurons, int depth, __global double* gamma, __global double* mu, 
@@ -872,6 +864,7 @@ __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dN
 		+ delta_mu[k]) / minibatch_size;
 	prevdNeurons[i] = delta_x;
 
+	//rough approximation
 	// prevdNeurons[i] = 1.0 / pow(sigma2[k] + EPSILON, 0.5) * delta_xhat;
 	// printf("index: %d sigma2: %lf gamma: %lf depth: %d -- dn %lf -> pdn %lf\n", i, sigma2[k], gamma[k], depth, dNeurons[i], prevdNeurons[i]);
 	// prevdNeurons[i] = dNeurons[i] * gamma[k];
@@ -880,9 +873,6 @@ __kernel void batch_norm_back(__global double* prevdNeurons, __global double* dN
 __kernel void update_gamma_and_beta(__global double* gamma, __global double* beta, __global double* delta_gamma, __global double* delta_beta, double stepSize)
 {
 	int i = get_global_id(0);
-	// double og = gamma[i], ob = beta[i];
 	gamma[i] -= delta_gamma[i] * stepSize;
 	beta[i] -= delta_beta[i] * stepSize;
-
-	// printf("index: %d og: %lf ng: %lf ob: %lf nb: %lf --- dg: %lf db: %lf\n", i, og, gamma[i], ob, beta[i], delta_gamma[i], delta_beta[i]);
 }
