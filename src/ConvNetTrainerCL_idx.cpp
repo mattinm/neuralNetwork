@@ -449,6 +449,8 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	// printf("%s %s\n", train_data_path.c_str(), train_label_path.c_str());
+
 	/**************************
 	*
 	* get all training metadata and set up for reading in images
@@ -462,6 +464,17 @@ int main(int argc, char** argv)
 		printf("Getting training metadata\n");
 		training_label_in.open(train_label_path.c_str());
 		training_data_in.open(train_data_path.c_str());
+
+		if(!training_label_in.is_open())
+		{
+			printf("Unable to open labels at '%s'\n", train_label_path.c_str());
+			return 1;
+		}
+		if(!training_data_in.is_open())
+		{
+			printf("Unable to open data at '%s'\n", train_data_path.c_str());
+			return 1;
+		}
 
 		//NOTE: the numDims includes the number of images, so x amount of rgb images would have a numDims of 4
 		int train_data_dataType, train_data_numDims, train_label_dataType, train_label_numDims;
@@ -485,10 +498,12 @@ int main(int argc, char** argv)
 		for(int i = 0; i < train_data_numDims - 1; i++)
 			trainDims[i] = readBigEndianInt(training_data_in);
 
+		printf("Train_label num dims = %d\n",train_label_numDims);
 		train_label_dims.resize(train_label_numDims - 1);
 		// printf("train label num dims == %d\n", train_label_numDims);
 		for(int i = 0; i < train_label_numDims - 1; i++)
 			train_label_dims[i] = readBigEndianInt(training_label_in);
+		// printf("done\n");
 	}
 
 	/**************************
