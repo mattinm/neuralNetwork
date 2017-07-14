@@ -139,8 +139,8 @@ void Net::destroy()
 			if(point->layerType == CONV_LAYER)
 			{
 				ConvLayer* conv = (ConvLayer*)point;
-				delete conv->weights;
-				delete conv->biases;
+				delete[] conv->weights;
+				delete[] conv->biases;
 			}
 			delete point;
 		}
@@ -603,7 +603,8 @@ bool Net::addConvLayer(int numFilters, int stride, int filterSize, int pad, cons
 	conv->numWeights = filterSize * filterSize * prevDepth * numFilters;
 	conv->weights = new double[conv->numWeights];
 	conv->biases = new double[conv->numBiases];
-	if(weightsAndBiases.find("random") != string::npos)
+	// if(weightsAndBiases.find("random") != string::npos)
+	if(weightsAndBiases == "random")
 		initRandomWeights(conv, prevDepth);
 	else
 		initWeights(conv, weightsAndBiases);
@@ -1951,6 +1952,7 @@ void Net::trainSetup(vector<cl_mem>& layerNeeds, vector<cl_mem>& velocities)
 	setupLayerNeeds(layerNeeds);
 	if(__useMomentum)
 		initVelocities(velocities);
+	delete[] name;
 
 }
 
@@ -2017,6 +2019,7 @@ void Net::trainSetup()
  	//set some softmax related args that won't change
  	clSetKernelArg(maxSubtractionKernel, 1, sizeof(int), &(__neuronSizes.back()));
  	clSetKernelArg(vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
+ 	delete[] name;
 }
 
 /*****************************
@@ -2820,7 +2823,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 * Private
 *
 *****************************/
-void Net::feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, vector<vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons,
+void Net::feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, const int start, const int end, vector<vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons,
 	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k)
 {
 	// printf("Thread %d: doing items [%d,%d)\n", thread_num,start,end);
@@ -3007,9 +3010,9 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 		CheckError(clEnqueueReadBuffer(queue, **neurons, CL_TRUE, 0, sizeof(double) * __neuronSizes.back(),
 		 	__confidences[start + a].data(), 0, nullptr, nullptr));
 
-		stringstream ss;
-		for(int c = 0; c < __confidences[start + a].size(); c++)
-			ss << __confidences[start + a][c] << ", ";
+		// stringstream ss;
+		// for(int c = 0; c < __confidences[start + a].size(); c++)
+		// 	ss << __confidences[start + a][c] << ", ";
 		// printf("%d.%d: conf %s\n", thread_num, a, ss.str().c_str());
 
 
@@ -4478,20 +4481,8 @@ void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& threa
 	beta.resize(numBNLayers);
 
 	//have same number of mus and sigmas as we do gammas and betas
-	mu.resize(numBNLayers);
 	mu_cl.resize(numBNLayers);
-	sigma_squared.resize(numBNLayers);
 	sigma_squared_cl.resize(numBNLayers);
-
-	bn_x.resize(num_threads);
-	for(int t = 0; t < num_threads; t++)
-	{
-		bn_x[t].resize(thread_sizes[t]);
-		for(int a = 0; a < thread_sizes[t]; a++)
-		{
-			bn_x[t][a].resize(numBNLayers);
-		}
-	}
 
 	int curBNLayer = 0;
 	int maxsize = 0;
@@ -4500,39 +4491,23 @@ void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& threa
 		if(__layers[i]->layerType == BATCH_NORM_LAYER)
 		{
 			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
-			vector<double> zeros(batch->gamma.size(),0);
-			// if(batch->gamma.size() > maxsize)
-			// 	maxsize = batch->gamma.size();
 			if(__neuronSizes[i] > maxsize)
 				maxsize = __neuronSizes[i];
 			//size of gamma and beta is given by the BatchNormLayer->gamma/beta.size()
 			gamma[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->gamma.data(), &error); CheckError(error);
 			beta[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->beta.size(), batch->beta.data(), &error); CheckError(error);
 
-			mu[curBNLayer].resize(batch->gamma.size());
-			sigma_squared[curBNLayer].resize(batch->gamma.size());
 			mu_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->e.data(), &error); CheckError(error);
 			sigma_squared_cl[curBNLayer] = clCreateBuffer(__context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(double) * batch->gamma.size(), batch->var.data(), &error); CheckError(error);
-
-			for(int t = 0; t < num_threads; t++)
-			{
-				for(int a = 0; a < thread_sizes[t]; a++)
-				{
-					bn_x[t][a][curBNLayer].resize(__neuronSizes[i]);
-				}
-			}
 
 			curBNLayer++;
 		}
 	}
-	vector<mutex> temp(maxsize);
-	mtx_a.swap(temp);
 
 	setupBatchNormCLMems_running_done = true;
 
 	#ifdef _DEBUG
 	printf("done\n");
-	printf("num mutexes in mtx_a is %d\n", maxsize);
 	#endif
 }
 
@@ -4576,7 +4551,6 @@ void Net::updateGammaAndBeta()
 			curBNLayer++;
 		}
 	}
-	// clFinish(queue);
 }
 
 int Net::getNumBatchNormLayers()
@@ -4597,8 +4571,6 @@ int Net::getNumBatchNormLayers()
 void Net::batchNormTrain(int batchSize, int epochs)
 {
 	setbuf(stdout, NULL);
-	// if(getNumBatchNormLayers() > 0)
-	// 	__preprocessType = __PREPROCESS_BATCH_NORM;
 	if(batchSize < 0)
 	{
 		printf("MiniBatch size must be positive. Aborting train.\n");
@@ -4622,9 +4594,6 @@ void Net::batchNormTrain(int batchSize, int epochs)
 		thread_sizes[i]++;
 	}
 
-
-	// for(int i = 0; i < thread_sizes.size(); i++)
-	// 	printf("size %d: %d\n", i,thread_sizes[i]);
 	#ifdef _DEBUG
 	printf("thread sizes set, %d\n",__isFinalized);
 	#endif
@@ -4913,15 +4882,19 @@ void Net::batchNormRun()
 	setbuf(stdout, NULL);
 
 	if(!__isTraining)
- 	{
  		__dataPointer = &__data;
- 	}
 
  	__confidences.resize(__dataPointer->size());
 
 	int batchSize = __dataPointer->size();
+	int numThreads;
 
-	int numThreads = 4;
+	cl_device_type devtype;
+	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_TYPE, sizeof(cl_device_type), &devtype, nullptr));
+	if(devtype == CL_DEVICE_TYPE_GPU)
+		numThreads = 1;
+	else
+		numThreads = 10;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
@@ -4942,7 +4915,6 @@ void Net::batchNormRun()
 
  	if(!__dataPreprocessed)
  	{
- 		// if(__preprocessIndividual)
  		if(__preprocessType == __PREPROCESS_INDIVIDUAL)
  			preprocessDataIndividual();
  		else if(__preprocessType == __PREPROCESS_COLLECTIVE)
@@ -4976,6 +4948,7 @@ void Net::batchNormRun()
 	for(int t = 0; t < numThreads; t++) //thread-ify the batch
 	{
 		end = start + thread_sizes[t];
+		assert(end  <= __dataPointer->size());
 		starts[t] = start;
 		cl_mem **pptr = &(bnrunmems.prevNeurons[t]), **nptr = &(bnrunmems.neurons[t]);
 		thr[t] = thread([=]// &kernels, &queues, &denoms]
@@ -8374,7 +8347,7 @@ void Net::initVelocities(vector<cl_mem>& velocities)
 			CheckError(error);
 		}
 	}
-	delete zeroVels;
+	delete[] zeroVels;
 }
 
 /*****************************************
@@ -8405,15 +8378,15 @@ void Net::addData(const vector<Mat>& data, bool rgb)
 {
 	//__data is class member. data is parameter
 	// cout << "Add data mat" << endl;
-	int oldSize = __data.size();
+	int curIndex = __data.size();
 	// printf("Old %d data.size %lu\n", oldSize, data.size());
 	// printf("neuron[0] %d\n", __neuronSizes[0]);
-	__data.resize(oldSize + data.size());
-	int curIndex;
-	for(int d = 0; d < data.size(); d++)
+	__data.resize(curIndex + data.size());
+	// int curIndex = oldSize;
+	for(int d = 0; d < data.size(); d++, curIndex++)
 	{
 		// printf("curIndex = %d\n",curIndex);
-		curIndex = oldSize + d;
+		// curIndex = oldSize + d;
 		__data[curIndex].resize(__neuronSizes[0]);
 		int dat = 0; 
 		for(int i = 0; i < data[d].rows; i++)
@@ -8437,7 +8410,7 @@ void Net::addData(const vector<Mat>& data, bool rgb)
 		//printf("\n");
 	}
 	// printf("__data[0][0] = %lf\n",__data[0][0]);
-	__confidences.resize(__confidences.size() + __data.size());
+	__confidences.resize(__data.size());
 	__dataPreprocessed = false;
 }
 
@@ -8466,41 +8439,40 @@ void Net::setData(const vector<imVector>& data)
 					__data[d][dat++] = data[d][i][j][k];
 	}
 	// printf("new size is %lu\n",__data.size());
-	__confidences.resize(__confidences.size() + __data.size());
 	__dataPreprocessed = false;
 }
 
 void Net::setData(const vector<Mat>& data, bool rgb)
 {
-	// clearData();
-	// addData(data,rgb);
-	int oldSize = __data.size();
-	__data.resize(data.size());
-	__confidences.resize(data.size());
-	for(int d = oldSize; d < __data.size(); d++)
-		__data[d].resize(__neuronSizes[0]);
-	for(int d = 0; d < data.size(); d++)
-	{
-		int dat = 0; 
-		for(int i = 0; i < data[d].rows; i++)
-			for(int j = 0; j < data[d].cols; j++)
-			{
-				const Vec3b& curPixel = data[d].at<Vec3b>(i,j);
-				if(rgb)
-				{
-					__data[d][dat++] = curPixel[2];
-					__data[d][dat++] = curPixel[1];
-					__data[d][dat++] = curPixel[0];
-				}
-				else
-				{
-					__data[d][dat++] = curPixel[0];
-					__data[d][dat++] = curPixel[1];
-					__data[d][dat++] = curPixel[2];
-				}
-			}
-	}
-	__dataPreprocessed = false;
+	clearData();
+	addData(data,rgb);
+	// int oldSize = __data.size();
+	// __data.resize(data.size());
+	// __confidences.resize(data.size());
+	// for(int d = oldSize; d < __data.size(); d++)
+	// 	__data[d].resize(__neuronSizes[0]);
+	// for(int d = 0; d < data.size(); d++)
+	// {
+	// 	int dat = 0; 
+	// 	for(int i = 0; i < data[d].rows; i++)
+	// 		for(int j = 0; j < data[d].cols; j++)
+	// 		{
+	// 			const Vec3b& curPixel = data[d].at<Vec3b>(i,j);
+	// 			if(rgb)
+	// 			{
+	// 				__data[d][dat++] = curPixel[2];
+	// 				__data[d][dat++] = curPixel[1];
+	// 				__data[d][dat++] = curPixel[0];
+	// 			}
+	// 			else
+	// 			{
+	// 				__data[d][dat++] = curPixel[0];
+	// 				__data[d][dat++] = curPixel[1];
+	// 				__data[d][dat++] = curPixel[2];
+	// 			}
+	// 		}
+	// }
+	// __dataPreprocessed = false;
 }
 
 // void Net::setClassNames(vector<string> names, vector<int> trueVals)
@@ -10057,8 +10029,8 @@ void Net::WeightHolder::clearWeights()
 {
 	for(int i = 0; i < weights.size(); i++)
 	{
-		delete weights[i];
-		delete biases[i];
+		delete[] weights[i];
+		delete[] biases[i];
 	}
 	weights.resize(0);
 	biases.resize(0);
