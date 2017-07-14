@@ -204,7 +204,7 @@ private: 	// structs
 
 	static int check_counter(int count);
 
-	//from https://www.daniweb.com/programming/software-development/threads/498822/c-11-thread-equivalent-of-pthread-barrier
+	//based off https://www.daniweb.com/programming/software-development/threads/498822/c-11-thread-equivalent-of-pthread-barrier
 	class spinlock_barrier
 	{
 	public:
@@ -588,7 +588,7 @@ private:	// functions
 	void updateGammaAndBeta();
 	int getNumBatchNormLayers();
 	void batchNormRun();
-	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, int start, int end, std::vector<std::vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons, 
+	void feedForward_BN_running(const int num_threads, const int minibatch_size, const int thread_num, const int start, const int end, std::vector<std::vector<double> >* __dataPointer, cl_mem** prevNeurons, cl_mem** neurons, 
 	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 	void destroyBatchNormCLMems();
 
