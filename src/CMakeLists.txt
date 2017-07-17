@@ -46,6 +46,9 @@ target_link_libraries(ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_L
 add_executable(CNNtoObserver_comparator CNNtoObserver_comparator.cpp)
 target_link_libraries(CNNtoObserver_comparator ConvNetEvent ${OpenCV_LIBS})
 
+add_executable(DataVisualizer DataVisualizer.cpp)
+target_link_libraries(DataVisualizer IDX_lib ${OpenCV_LIBS})
+
 add_executable (kernelBuilder kernelBuilder.cpp)
 target_link_libraries(kernelBuilder ${OpenCL_LIBRARIES})
 

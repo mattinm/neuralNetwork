@@ -48,7 +48,7 @@ class NonImageIDXException: public std::exception{
 };
 class IDXIndexOutOfBoundsException: public std::exception{
   virtual const char* what() const throw(){
-    return "You are trying to add an image to an IDX that is not 3 dimensions.";
+    return "The index requested is out of allocated bounds.";
   }
 };
 
