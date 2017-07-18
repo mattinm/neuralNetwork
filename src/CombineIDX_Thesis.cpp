@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 	if(argc < 6)
 	{
 		printf("./CombineIDX_Thesis original_data.idx original_labels.idx retrain_data.idx retrain_labels.idx originalPercentage outbasename\n");
-		printf("    originalPercentage is a double from 0.0 - 1.0 and is how much of the new training set should be from the original data\n");
+		printf("    originalPercentage is a double from 0.0 - 1.0 and is how much of the new training set should be from the original data. If less than 0, will do a raw combine\n");
 		printf("    outbasename is a string for a filename. Actual files will be outbasename_data.idx outbasename_label.idx\n");
 		printf("  Optional: Must come after required\n");
 		printf("    --exclude=<int> Changes label of all excluded classes to -1 (background).\n");
@@ -73,122 +73,125 @@ int main(int argc, char** argv)
 			}
 	}
 
-	//get labels in vectors for ease of use
-	vector<int> olabels, rlabels;
-	olabel_idx.getFlatData(olabels);
-	rlabel_idx.getFlatData(rlabels);
-
-	printf("got flat data\n");
-	//fix any excluded classes
-
-
-	//figure out how many of each class we have
-	printf("figure out have\n");
-	unordered_map<int, int> ohave, rhave; // how many of each class we have
-	unordered_map<int, vector<int> > olocs, rlocs; // the locations of each class
-	for(int i = 0; i < olabels.size(); i++)
+	if(originalPercentage >= 0)//if less than 0, just combine raw
 	{
-		ohave[olabels[i]]++;
-		olocs[olabels[i]].push_back(i);
-	}
-	for(int i = 0; i < rlabels.size(); i++)
-	{
-		rhave[rlabels[i]]++;
-		rlocs[rlabels[i]].push_back(i);
-	}
+		//get labels in vectors for ease of use
+		vector<int> olabels, rlabels;
+		olabel_idx.getFlatData(olabels);
+		rlabel_idx.getFlatData(rlabels);
 
-	//figure out how many of each class we need, ideally we will use all the retrain data we have
-	printf("figure out need\n");
-	unordered_map<int, int> oneed, rneed = rhave; // how many of each class we need for the final idx
-	double ratio = originalPercentage / (1 - originalPercentage);
-	for(auto it = rneed.begin(); it != rneed.end(); it++)
-	{
-		if(it->first == WHITE_PHASE) // play it special to test theory
+		printf("got flat data\n");
+		//fix any excluded classes
+
+
+		//figure out how many of each class we have
+		printf("figure out have\n");
+		unordered_map<int, int> ohave, rhave; // how many of each class we have
+		unordered_map<int, vector<int> > olocs, rlocs; // the locations of each class
+		for(int i = 0; i < olabels.size(); i++)
 		{
-			oneed[it->first] = ohave[it->first];
-			rneed[it->first] = 0;
+			ohave[olabels[i]]++;
+			olocs[olabels[i]].push_back(i);
 		}
-		else
+		for(int i = 0; i < rlabels.size(); i++)
 		{
-			oneed[it->first] = (int)(ratio * it->second);
-			//if don't have of a class in the original, that is strange and probably not right, but we will just use all of the retrain and ignore the ratio for that class
-			if(ohave[it->first] == 0) 
+			rhave[rlabels[i]]++;
+			rlocs[rlabels[i]].push_back(i);
+		}
+
+		//figure out how many of each class we need, ideally we will use all the retrain data we have
+		printf("figure out need\n");
+		unordered_map<int, int> oneed, rneed = rhave; // how many of each class we need for the final idx
+		double ratio = originalPercentage / (1 - originalPercentage);
+		for(auto it = rneed.begin(); it != rneed.end(); it++)
+		{
+			if(it->first == WHITE_PHASE) // play it special to test theory
 			{
-				printf("We have no examples of class %d in the original training set.\n", it->first);
-				oneed[it->first] = 0;
-			}
-			else if(oneed[it->first] > ohave[it->first]) // if we need more than we have for the ratio, use less rneed
-			{
-				rneed[it->first] = (int)(ohave[it->first] / ratio);
 				oneed[it->first] = ohave[it->first];
+				rneed[it->first] = 0;
 			}
-		}
-	}
-
-	//using how many we need and have, figure out how many to erase
-	printf("figure out erase\n");
-	unordered_map<int, int> oerase, rerase;
-	for(auto it = oneed.begin(); it != oneed.end(); it++)
-		oerase[it->first] = ohave[it->first] - oneed[it->first];
-	for(auto it = rneed.begin(); it != rneed.end(); it++)
-		rerase[it->first] = rhave[it->first] - rneed[it->first];
-
-	//randomly select indexes to erase
-	printf("get indexes\n");
-	vector<int> oindexes, rindexes; // need vector for IDX::erase
-	unordered_map<int, char> oused, rused; // keep track of used indexes so no duplicates
-
-	default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-	
-
-	for(auto it = oerase.begin(); it != oerase.end(); it++)
-	{
-		printf("From original: class %d - erase %d items\n", it->first, it->second);
-		uniform_int_distribution<int> dis(0,ohave[it->first] - 1); //this is inclusive on both sides, hence the -1
-		for(int i = 0; i < it->second; i++)
-		{
-			//gen rand number
-			int index;
-			do
+			else
 			{
-				// get random number in range of [0, num data for this class] then convert to actual index location
-				index = olocs[it->first][dis(gen)]; 
+				oneed[it->first] = (int)(ratio * it->second);
+				//if don't have of a class in the original, that is strange and probably not right, but we will just use all of the retrain and ignore the ratio for that class
+				if(ohave[it->first] == 0) 
+				{
+					printf("We have no examples of class %d in the original training set.\n", it->first);
+					oneed[it->first] = 0;
+				}
+				else if(oneed[it->first] > ohave[it->first]) // if we need more than we have for the ratio, use less rneed
+				{
+					rneed[it->first] = (int)(ohave[it->first] / ratio);
+					oneed[it->first] = ohave[it->first];
+				}
 			}
-			while(oused.find(index) != oused.end()); //check against used numbers
-			
-			//add to used map and index to erase vector
-			oused[index] = 1;
-			oindexes.push_back(index);
 		}
-	}
-	for(auto it = rerase.begin(); it != rerase.end(); it++)
-	{
-		printf("From retrain: class %d - erase %d items\n", it->first, it->second);
-		uniform_int_distribution<int> dis(0,rhave[it->first] - 1); //this is inclusive on both sides, hence the -1
-		for(int i = 0; i < it->second; i++)
+
+		//using how many we need and have, figure out how many to erase
+		printf("figure out erase\n");
+		unordered_map<int, int> oerase, rerase;
+		for(auto it = oneed.begin(); it != oneed.end(); it++)
+			oerase[it->first] = ohave[it->first] - oneed[it->first];
+		for(auto it = rneed.begin(); it != rneed.end(); it++)
+			rerase[it->first] = rhave[it->first] - rneed[it->first];
+
+		//randomly select indexes to erase
+		printf("get indexes\n");
+		vector<int> oindexes, rindexes; // need vector for IDX::erase
+		unordered_map<int, char> oused, rused; // keep track of used indexes so no duplicates
+
+		default_random_engine gen(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+		
+
+		for(auto it = oerase.begin(); it != oerase.end(); it++)
 		{
-			//gen rand number
-			int index;
-			do
+			printf("From original: class %d - erase %d items\n", it->first, it->second);
+			uniform_int_distribution<int> dis(0,ohave[it->first] - 1); //this is inclusive on both sides, hence the -1
+			for(int i = 0; i < it->second; i++)
 			{
-				// get random number in range of [0, num data for this class] then convert to actual index location
-				index = rlocs[it->first][dis(gen)]; 
+				//gen rand number
+				int index;
+				do
+				{
+					// get random number in range of [0, num data for this class] then convert to actual index location
+					index = olocs[it->first][dis(gen)]; 
+				}
+				while(oused.find(index) != oused.end()); //check against used numbers
+				
+				//add to used map and index to erase vector
+				oused[index] = 1;
+				oindexes.push_back(index);
 			}
-			while(rused.find(index) != rused.end()); //check against used numbers
-			
-			//add to used map and index to erase vector
-			rused[index] = 1;
-			rindexes.push_back(index);
 		}
+		for(auto it = rerase.begin(); it != rerase.end(); it++)
+		{
+			printf("From retrain: class %d - erase %d items\n", it->first, it->second);
+			uniform_int_distribution<int> dis(0,rhave[it->first] - 1); //this is inclusive on both sides, hence the -1
+			for(int i = 0; i < it->second; i++)
+			{
+				//gen rand number
+				int index;
+				do
+				{
+					// get random number in range of [0, num data for this class] then convert to actual index location
+					index = rlocs[it->first][dis(gen)]; 
+				}
+				while(rused.find(index) != rused.end()); //check against used numbers
+				
+				//add to used map and index to erase vector
+				rused[index] = 1;
+				rindexes.push_back(index);
+			}
+		}
+
+
+		//erase data
+		printf("erase\n");
+		odata_idx.erase(oindexes);
+		olabel_idx.erase(oindexes);
+		rdata_idx.erase(rindexes);
+		rlabel_idx.erase(rindexes);
 	}
-
-
-	//erase data
-	printf("erase\n");
-	odata_idx.erase(oindexes);
-	olabel_idx.erase(oindexes);
-	rdata_idx.erase(rindexes);
-	rlabel_idx.erase(rindexes);
 
 	//combine idxs
 	printf("combine\n");
