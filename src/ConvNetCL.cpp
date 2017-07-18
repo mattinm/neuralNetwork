@@ -25,6 +25,7 @@
 
 
 // #define _DEBUG 0 //uncomment for some print statements to help with debugging
+// #define _TIMINGS 0 //uncomment for some extra timings in training and running
 
 // 	includes brought in from ConvNetCL.h
 //
@@ -2860,6 +2861,9 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 		#endif
 		for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
 		{
+			#ifdef _TIMINGS
+			auto starttime = chrono::system_clock::now();
+			#endif
 			#ifdef _DEBUG
 			printf("Thread %d.%d: layer %d, type %d\n",thread_num,a,i,__layers[i]->layerType);
 			#endif
@@ -2895,12 +2899,14 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 				#ifdef _DEBUG
 				printf("Thread %d: END bn\n",thread_num);
 				#endif
+				
 			}
 			else if(__layers[i]->layerType == CONV_LAYER)
 			{
 				ConvLayer* conv = (ConvLayer*)__layers[i];
 				if(conv->padding != 0) //if we need to do padding on the input
 				{
+
 					#ifdef _DEBUG
 					printf("Thread %d: starting padding...\n",thread_num);
 					#endif
@@ -2998,6 +3004,10 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 			temp = *neurons;
 			*neurons = *prevNeurons;
 			*prevNeurons = temp;
+			#ifdef _TIMINGS
+			auto elapsed = chrono::duration_cast<chrono::microseconds>(chrono::system_clock::now() - starttime);
+			printf("Time Layer %d Type %d forward: %lld\n", i, __layers[i]->layerType, elapsed.count());
+			#endif
 			
 		}
 
@@ -4750,7 +4760,9 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			#ifdef _DEBUG
 			printf("Start threadify feedforward...");
 			#endif
+			#ifdef _TIMINGS
 			auto cstarttime = chrono::system_clock::now();
+			#endif
 			// printf("\33[2K\r");
 			// printf("Feed forward items %d of %d", start, lastTrainIndex);
 			for(int t = 0; t < numThreads; t++) //thread-ify the batch
@@ -4766,9 +4778,12 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			// printf("%d", end);
 			for(int t = 0; t < numThreads; t++)
 				thr[t].join();
+			#ifdef _TIMINGS
 			auto cendtime = chrono::system_clock::now();
 			auto elapsed = chrono::duration_cast<chrono::milliseconds>(cendtime - cstarttime);
-			// printf("Time feed forward: %lld\n",elapsed.count());
+			printf("Time feed forward: %lld\n",elapsed.count());
+			#endif
+			
 			#ifdef _DEBUG
 			printf(" feedforward joined\n");
 			#endif
@@ -4780,7 +4795,10 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			#ifdef _DEBUG
 			printf("Start threadify backprop... ");
 			#endif
+
+			#ifdef _TIMINGS
 			cstarttime = chrono::system_clock::now();
+			#endif
 			for(int t = 0; t < numThreads; t++)
 			{
 				vector<cl_mem*> *pptr = &(prevNeurons[t]), *nptr = &(neurons[t]);
@@ -4791,10 +4809,11 @@ void Net::batchNormTrain(int batchSize, int epochs)
 			// printf("post for\n");
 			for(int t = 0; t < numThreads; t++)
 				thr[t].join();
-
+			#ifdef _TIMINGS
 			cendtime = chrono::system_clock::now();
 			elapsed = chrono::duration_cast<chrono::milliseconds>(cendtime - cstarttime);
-			// cout << "Time backprop: " << elapsed.count() << endl;
+			cout << "Time backprop: " << elapsed.count() << endl;
+			#endif
 			#ifdef _DEBUG
 			printf("backprop joined\n");
 			#endif
