@@ -753,11 +753,11 @@ int main(int argc, char** argv)
 					//don't blackout boxes of excluded species
 					if(exclude.find(box.species_id) != exclude.end()) //if the species is found in exclude
 						continue;
-
-					int xstart = box.x - 10 < 0 ? 0 : box.x - 10;
-					int xend = box.ex + 10 >= im.cols ? im.cols - 1 : box.ex + 10;
-					int ystart = box.y - 10 < 0 ? 0 : box.y - 10;
-					int yend = box.ey + 10 >= im.cols ? im.rows - 1 : box.ey + 10;
+					int padding = idx_size; // 10
+					int xstart = box.x - padding < 0 ? 0 : box.x - padding;
+					int xend = box.ex + padding >= im.cols ? im.cols - 1 : box.ex + padding;
+					int ystart = box.y - padding < 0 ? 0 : box.y - padding;
+					int yend = box.ey + padding >= im.cols ? im.rows - 1 : box.ey + padding;
 					// for(int x = box.x; x < box.ex; x++)
 					// 	for(int y = box.y; y < box.ey; y++)
 					for(int x = xstart; x < xend; x++)
