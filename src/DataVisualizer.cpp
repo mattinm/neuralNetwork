@@ -14,13 +14,14 @@ int main(int argc, char** argv)
 {
 	if(argc == 1)
 	{
-		printf("Usage: ./DataVisualizer data.idx label.idx mat_width mat_height\n");
+		printf("Usage: ./DataVisualizer data.idx label.idx mat_width mat_height classNum\n");
 		return 0;
 	}
 
 	IDX<unsigned char> data_idx(argv[1]);
 	IDX<int> label_idx(argv[2]);
 	int width = atoi(argv[3]), height = atoi(argv[4]), depth = 3;
+	int classNum = atoi(argv[5]);
 
 	vector<int> labels;
 	label_idx.getFlatData(labels);
@@ -28,7 +29,7 @@ int main(int argc, char** argv)
 	assert(label_idx.getNumData() == data_idx.getNumData());
 	for(int i = labels.size() - 1; i >= 0; i--)
 	{
-		if(labels[i] != 2)
+		if(labels[i] != classNum)
 		{
 			label_idx.erase(i);
 			data_idx.erase(i);
@@ -95,7 +96,7 @@ int main(int argc, char** argv)
 			}
 		}
 		stringstream ss;
-		ss << "Image" << m << ".png";
+		ss << "Image" << classNum << '.' << m << ".png";
 		imwrite(ss.str(), mats[m]);
 	}
 
