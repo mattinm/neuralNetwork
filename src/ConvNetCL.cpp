@@ -799,6 +799,8 @@ void Net::printLayerDims() const
 			printf("Convolution   %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 		else if(__layers[i]->layerType == MAX_POOL_LAYER)
 			printf("Max Pool      %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
+		else if(__layers[i]->layerType == AVG_POOL_LAYER)
+			printf("Avg Pool      %d x %d x %d\n", __neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 		else if(__layers[i]->layerType == ACTIV_LAYER)
 		{
 			ActivLayer* act = (ActivLayer*)__layers[i];
@@ -813,7 +815,6 @@ void Net::printLayerDims() const
 				printf("BatchNorm (f) %d x %d x %d\n",__neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
 			else
 				printf("BatchNorm (a) %d x %d x %d\n",__neuronDims[i][0], __neuronDims[i][1], __neuronDims[i][2]);
-
 		}
 		else
 			printf("Unknown Layer: %d\n",__layers[i]->layerType);
@@ -1081,6 +1082,7 @@ bool Net::finalize()
 			}
 		}
 		else if (type == MAX_POOL_LAYER); //these are here so they don't catch on the else statement
+		else if (type == AVG_POOL_LAYER);
 		else if (type == ACTIV_LAYER);
 		else if (type == BATCH_NORM_LAYER);
 		else
@@ -1808,6 +1810,19 @@ void Net::feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, vector<vec
 			clSetKernelArg(k.maxPoolKernelF, 5, sizeof(int), &(pool->stride)); //stride
 			globalWorkSize[0] = (size_t)__neuronSizes[i];
 			CheckError(clEnqueueNDRangeKernel(queue, k.maxPoolKernelF, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		}
+		else if(__layers[i]->layerType == AVG_POOL_LAYER)
+		{
+			AvgPoolLayer* pool = (AvgPoolLayer*)__layers[i];
+			clSetKernelArg(k.avgPoolKernel, 0, sizeof(cl_mem), *prevNeurons);
+			clSetKernelArg(k.avgPoolKernel, 1, sizeof(cl_mem), *neurons);
+			clSetKernelArg(k.avgPoolKernel, 2, sizeof(int), &(__neuronDims[i-1][0])); //prevwidth
+			clSetKernelArg(k.avgPoolKernel, 3, sizeof(int), &(__neuronDims[i-1][2])); //prevdepth
+			clSetKernelArg(k.avgPoolKernel, 4, sizeof(int), &(pool->poolSize)); //poolsize
+			clSetKernelArg(k.avgPoolKernel, 5, sizeof(int), &(pool->stride)); //stride
+			globalWorkSize[0] = (size_t)__neuronSizes[i];
+			CheckError(clEnqueueNDRangeKernel(queue, k.avgPoolKernel, 1,
 				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 		}
 		else if(__layers[i]->layerType == ACTIV_LAYER)
@@ -2654,6 +2669,19 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 					clSetKernelArg(k.maxPoolKernel, 6, sizeof(cl_mem), &(layerNeeds[a][i])); // for maxIndexes
 					globalWorkSize[0] = (size_t)__neuronSizes[i];
 					CheckError(clEnqueueNDRangeKernel(queue, k.maxPoolKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				}
+				else if(__layers[i]->layerType == AVG_POOL_LAYER)
+				{
+					AvgPoolLayer* pool = (AvgPoolLayer*)__layers[i];
+					clSetKernelArg(k.avgPoolKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+					clSetKernelArg(k.avgPoolKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.avgPoolKernel, 2, sizeof(int), &(__neuronDims[i-1][0])); //prevwidth
+					clSetKernelArg(k.avgPoolKernel, 3, sizeof(int), &(__neuronDims[i-1][2])); //prevdepth
+					clSetKernelArg(k.avgPoolKernel, 4, sizeof(int), &(pool->poolSize)); //poolsize
+					clSetKernelArg(k.avgPoolKernel, 5, sizeof(int), &(pool->stride)); //stride
+					globalWorkSize[0] = (size_t)__neuronSizes[i];
+					CheckError(clEnqueueNDRangeKernel(queue, k.avgPoolKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 				}
 				else if(__layers[i]->layerType == ACTIV_LAYER)
@@ -3947,6 +3975,23 @@ void Net::backprop_noUpdate_BN(const int num_threads, const int minibatch_size, 
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					// cout << "kernel started" << endl;
 				}
+				else if(__layers[i]->layerType == AVG_POOL_LAYER)
+				{
+					AvgPoolLayer* pool = (AvgPoolLayer*)__layers[i];
+					clSetKernelArg(k.avgPoolBackKernel, 0, sizeof(cl_mem), (*prevNeurons)[a]);
+					clSetKernelArg(k.avgPoolBackKernel, 1, sizeof(cl_mem), (*neurons)[a]);
+					clSetKernelArg(k.avgPoolBackKernel, 2, sizeof(int), &(__neuronDims[i-1][0])); // prevwidth
+					clSetKernelArg(k.avgPoolBackKernel, 3, sizeof(int), &(__neuronDims[i][2])); //depth
+					clSetKernelArg(k.avgPoolBackKernel, 4, sizeof(int), &(pool->poolSize));
+					clSetKernelArg(k.avgPoolBackKernel, 5, sizeof(int), &(pool->stride));
+					globalWorkSize[0] = (size_t)__neuronSizes[i-1];
+					// globalWorkSize[0] = 1;
+					CheckError(clEnqueueNDRangeKernel(queue, k.avgPoolBackKernel, 1,
+						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+					// clFinish(queue);
+					// printf("total size = %d\n", __neuronSizes[i-1]);
+					// getchar();
+				}
 				else if(__layers[i]->layerType == CONV_LAYER)
 				{
 					auto cstarttime = chrono::system_clock::now();
@@ -4594,7 +4639,7 @@ void Net::batchNormTrain(int batchSize, int epochs)
 	bnClassCorrect.resize(__neuronSizes.back());
 	bnClassTotal.resize(__neuronSizes.back());
 
-	int numThreads = 10;
+	int numThreads = 12;
 	if(batchSize < numThreads)
 		numThreads = batchSize;
 	vector<int> thread_sizes(numThreads);
@@ -7202,6 +7247,8 @@ void Net::buildKernels(Kernels& k, int device)
 	k.convBackWeightsMomentKernel = clCreateKernel(CNTraining, "convolve_back_weights_moment", &error); CheckError(error);
 	k.zeroPadKernel = clCreateKernel(CNTraining, "zeroPad", &error); CheckError(error);
 	k.zeroPadBackKernel = clCreateKernel(CNTraining, "zeroPad_back", &error); CheckError(error);
+	k.avgPoolKernel = clCreateKernel(CNTraining, "avgPool", &error); CheckError(error);
+	k.avgPoolBackKernel = clCreateKernel(CNTraining, "avgPool_back", &error); CheckError(error);
 	k.maxPoolKernel = clCreateKernel(CNTraining, "maxPool", &error); CheckError(error);
 	k.maxPoolBackKernel = clCreateKernel(CNTraining, "maxPool_back", &error); CheckError(error);
 	k.softmaxKernel = clCreateKernel(CNTraining, "softmax", &error); CheckError(error);
@@ -7297,6 +7344,7 @@ Net::Kernels::~Kernels()
 	clReleaseKernel(convBackWeightsMomentKernel);
 	clReleaseKernel(zeroPadKernel);
 	clReleaseKernel(zeroPadBackKernel);
+	clReleaseKernel(avgPoolKernel);
 	clReleaseKernel(maxPoolKernel);
 	clReleaseKernel(maxPoolBackKernel);
 	clReleaseKernel(softmaxKernel);
@@ -9220,11 +9268,16 @@ bool Net::load(const char* filename)
 				//make layer
 				addActivLayer(layer_activationType);
 			}
-			else if(line == "MAX_POOL_LAYER")
+			else if(line == "MAX_POOL_LAYER" || line == "AVG_POOL_LAYER")
 			{
+				int type;
+				if(line == "MAX_POOL_LAYER")
+					type = MAX_POOL_LAYER;
+				else
+					type = AVG_POOL_LAYER;
 				int numPoolArgs = 0, pool_stride, pool_size;
 				getline(file,line); lineNum++;
-				while(line != "END_MAX_POOL_LAYER")
+				while(line != "END_MAX_POOL_LAYER" && line != "END_AVG_POOL_LAYER")
 				{
 					if(line.find("stride") != string::npos)
 					{
@@ -9252,8 +9305,10 @@ bool Net::load(const char* filename)
 					file.close();
 					return false;
 				}
-
-				addMaxPoolLayer(pool_size,pool_stride);
+				if(type == MAX_POOL_LAYER)
+					addMaxPoolLayer(pool_size,pool_stride);
+				else
+					addAvgPoolLayer(pool_size, pool_stride);
 			}
 			else if(line == "BATCH_NORM_LAYER")
 			{
@@ -9616,8 +9671,13 @@ bool Net::load(const char* filename)
 					return false;
 				}
 			}
-			else if(items[0] == "maxpool")
+			else if(items[0] == "maxpool" || items[0] == "avgpool")
 			{
+				int type;
+				if(items[0] == "maxpool")
+					type = MAX_POOL_LAYER;
+				else
+					type = AVG_POOL_LAYER;
 				int stride = -1, pool = -1, dimIndex;
 				for(int i = 1; i < items.size(); i++)
 				{
@@ -9655,10 +9715,14 @@ bool Net::load(const char* filename)
 					printf("%s\n", errors.c_str());
 					return false;
 				}
-				bool success = addMaxPoolLayer(pool, stride);
+				bool success;
+				if(type == MAX_POOL_LAYER)
+					success = addMaxPoolLayer(pool, stride);
+				else
+					success = addAvgPoolLayer(pool, stride);
 				if(!success)
 				{
-					printf("Line %d: MaxPool Layer failed to load correctly. Make sure stride fits previous layer size.\n", lineNum);
+					printf("Line %d: Pooling Layer failed to load correctly. Make sure stride fits previous layer size.\n", lineNum);
 					return false;
 				}
 				if(dims[0] != -1 && dims[1] != -1 && dims[2] != -1)
@@ -9793,6 +9857,19 @@ bool Net::save(const char* filename)
 			out += "poolSize="; out += data; out += '\n';
 
 			out += "END_MAX_POOL_LAYER\n";
+		}
+		else if(type == AVG_POOL_LAYER)
+		{
+			AvgPoolLayer *pool = (AvgPoolLayer*)__layers[l];
+			out += "AVG_POOL_LAYER\n";
+
+			sprintf(data,"%d",pool->stride);
+			out += "stride="; out += data; out += '\n';
+
+			sprintf(data,"%d",pool->poolSize);
+			out += "poolSize="; out += data; out += '\n';
+
+			out += "END_AVG_POOL_LAYER\n";
 		}
 		else if(type == ACTIV_LAYER)
 		{

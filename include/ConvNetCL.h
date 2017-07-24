@@ -170,6 +170,8 @@ private: 	// structs
 		cl_kernel convBackWeightsMomentKernel;
 		cl_kernel zeroPadKernel;
 		cl_kernel zeroPadBackKernel;
+		cl_kernel avgPoolKernel;
+		cl_kernel avgPoolBackKernel;
 		cl_kernel maxPoolKernel;
 		cl_kernel maxPoolBackKernel;
 		cl_kernel softmaxKernel;
@@ -288,7 +290,6 @@ private: 	// members
 		//training
 		bool __trainingDataPreprocessed = false;
 		bool __testDataPreprocessed = false;
-		// bool __preprocessIndividual = false;
 		int __preprocessType = __PREPROCESS_COLLECTIVE;
 		double __mean = 0;
 		double __stddev = 0;
@@ -304,30 +305,23 @@ private: 	// members
 		unsigned int __smallestClassIndex = -1;
 		std::string __saveName;
 		bool __saveNet = false;
+		std::vector<int> __trainRatioAmounts;
+		std::vector<int> __trainActualAmounts;
+
 		//running
 		bool __dataPreprocessed = false;
 		std::vector<std::vector<double> > __data; // list of<flattened images>
 		std::vector<std::vector<double> > *__dataPointer;
 		std::vector<std::vector<double> > __confidences; // image<list of confidences for each class<confidence> > 
 
-		std::vector<int> __trainRatioAmounts;
-		std::vector<int> __trainActualAmounts;
-
 		//batch norm
-		// std::atomic<int> mu_reset_done = false;
 		std::mutex mtx, gw_mtx, gb_mtx; //mutex, gradient_weights_mutex, gradient_biases_mutex;
 		std::vector<std::mutex> mtx_a;
-		// int thread_count = 0;
-		// bool mu_reset_done = false;
-
 		std::vector<std::vector<std::vector<std::vector<double> > > > bn_x, bn_xhat;
-
 		std::vector<std::vector<double> > mu, delta_mu;
 		std::vector<std::vector<double> > sigma_squared, delta_sigma2; //is delta_sigma_squared
 		std::vector<cl_mem> mu_cl, delta_mu_cl; // one cl_mem per BNLayer
 		std::vector<cl_mem> sigma_squared_cl, delta_sigma2_cl;
-
-
 		std::vector<cl_mem> gamma; // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<cl_mem> beta;  // size of numBatchNormLayers. [numBNLayer] size of cl_mem differs depending on layer
 		std::vector<std::vector<double> > delta_gamma;
@@ -363,7 +357,7 @@ private: 	// members
 		convBackBiasesKernel, convBackWeightsKernel, copyArrayKernel, convBackWeightsMomentKernel,
 		maxSubtractionKernel, vectorESumKernel, plusEqualsKernel, divideEqualsKernel,
 		zeroMemKernel, convBackWeightsNoUpdateAccumKernel, convBackBiasesNoUpdateAccumKernel, updateWeightsKernel, updateWeightsMomentKernel, updateBiasesKernel,
-		batchNormRunKernel, batchNormKernel, batchNormBackKernel, updateGammaAndBetaKernel;
+		batchNormRunKernel, batchNormKernel, batchNormBackKernel, updateGammaAndBetaKernel, avgPoolKernel, avgPoolBackKernel;
 
 	cl_command_queue queue;
 	std::vector<cl_mem> clWeights;
@@ -373,10 +367,6 @@ private: 	// members
 
 	//DE
 	int __targetSelectionMethod = DE_BEST;
-
-	//delete r1v,r2v
-	// std::vector<int> r1v, r2v;
-
 
 	std::mutex error_mtx, __program_creation_mutex;
 
@@ -458,8 +448,6 @@ public: 	// functions
 	void preprocessCollectively();
 
 	void setTrueNameIndex(const std::string& name, int index);
-
-
 	int getIndexFromName(const std::string& name) const;
 
 	//running

@@ -154,14 +154,10 @@ __kernel void maxPool_back(__global double* prevdNeurons, __global double* dneur
 	const int i = get_global_id(0);
 	double result = 0;
 	
-	//good
+	//good, not best
 	for(int j= i % depth; j < numIndexes; j += depth)
-	{
 		if(maxIndexes[j] == i)
-		{
 			result += dneurons[j];
-		}
-	}
 
 	prevdNeurons[i] = result;
 }
@@ -190,26 +186,56 @@ __kernel void avgPool(__global double* prevNeurons, __global double* neurons,
 		}
 		i += amountToNextLayer;
 	}
-	sum /= poolsize * poolsize;
-	neurons[x] = sum;
+	// sum /= poolsize * poolsize;
+	neurons[x] = sum / (poolsize * poolsize);
+}
+
+int getFlatIndex(int row, int col, int depth_z, int width, int depth_size)
+{
+	return row * width * depth_size + col * depth_size + depth_z;
 }
 
 //run for each neuron in prevdNeurons
-__kernel void avgPool_back(__global double* prevdNeurons, __global double* dneurons, __global int* maxIndexes, int numIndexes, int depth)
+__kernel void avgPool_back(__global double* prevdNeurons, __global double* dneurons, int prevwidth, int depth, int poolsize, int stride)
 {
 	const int i = get_global_id(0);
-	double result = 0;
+	// printf("\npw %d depth %d pool %d stride %d\n", prevwidth, depth, poolsize, stride);
 	
-	//good
-	for(int j= i % depth; j < numIndexes; j += depth)
+	int strxdep = stride * depth;
+	int i_div_dep = i / depth;
+	int numBlocksPerRow = (prevwidth - poolsize)/stride + 1; //equals width/height of dneurons
+	int amountToNextLayer = (prevwidth - poolsize) * depth;
+	int layerSize = prevwidth * depth;
+	int d = i % depth;
+
+	double result = 0;
+	// int hits = 0;
+	for(int row = 0; row < numBlocksPerRow; row++)
 	{
-		if(maxIndexes[j] == i)
+		// printf("start block row %d\n", row);
+		int rstart = stride * row;
+		for(int col = 0; col < numBlocksPerRow; col++) // we are in a block
 		{
-			result += dneurons[j];
+			// printf("start block col %d\n", col);
+			int cstart = stride * col;
+			for(int r = rstart; r < rstart + poolsize; r++)
+			{
+				for(int c = cstart; c < cstart + poolsize; c++)
+				{
+					int index = getFlatIndex(r,c,d,prevwidth,depth);
+					// printf("index try %d (%d,%d,%d)\n", index,r,c,d);
+					if(index == i)
+					{
+						result += dneurons[getFlatIndex(row,col,d,numBlocksPerRow,depth)];
+						// hits++;
+					}
+				}
+			}
 		}
 	}
+	// printf("hits = %d\n", hits);
 
-	prevdNeurons[i] = result;
+	prevdNeurons[i] = result / (poolsize * poolsize);
 }
 
 /*************************************************
