@@ -13,6 +13,7 @@ using namespace cv;
 
 typedef vector<vector<vector<double> > > imVector;
 bool showImages = false;
+bool rotateImages = false;
 
 int imcount = 0;
 unordered_map<string, bool> excludes;
@@ -92,6 +93,43 @@ void resize3DVector(vector<vector<vector<double> > > &vect, int width, int heigh
             vect[i][j].resize(depth);
         }
     }
+}
+
+void rotate90CounterClock(vector<vector<vector<double> > >& im, int times = 1)
+{
+	if(im.size() == 0)
+		return;
+	assert(im.size() == im[0].size());
+
+
+	// C++ program to rotate a matrix by 90 degrees
+    // Consider all squares one by one
+    const int N = im.size();
+    for(int t = 0; t < times; t++)
+    {
+	    for (int x = 0; x < N / 2; x++)
+	    {
+	        // Consider elements in group of 4 in 
+	        // current square
+	        for (int y = x; y < N-x-1; y++)
+	        {
+	            // store current cell in temp variable
+	            vector<double> temp = im[x][y];
+	 
+	            // move values from right to top
+	            im[x][y] = im[y][N-1-x];
+	 
+	            // move values from bottom to right
+	            im[y][N-1-x] = im[N-1-x][N-1-y];
+	 
+	            // move values from left to bottom
+	            im[N-1-x][N-1-y] = im[N-1-y][x];
+	 
+	            // assign temp to left
+	            im[N-1-y][x] = temp;
+	        }
+	    }
+	}
 }
 
 void convertGreyscale(imVector& image)
@@ -192,8 +230,11 @@ string getNextImage(ifstream& in, ifstream& trueval_in, imVector& dest, int x, i
 		retval = "-1";
 	// cout << retval << endl;
 
+	if(rotateImages)
+		rotate90CounterClock(dest, imcount % 4);
+
 	//show image and trueVal
-	if(showImages)// && retval == "2")
+	if(showImages && retval == "2")
 	{
 		Mat show(x,y,CV_8UC3);
 		for(int i = 0; i < x; i++)
@@ -337,8 +378,9 @@ int main(int argc, char** argv)
 	{
 		// printf("Use as: ./MNIST_test path/to/NetConfig.txt saveName.txt dataBatchSize deviceNum -DE(optional) -DEType\n");
 		printf("Use as: \n");
-		printf("  REQUIRED FIRST - ./ConvNetTrainerCL_idx path/to/NetConfig.txt saveName.txt\n");
-		printf("  In any order at end:\n");
+		printf("  REQUIRED FIRST - ./ConvNetTrainerCL_idx path/to/cnn.txt saveName.txt\n");
+		printf("    Note: path/to/cnn.txt can be either a NetConfig file or an already trained CNN.\n");
+		printf("  In any order at end: (optional, but do at least one of the data ones)\n");
 		printf("        -device=<int>                           OpenCL Device to run on. Optional w/default 0.\n");
 		printf("        -train_data=path/to/train/data.idx      Path to training data\n");
 		printf("        -train_label=path/to/train/labels.idx   Path to training labels\n");
@@ -348,6 +390,8 @@ int main(int argc, char** argv)
 		printf("        -showImages                             Shows each image as read in. For image verification purposes.\n");
 		printf("        -exclude=<string>                       Adds the string as a class name to be excluded from CNN. Says all excluded class images are background. Can be used multiple times.\n");
 		printf("        -epochs=<int>                           Amount of epochs to train for. Default: until it isn't getting better.\n");
+		printf("        -learningRate=<double>                  Sets the initial learning rate of the CNN\n");
+		printf("        -rotate                                 Rotates each image by 0 - 360 degrees (increments of 90)\n");
 		printf("    GROUP: All or none. Note: the amount of colon (:) separated values must be the same for both args.\n");
 		printf("        -trainRatio_classes=name1:name2:...     The class names for the train ratio.\n");
 		printf("        -trainRatio_amounts=int1:int2:...       The amounts for the train ratio.\n");
@@ -363,6 +407,7 @@ int main(int argc, char** argv)
 	char * netConfig_path = argv[1];
 	char * saveName = argv[2];
 	bool greyscale = false;
+	double learningRate = -1;
 
 	// printf("FROM PROGRAM: %s %s\n", netConfig_path, saveName);
 	bool byCount = false;
@@ -404,6 +449,10 @@ int main(int argc, char** argv)
 			train_ratio_amounts = arg.substr(arg.find('=')+1);
 		else if(arg.find("-exclude=") != string::npos)
 			excludes[arg.substr(arg.find('=')+1)] = true;
+		else if(arg.find("-learningRate=") != string::npos)
+			learningRate = stod(arg.substr(arg.find('=')+1));
+		else if(arg.find("-rotate") != string::npos)
+			rotateImages = true;
 		else
 		{
 			printf("Unknown arg '%s'. Exiting.\n", argv[i]);
@@ -582,7 +631,8 @@ int main(int argc, char** argv)
 		net.setTrainingType(TRAIN_AS_IS);
 	// net.setTrainingType(TRAIN_EQUAL_PROP);
 	net.setDevice(device);
-	// net.set_learningRate(0);
+	if(learningRate > 0)
+		net.set_learningRate(learningRate);
 	if(!net.finalize())
 	{
 		cout << net.getErrorLog() << endl;
@@ -730,7 +780,7 @@ int main(int argc, char** argv)
 	{
 		//net.addTrainingData(training_data,training_names);
 		net.printTrainingDistribution();
-		int batchSize = 32;
+		int batchSize = 64;
 
 		// if(epochs == -1)
 		// 	net.miniBatchTrain(batchSize,10);
