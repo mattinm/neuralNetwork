@@ -73,17 +73,24 @@ int main(int argc, char** argv)
 			}
 	}
 
-	if(originalPercentage >= 0)//if less than 0, just combine raw
+	//get labels in vectors for ease of use
+	vector<int> olabels, rlabels;
+	olabel_idx.getFlatData(olabels);
+	rlabel_idx.getFlatData(rlabels);
+
+	printf("got flat data\n");
+
+	if(originalPercentage < 0)
 	{
-		//get labels in vectors for ease of use
-		vector<int> olabels, rlabels;
-		olabel_idx.getFlatData(olabels);
-		rlabel_idx.getFlatData(rlabels);
-
-		printf("got flat data\n");
-		//fix any excluded classes
-
-
+		for(int i = rlabels.size() - 1; i >= 0; i--)
+			if(rlabels[i] == 2)
+			{
+				rlabel_idx.erase(i);
+				rdata_idx.erase(i);
+			}
+	}
+	else if(originalPercentage >= 0)//if less than 0, just combine raw
+	{
 		//figure out how many of each class we have
 		printf("figure out have\n");
 		unordered_map<int, int> ohave, rhave; // how many of each class we have
