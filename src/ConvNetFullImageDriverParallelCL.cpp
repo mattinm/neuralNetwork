@@ -15,6 +15,7 @@
 #include <ctype.h>
 #include <fstream>
 #include <time.h>
+#include <chrono>
 #include <thread>
 #include <pthread.h>
 #include <unordered_map>
@@ -36,12 +37,14 @@
 
 using namespace cv;
 using namespace std;
+using namespace std::chrono;
 
 mutex rowMutex;
 
 int curFrame = 0;
 int curRow = 0;
 int curSubmittedFrame = 0;
+// unsigned long cnn_time;
 
 bool rgb=false;
 
@@ -273,7 +276,10 @@ void breakUpRow(const int row, const int device)
 	#ifdef _CNFIDPCL_DEBUG
 	printf("run\n");
 	#endif
+	// auto starttime = system_clock::now();
 	nets[device]->run();
+	// auto endtime = system_clock::now();
+	// cnn_time += duration_cast<chrono::microseconds>(endtime - starttime).count();
 	#ifdef _CNFIDPCL_DEBUG
 	printf("get confidences\n");
 	#endif
@@ -323,6 +329,7 @@ string getNameForVal(int trueVal)
  */
 void breakUpImage(const char* imageName)
 {
+	// cnn_time = 0;
 	#ifdef _CNFIDPCL_DEBUG
 	printf("start breakUpImage\n");
 	#endif
@@ -504,6 +511,7 @@ int main(int argc, char** argv)
 		printf("   -excludeDevice=<int>  Excludes the specified OpenCL device from use. Repeatable.\n");
 		return -1;
 	}
+	// chrono::system_clock::time_point starttime, endtime;
 	time_t starttime, endtime;
 	inPath = argv[2];
 
@@ -682,10 +690,14 @@ int main(int argc, char** argv)
 	for(int i=0; i < filenames.size(); i++)
 	{
 		starttime = time(NULL);
+		// starttime = chrono::system_clock::now();
 		cout << filenames[i] << " (" << i + 1 << " of " << filenames.size() << ")" << endl;
 		breakUpImage(filenames[i].c_str());
 		endtime = time(NULL);
+		// endtime = chrono::system_clock::now();
 		cout << " - Time for image: " << secondsToString(endtime - starttime) << endl;
+		// cout << " - Time for image: " << (chrono::duration_cast<chrono::milliseconds>(endtime - starttime).count()) / 1000.0 << " seconds" << endl;
+		// cout << "\t" << cnn_time / 1000000.0 << " seconds was in the CNN" << endl;
 	}
 
 	return 0;
