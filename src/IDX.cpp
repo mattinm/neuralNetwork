@@ -286,6 +286,7 @@ void IDX<T>::addMat(const Mat& mat)
 			_data.back()[i++] = (T)pix[1];
 			_data.back()[i++] = (T)pix[0];
 		}
+	num_data++;
 }
 
 template<typename T>
