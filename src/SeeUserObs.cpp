@@ -385,7 +385,6 @@ int main(int argc, char** argv)
 					color = Scalar(0,0,255);
 				else if(box.species_id == BLUE_PHASE)
 				{
-					continue;
 					color = Scalar(255,0,0);
 				}
 				else
