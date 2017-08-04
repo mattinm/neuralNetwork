@@ -52,8 +52,8 @@ target_link_libraries(DataVisualizer IDX_lib ${OpenCV_LIBS})
 add_executable (kernelBuilder kernelBuilder.cpp)
 target_link_libraries(kernelBuilder ${OpenCL_LIBRARIES})
 
-add_executable (MNIST_test MNIST_test.cpp)
-target_link_libraries (MNIST_test ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
+# add_executable (MNIST_test MNIST_test.cpp)
+# target_link_libraries (MNIST_test ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable (Overlay Overlay.cpp)
 target_link_libraries(Overlay ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
