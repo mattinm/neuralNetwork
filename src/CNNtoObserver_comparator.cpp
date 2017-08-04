@@ -126,6 +126,11 @@ unordered_map<int,int> exclude = {{BACKGROUND,1}};
 void readFile(const char* filename)
 {
 	ifstream in(filename,ios::binary);
+	if(!in.is_open())
+	{
+		printf("Error: Unable to open msi locations file '%s'.\n",filename);
+		exit(1);
+	}
 	int numMSIs = readInt(in);
 	for(int i = 0; i < numMSIs; i++)
 	{
