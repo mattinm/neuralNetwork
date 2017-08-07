@@ -58,6 +58,9 @@ Mat fullMat;
 int numrowsmin, numcolsmin;
 int numClasses;
 
+bool useOutLoc = false;
+string outloc = "";
+
 vector<mutex> muxs(1);
 
 vector<imVector> fullImages;
@@ -73,6 +76,23 @@ int inputWidth, inputHeight;
 int __rows, __cols;
 
 bool __separate_outputs = false;
+
+string outputBaseName(const string& originalName)
+{
+	size_t dot = originalName.rfind('.');
+	if(useOutLoc)
+	{
+		string noExt = originalName.substr(0,dot);
+		size_t lastSlash = noExt.rfind('/');
+		string basename = noExt.substr(lastSlash+1);
+		return outloc + basename;
+
+	}
+	else
+	{
+		return originalName.substr(0,dot); // gets name without extension
+	}
+}
 
 string secondsToString(time_t seconds)
 {
@@ -428,13 +448,14 @@ void breakUpImage(const char* imageName)
 		char outName[500];
 		string origName(imageName);
 		size_t dot = origName.rfind('.');
-		const string noExtension = origName.substr(0,dot);
+		// const string noExtension = origName.substr(0,dot);
+		const char *noExtension = outputBaseName(origName).c_str();
 		const string extension = origName.substr(dot+1);
 
 		
 		for(int k = 0; k < numClasses; k++)
 		{
-			sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+			sprintf(outName,"%s_prediction_%s.%s",noExtension, getNameForVal(k).c_str(), extension.c_str());
 			// if(infos.size() > k)
 			// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
 			// else
@@ -475,7 +496,8 @@ void breakUpImage(const char* imageName)
 		char outName[500];
 		string origName(imageName);
 		size_t dot = origName.rfind('.');
-		const char *noExtension = origName.substr(0,dot).c_str();
+		// const char *noExtension = origName.substr(0,dot).c_str();
+		const char *noExtension = outputBaseName(origName).c_str();
 		const char *extension = origName.substr(dot).c_str();
 
 		sprintf(outName,"%s_prediction%s",noExtension,extension);
@@ -506,6 +528,7 @@ int main(int argc, char** argv)
 		printf("Usage (Required to come first):\n ./ConvNetFullImageDriverParallelCL cnnFile.txt ImageOrFolderPath\n");
 		printf("Optional args (must come after required args. Case sensitive.):\n");
 		printf("   stride=<int>          Stride across image. Defaults to 1.\n");
+		printf("   -outloc=<folder>      Output folder for the created images.\n");
 		printf("   -separate_outputs     Puts the prediction for each class in a separate image. Default for Nets with more than 3 classes.\n");
 		printf("   -rgb                  Has ConvNetCL read in the Mats as RGB instead of OpenCV standard BGR.\n");
 		printf("   -excludeDevice=<int>  Excludes the specified OpenCL device from use. Repeatable.\n");
@@ -528,6 +551,13 @@ int main(int argc, char** argv)
 				rgb = true;
 			else if(arg.find("-excludeDevice=") != string::npos)
 				excludeDevices[stoi(arg.substr(arg.find('=')+1))] = 1;
+			else if(arg.find("-outloc=") != string::npos)
+			{
+				outloc = arg.substr(arg.find('=')+1);
+				useOutLoc = true;
+				if(outloc.back() != '/')
+					outloc += '/';
+			}
 			else
 			{
 				printf("Unknown arg \"%s\". Aborting.\n", argv[i]);
