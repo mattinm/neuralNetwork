@@ -12,9 +12,9 @@ using namespace cv;
 
 int main(int argc, char** argv)
 {
-	if(argc == 1)
+	if(argc != 7)
 	{
-		printf("Usage: ./DataVisualizer data.idx label.idx mat_width mat_height classNum\n");
+		printf("Usage: ./DataVisualizer data.idx label.idx mat_width mat_height classNum baseOutputName\n");
 		return 0;
 	}
 
@@ -22,6 +22,7 @@ int main(int argc, char** argv)
 	IDX<int> label_idx(argv[2]);
 	int width = atoi(argv[3]), height = atoi(argv[4]), depth = 3;
 	int classNum = atoi(argv[5]);
+	const char * baseOutputName = argv[6];
 
 	vector<int> labels;
 	label_idx.getFlatData(labels);
@@ -96,7 +97,7 @@ int main(int argc, char** argv)
 			}
 		}
 		stringstream ss;
-		ss << "Image" << classNum << '.' << m << ".png";
+		ss << baseOutputName << "_class" << classNum << "im" << m << ".png";
 		imwrite(ss.str(), mats[m]);
 	}
 
