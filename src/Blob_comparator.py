@@ -5,6 +5,9 @@ arg2 - true csv
 arg3... - other csvs
 
 '''
+import sys
+import csv
+
 class CountClass:
 	def __init__(__self__):
 		pass
@@ -18,16 +21,15 @@ def getMSI(filename):
 		nextUnderscore = filename.find(".",startMSIIndex);
 	return filename[startMSIIndex+3:nextUnderscore]
 
-# def sum(array):
-# 	total = 0
-# 	for i in array:
-# 		total += i
-# 	return total
+def sumAbs(array):
+	total = 0
+	for i in array:
+		total += abs(i)
+	return total
 
 
 
-import sys
-import csv
+
 # import matplotlib.pyplot as plt
 
 #read in true vals
@@ -59,21 +61,23 @@ for i in range(2,len(sys.argv)):
 #compare and make output csvs
 with open(basename+"_individuals.csv","wb") as oi, open(basename+"_aggregate.csv","wb") as oa:
 	outIndiv = csv.writer(oi)
-	outIndiv.writerow(["CNN/year","MSI","Calculated White","Actual White","Error White","Percent Error White","Calculated Blue","Actual Blue","Error Blue","Percent Error Blue","Total Error","Total Percent Error"])
+	outIndiv.writerow(["CNN/year","MSI","Calculated White","Actual White","Error White","Abs Error White", "Percent Error White","Calculated Blue","Actual Blue","Error Blue", "Abs Error Blue","Percent Error Blue","Total Error","Total Percent Error"])
 	outAgg   = csv.writer(oa)
-	outAgg.writerow(["CNN/year","Calculated White","Actual White","Error White","Percent Error White","Calculated Blue","Actual Blue","Error Blue","Percent Error Blue","Total Error","Total Percent Error"])
+	outAgg.writerow(["CNN/year","Calculated White","Actual White","Error White","Abs Error White","Total Individual Abs Error White","Percent Error White","Calculated Blue","Actual Blue","Error Blue","Abs Error Blue","Total Individual Abs Error Blue","Percent Error Blue","Combined Error","Total Individual Abs Combined Error","Combined Percent Error"])
 	for cnn in counts:
 		totalCalc = [0,0]
 		totalActual = [0,0]
+		totalAbsError = [0,0]
+		#individuals
 		for key, calc in cnn.vals.iteritems():
 			act = trueVals[key]
-			# combCalc = sum(calc)
-			# combAct = sum(act)
+
 			calc.append(sum(calc)) #calc[-1] is the combined count
 			act.append(sum(act))
 			for i in range(0,2):
 				totalCalc[i] += calc[i]
 				totalActual[i] += act[i]
+				totalAbsError[i] += abs(calc[i] - act[i]);
 			perError = [0,0,0]
 			for i in range(0,3):
 				if(act[i] != 0):
@@ -81,24 +85,48 @@ with open(basename+"_individuals.csv","wb") as oi, open(basename+"_aggregate.csv
 				elif(calc[i] == 0): #calc and actual are both 0
 					perError[i] = 0
 				else:
-					perError[i] = 100
-			outIndiv.writerow([cnn.name,key,
-				calc[0],act[0],abs(calc[0]-act[0]),perError[0], #white
-				calc[1],act[1],abs(calc[1]-act[1]),perError[1], #blue
-				abs(calc[2] - act[2]),perError[2]])     #combined
-		# combCalc = sum(totalCalc)
-		# combAct = sum(totalActual)
-		totalCalc.append(sum(totalCalc))
-		totalActual.append(sum(totalActual))
+					perError[i] = 100 * calc[i];
+
+			outIndiv.writerow([cnn.name,
+				key,                   # msi
+				calc[0],               # calc white
+				act[0],                # actual white
+				calc[0]-act[0],        # error white
+				abs(calc[0]-act[0]),   # absolute value error white
+				perError[0],           # % error white
+				calc[1],               # calc blue
+				act[1],                # actual blue
+				calc[1]-act[1],        # error blue
+				abs(calc[1]-act[1]),   # absolute value error blue
+				perError[1],           # % error blue
+				abs(calc[2] - act[2]), # absolute value total error
+				perError[2]])          # % error combined based on abs val total error
+
+		#aggregate
+		totalCalc.append(sumAbs(totalCalc))
+		totalActual.append(sumAbs(totalActual))
+		totalAbsError.append(sum(totalAbsError))
 		perError = [0,0,0]
 		for i in range(0,len(totalCalc)):
 			if(totalActual[i] != 0):
-				perError[i] = abs(totalActual[i]-totalCalc[i])/float(totalActual[i])*100.
+				perError[i] = abs(totalCalc[i]-totalActual[i])/float(totalActual[i])*100.
 			elif totalCalc[i] == 0: #calc and actual are both 0
 				perError[i] = 0
 			else:
-				perError[i] = 100
+				perError[i] = 100 * totalCalc[i]
 		outAgg.writerow([cnn.name,
-			totalCalc[0],totalActual[0],abs(totalActual[0]-totalCalc[0]),perError[0], #white
-			totalCalc[1],totalActual[1],abs(totalActual[1]-totalCalc[1]),perError[1],
-			abs(totalCalc[2] - totalActual[2]),perError[2]])
+			totalCalc[0],                      # calc white
+			totalActual[0],                    # actual white
+			totalActual[0]-totalCalc[0],       # error white
+			abs(totalActual[0]-totalCalc[0]),  # abs error white
+			totalAbsError[0],                  # total indiv absolute error white
+			perError[0],                       # % error white
+			totalCalc[1],                      # calc blue
+			totalActual[1],                    # actual blue
+			totalActual[1]-totalCalc[1],       # error blue
+			abs(totalActual[1]-totalCalc[1]),  # abs error blue
+			totalAbsError[1],                  # total indiv absolute error blue
+			perError[1],                       # % error blue
+			abs(totalCalc[2] - totalActual[2]),# abs error combined
+			totalAbsError[2],                  # total indiv abs error combined
+			perError[2]])                      # % error combined
