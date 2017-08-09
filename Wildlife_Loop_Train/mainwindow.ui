@@ -20,7 +20,7 @@
       <x>10</x>
       <y>0</y>
       <width>241</width>
-      <height>693</height>
+      <height>785</height>
      </rect>
     </property>
     <layout class="QVBoxLayout" name="verticalLayout">
@@ -61,7 +61,7 @@
        <item>
         <widget class="QLineEdit" name="txtTrainingData">
          <property name="text">
-          <string>/Users/connorbowley/Development/neuralNetwork/Full_loop/Idxs/final_expert.idx</string>
+          <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/EScience2017/Idx_files/Final/final_expert.idx</string>
          </property>
         </widget>
        </item>
@@ -86,7 +86,7 @@
        <item>
         <widget class="QLineEdit" name="txtTrainingLabels">
          <property name="text">
-          <string>/Users/connorbowley/Development/neuralNetwork/Full_loop/Idxs/final_expert_species.idx</string>
+          <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/EScience2017/Idx_files/Final/final_expert_species.idx</string>
          </property>
         </widget>
        </item>
@@ -125,7 +125,7 @@
        <item>
         <widget class="QLineEdit" name="txtTrainMosaic">
          <property name="text">
-          <string>/Users/connorbowley/Development/neuralNetwork/mosaic_test_images/Thesis/train</string>
+          <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/shortMSIs/train</string>
          </property>
         </widget>
        </item>
@@ -150,7 +150,7 @@
        <item>
         <widget class="QLineEdit" name="txtTestMosaic">
          <property name="text">
-          <string>/Users/connorbowley/Development/neuralNetwork/mosaic_test_images/Thesis/test</string>
+          <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/shortMSIs/test</string>
          </property>
         </widget>
        </item>
@@ -175,7 +175,7 @@
        <item>
         <widget class="QLineEdit" name="txtMSILocations">
          <property name="text">
-          <string>/Users/connorbowley/Development/neuralNetwork/rsrc/old/msi_locations.bin</string>
+          <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/rsrc</string>
          </property>
         </widget>
        </item>
@@ -199,6 +199,26 @@
       <widget class="QSpinBox" name="spnIterations">
        <property name="minimum">
         <number>1</number>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_11">
+       <property name="text">
+        <string>Epochs per Iteration</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="spnEpochs">
+       <property name="minimum">
+        <number>1</number>
+       </property>
+       <property name="maximum">
+        <number>1000</number>
+       </property>
+       <property name="value">
+        <number>30</number>
        </property>
       </widget>
      </item>
@@ -260,18 +280,80 @@
       </widget>
      </item>
      <item>
+      <widget class="QPushButton" name="btnCancel">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
       <layout class="QHBoxLayout" name="horizontalLayout_7"/>
      </item>
     </layout>
    </widget>
-   <widget class="QTextBrowser" name="txtMessageBox">
+   <widget class="QWidget" name="verticalLayoutWidget_2">
     <property name="geometry">
      <rect>
-      <x>260</x>
+      <x>249</x>
       <y>0</y>
-      <width>521</width>
-      <height>311</height>
+      <width>411</width>
+      <height>871</height>
      </rect>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout_2">
+     <item>
+      <widget class="QLabel" name="label_12">
+       <property name="text">
+        <string>Training Results</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTextBrowser" name="txtTrainingLog"/>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_13">
+       <property name="text">
+        <string>Blob Results</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QTextEdit" name="txtBlobResults">
+       <property name="readOnly">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+   <widget class="QLabel" name="label_14">
+    <property name="geometry">
+     <rect>
+      <x>680</x>
+      <y>0</y>
+      <width>59</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Currently</string>
+    </property>
+   </widget>
+   <widget class="QTextEdit" name="txtCurrently">
+    <property name="geometry">
+     <rect>
+      <x>680</x>
+      <y>20</y>
+      <width>331</width>
+      <height>91</height>
+     </rect>
+    </property>
+    <property name="readOnly">
+     <bool>true</bool>
     </property>
    </widget>
   </widget>
