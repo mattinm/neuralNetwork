@@ -1,6 +1,8 @@
 '''
 This program compares the blob counts gotten from BlobCounter.cpp to true counts given by Marshall.
-arg1 - true csv
+arg1 - output base name
+arg2 - true csv
+arg3... - other csvs
 
 '''
 class CountClass:
@@ -30,7 +32,8 @@ import csv
 
 #read in true vals
 trueVals = {}
-with open(sys.argv[1],'rU') as f:
+basename = sys.argv[1];
+with open(sys.argv[2],'rU') as f:
 	trueValReader = csv.reader(f)
 	for row in trueValReader:
 		trueVals[row[0]] = [int(row[1]),int(row[2])]
@@ -54,7 +57,7 @@ for i in range(2,len(sys.argv)):
 
 
 #compare and make output csvs
-with open("Blob_compare_errors_individuals.csv","wb") as oi, open("Blob_compare_errors_aggregate.csv","wb") as oa:
+with open(basename+"_individuals.csv","wb") as oi, open(basename+"_aggregate.csv","wb") as oa:
 	outIndiv = csv.writer(oi)
 	outIndiv.writerow(["CNN/year","MSI","Calculated White","Actual White","Error White","Percent Error White","Calculated Blue","Actual Blue","Error Blue","Percent Error Blue","Total Error","Total Percent Error"])
 	outAgg   = csv.writer(oa)
