@@ -3,12 +3,16 @@
 
 //Qt stuff
 #include <QString>
-#include <QFileDialog>
 #include <QPalette>
 #include <QMessageBox>
 #include <QDebug>
 #include <QThread>
 #include <QFile>
+#include <QFileInfo>
+#include <QFileDialog>
+#include <QByteArray>
+#include <QDir>
+
 
 //C++ stuff
 #include <iostream>
@@ -20,9 +24,17 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
 
-    errorPalette.setColor(QPalette::Base, QColor(255,204,204));
+    errorPalette.setColor(QPalette::Base, QColor(255,204,204)); // need input
     standardPalette.setColor(QPalette::Base, Qt::white);
+    missingPalette.setColor(QPalette::Base, QColor(255,255,204)); // file/folder doesn't exist
 
+    ui->lgdNoInput->setPalette(errorPalette);
+    ui->lgdFileNotExist->setPalette(missingPalette);
+
+    blobModel = new QStandardItemModel;
+    ui->tblBlobResults->setSelectionBehavior(QAbstractItemView::SelectItems);
+    ui->tblBlobResults->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    ui->tblBlobResults->setModel(blobModel);
 }
 
 void MainWindow::filePicker(QLineEdit* textbox, const char * filter)
@@ -36,15 +48,56 @@ void MainWindow::filePicker(QLineEdit* textbox, const char * filter)
 
 void MainWindow::folderPicker(QLineEdit* textbox)
 {
-    QString foldername = QFileDialog::getExistingDirectory(this, tr("Open Directory"), "/Users/",QFileDialog::ShowDirsOnly);
+    QString foldername = QFileDialog::getExistingDirectory(this, tr("Open Directory"), "~/",QFileDialog::ShowDirsOnly);
     if(foldername != NULL)
     {
         textbox->setText(foldername);
     }
 }
 
+bool MainWindow::fileCheckEmptyAndExists(QLineEdit* textbox)
+{
+    bool nonEmpty = isNonEmpty(textbox), exists;
+    if(nonEmpty)
+        exists = fileExists(textbox);
+    return nonEmpty && exists;
+}
+
+bool MainWindow::folderCheckEmptyAndExists(QLineEdit* textbox)
+{
+    bool nonEmpty = isNonEmpty(textbox), exists;
+    if(nonEmpty)
+        exists = folderExists(textbox);
+    return nonEmpty && exists;
+}
+
+bool MainWindow::fileExists(QLineEdit* textbox)
+{
+    QString path = textbox->text();
+    QFileInfo file(path);
+    bool good = file.exists() && file.isFile();
+    if(good)
+        textbox->setPalette(standardPalette);
+    else
+        textbox->setPalette(missingPalette);
+    return good;
+}
+
+bool MainWindow::folderExists(QLineEdit* textbox)
+{
+    QString path = textbox->text();
+    QFileInfo folder(path);
+    bool good =  folder.exists() && folder.isDir();
+    if(good)
+        textbox->setPalette(standardPalette);
+    else
+        textbox->setPalette(missingPalette);
+    return good;
+}
+
 void MainWindow::enableInput()
 {
+//    std::cout << "enable input" << std::endl;
     ui->spnEpochs->setEnabled(true);
     ui->btnTrainingData->setEnabled(true);
     ui->btnTrainingLabel->setEnabled(true);
@@ -65,6 +118,9 @@ void MainWindow::enableInput()
     ui->txtBuildDir->setEnabled(true);
     ui->txtNetConfig->setEnabled(true);
     ui->btnRun->setEnabled(true);
+    ui->txtTrueBlobCounts->setEnabled(true);
+    ui->btnTrueBlobCounts->setEnabled(true);
+    ui->spnNumTrials->setEnabled(true);
 
     ui->btnCancel->setEnabled(false);
 }
@@ -91,6 +147,9 @@ void MainWindow::disableInput()
     ui->txtBuildDir->setEnabled(false);
     ui->txtNetConfig->setEnabled(false);
     ui->btnRun->setEnabled(false);
+    ui->txtTrueBlobCounts->setEnabled(false);
+    ui->btnTrueBlobCounts->setEnabled(false);
+    ui->spnNumTrials->setEnabled(false);
 
     ui->btnCancel->setEnabled(true);
 }
@@ -99,11 +158,17 @@ void MainWindow::disableInput()
 MainWindow::~MainWindow()
 {
     delete ui;
+    delete blobModel;
 }
 
 void MainWindow::on_btnTrainingData_clicked()
 {
     filePicker(ui->txtTrainingData,"*.idx");
+}
+
+void MainWindow::on_btnTrueBlobCounts_clicked()
+{
+    filePicker(ui->txtTrueBlobCounts,"*.csv");
 }
 
 void MainWindow::on_btnTrainingLabel_clicked()
@@ -157,46 +222,16 @@ void MainWindow::closeEvent(QCloseEvent *event)
     event->accept();
 }
 
-void MainWindow::on_btnRun_clicked()
+void MainWindow::run()
 {
-    std::cout << "clicked" << std::endl;
-    if(currentlyRunning)
-        return;
-    currentlyRunning = true;
-    bool good =
-        isNonEmpty(ui->txtTrainingData) &&
-        isNonEmpty(ui->txtTrainingLabels) &&
-        isNonEmpty(ui->txtCNNName) &&
-        isNonEmpty(ui->txtTrainMosaic) &&
-        isNonEmpty(ui->txtTestMosaic) &&
-        isNonEmpty(ui->txtMSILocations) &&
-        isNonEmpty(ui->txtOutputLocation) &&
-        isNonEmpty(ui->txtBuildDir) &&
-        isNonEmpty(ui->txtNetConfig)
-    ;
-    std::cout << "good: " << std::boolalpha << good << std::endl;
-    if(!good)
-    {
-        currentlyRunning = false;
-        return;
-    }
+    QString dir = QStringLiteral("%1/trial%2").arg(ui->txtOutputLocation->text()).arg(curTrial);
+    info.outputLocation = dir;
+    QDir().mkdir(dir);
 
-    TrainerInfo info;
-    info.trainIdxData = ui->txtTrainingData->text();
-    info.trainIdxLabel = ui->txtTrainingLabels->text();
-    info.cnnName = ui->txtCNNName->text().toStdString();
-    info.trainMosaics = ui->txtTrainMosaic->text();
-    info.testMosaics = ui->txtTestMosaic->text();
-    info.msiLocations = ui->txtMSILocations->text();
-    info.iterations = ui->spnIterations->value();
-    info.outputLocation = ui->txtOutputLocation->text();
-    info.buildDir = ui->txtBuildDir->text().toStdString();
-    info.netConfig = ui->txtNetConfig->text();
-    info.epochs = ui->spnEpochs->value();
+    info.cnnName = QStringLiteral("trial%1_%2").arg(curTrial).arg(ui->txtCNNName->text());
 
-    disableInput();
 
-    std::cout << "starting thread" << std::endl;
+//    std::cout << "starting thread" << std::endl;
     //Start thread and detach it
     thr = new QThread();
     trainer = new Trainer(this,info);
@@ -205,43 +240,83 @@ void MainWindow::on_btnRun_clicked()
     connect(thr, SIGNAL(started()), trainer, SLOT(run()));
 
     connect(trainer,SIGNAL(updateTrainingLog(QString,QString)), this, SLOT(updateTrainingLog(QString,QString)));
+    connect(trainer,SIGNAL(updateBlobTable(QString)),this,SLOT(updateBlobTable(QString)));
     connect(trainer,SIGNAL(updateCurrently(QString)),this,SLOT(updateCurrently(QString)));
 
-
-    connect(trainer,SIGNAL(finished()),this,SLOT(enableInput()));
-    connect(trainer, &Trainer::finished,[=](){currentlyRunning = false;});
+    connect(trainer,SIGNAL(finished()),this,SLOT(endRun()));
+//    connect(trainer,SIGNAL(finished()),this,SLOT(enableInput()));
+//    connect(trainer, &Trainer::finished,[=](){currentlyRunning = false;});
     connect(trainer, SIGNAL(finished()), thr, SLOT(quit()));
-    connect(trainer,SIGNAL(finished()), trainer, SLOT(deleteLater()));
+//    connect(trainer,SIGNAL(finished()), trainer, SLOT(deleteLater()));
     connect(thr,SIGNAL(finished()), thr, SLOT(deleteLater()));
     thr->start();
 }
 
-void MainWindow::updateTrainingLog(QString cnnName, QString filename)
+void MainWindow::endRun()
 {
-    QFile file(filename);
-    if(!file.exists())
+    curTrial++;
+//    delete thr;
+    delete trainer;
+    if(curTrial < numTrials)
     {
-        qDebug() << "Error: MainWindow::updateTrainingLog - file does not exist. File '" << filename << "'\n";
+        updateTrainingLog("","____________________________________________");
+        run();
     }
     else
     {
-        QString line;
-        if(file.open(QIODevice::ReadOnly | QIODevice::Text))
-        {
-            QString toAdd = "";
-            toAdd += cnnName + "\n";
-            QTextStream stream(&file);
-            while(!stream.atEnd())
-            {
-                line = stream.readLine();
-//                ui->txtTrainingLog->setText(ui->txtTrainingLog->toPlainText() + line + "\n");
-                toAdd += line + "\n";
-            }
-//            QString toAddString = toAdd.string();
-            ui->txtTrainingLog->append(toAdd);
-        }
-        file.close();
+        enableInput();
+        currentlyRunning = false;
+        csvFiles.clear();
     }
+}
+
+void MainWindow::on_btnRun_clicked()
+{
+//    std::cout << "clicked" << std::endl;
+    if(currentlyRunning)
+        return;
+    currentlyRunning = true;
+    bool good =
+        fileCheckEmptyAndExists(ui->txtTrainingData) * //&& this is a non-shortcircuit AND
+        fileCheckEmptyAndExists(ui->txtTrainingLabels) * //&&
+        isNonEmpty(ui->txtCNNName) * //&&
+        folderCheckEmptyAndExists(ui->txtTrainMosaic) * //&&
+        folderCheckEmptyAndExists(ui->txtTestMosaic) * //&&
+        fileCheckEmptyAndExists(ui->txtMSILocations) * //&&
+        folderCheckEmptyAndExists(ui->txtOutputLocation) * //&&
+        folderCheckEmptyAndExists(ui->txtBuildDir) * //&&
+        fileCheckEmptyAndExists(ui->txtNetConfig) * //&&
+        fileCheckEmptyAndExists(ui->txtTrueBlobCounts)
+    ;
+//    std::cout << "non empty good: " << std::boolalpha << good << std::endl;
+    if(!good)
+    {
+        currentlyRunning = false;
+        return;
+    }
+    disableInput();
+
+    info.trainIdxData = ui->txtTrainingData->text();
+    info.trainIdxLabel = ui->txtTrainingLabels->text();
+    info.trainMosaics = ui->txtTrainMosaic->text();
+    info.testMosaics = ui->txtTestMosaic->text();
+    info.msiLocations = ui->txtMSILocations->text();
+    info.iterations = ui->spnIterations->value();
+    info.buildDir = ui->txtBuildDir->text().toStdString();
+    info.netConfig = ui->txtNetConfig->text();
+    info.epochs = ui->spnEpochs->value();
+    info.trueBlobCounts = ui->txtTrueBlobCounts->text();
+    info.rootOutputLocation = ui->txtOutputLocation->text();
+
+    numTrials = ui->spnNumTrials->value();
+    curTrial = 0;
+
+    run();
+}
+
+void MainWindow::updateTrainingLog(QString cnnName, QString info)
+{
+    ui->txtTrainingLog->append(cnnName + "\n" + info + "\n");
 }
 
 void MainWindow::cancelTrain()
@@ -262,7 +337,7 @@ void Trainer::run()
 {
     connect(parent,&MainWindow::cancelSignal,this,[=](){cancelTrain = true;},Qt::DirectConnection);
 
-    std::cout << "in run" << std::endl;
+//    std::cout << "in run" << std::endl;
     QString termout = QStringLiteral("%1/termout.txt").arg(info.outputLocation);
     QString trainMosaicResults = QStringLiteral("%1/train_mosaic_results.txt").arg(info.outputLocation);
     QString testMosaicResults = QStringLiteral("%1/test_mosaic_results.txt").arg(info.outputLocation);
@@ -272,14 +347,15 @@ void Trainer::run()
     QString prevData = info.trainIdxData;
     QString prevLabel = info.trainIdxLabel;
     QString oldCNN = info.netConfig;
-    QString blobCompareFilename = QStringLiteral("%1/Blob_comparisons");
+    QString blobCompareFilename = QStringLiteral("%1/Blob_comparisons").arg(info.outputLocation);
+    QString blobCompareAgg = QStringLiteral("%1_aggregate.csv").arg(blobCompareFilename);
     int stride = 9;
 
     QString outloc, blobName;
     for(unsigned int i = 0; i < info.iterations; i++)
     {
         QString iterString = QStringLiteral("Iteration %1:").arg(i+1);
-        QString curCNNName = QStringLiteral("%1/%2_%3").arg(info.buildDir.c_str()).arg(i).arg(info.cnnName.c_str());
+        QString curCNNName = QStringLiteral("%1/%2_%3").arg(info.outputLocation).arg(i).arg(info.cnnName);
 
         /********************
          * Training side
@@ -288,35 +364,34 @@ void Trainer::run()
         //train cnn
         emit updateCurrently(iterString + " Training CNN");
         trainCNN(curCNNName,oldCNN,curTrainData,curTrainLabel,termout);
-        if(cancelTrain) return;
-        emit updateTrainingLog(curCNNName,termout);
-        oldCNN = curCNNName;
+        if(cancelTrain) break;
 
         //run cnn - train mosaics
         emit updateCurrently(iterString + " Running over training mosaics");
         outloc = QStringLiteral("%1/%2_run_over_train").arg(info.outputLocation).arg(i);
         runCNN(curCNNName,info.trainMosaics,stride,outloc);
-        if(cancelTrain) return;
+        if(cancelTrain) break;
 
         //blob count cnn - train mosaics
         emit updateCurrently(iterString + " Blob count on training mosaics");
         blobName = QStringLiteral("%1/%2_blob_count_train.csv").arg(info.outputLocation).arg(i);
         blobCount(outloc,blobName); // the outloc from runCNN is the input to this. blobName is the output of this
-        if(cancelTrain) return;
+        if(cancelTrain) break;
         blob_counts.append(blobName);
 
         //do blob comparator. Doing it every iteration lets us look at intermediate results and it runs pretty fast.
         emit updateCurrently(iterString + " Comparing CNN Blob Counts to Users");
-        compareBlobs(blob_counts,true_blob_counts,blobCompareFilename);
-        if(cancelTrain) return;
+        compareBlobs(blob_counts,info.trueBlobCounts,blobCompareFilename);
+        if(cancelTrain) break;
+        emit updateBlobTable(blobCompareAgg);
 
         //quantify results - train mosaics
         emit updateCurrently(iterString + " CNN to Observer comparision for training mosaics. Getting amount misclassified BG.");
         QString loop_base  = QStringLiteral("%1/%2_loop").arg(info.outputLocation).arg(i);
-        QString loop_data  = QStringLiteral("%1/%2_data.idx").arg(info.outputLocation).arg(loop_base);
-        QString loop_label = QStringLiteral("%1/%2_label.idx").arg(info.outputLocation).arg(loop_base);
+        QString loop_data  = QStringLiteral("%1_data.idx").arg(loop_base);
+        QString loop_label = QStringLiteral("%1_label.idx").arg(loop_base);
         compCNNObs(info.msiLocations, outloc, info.trainMosaics, loop_base, trainMosaicResults);
-        if(cancelTrain) return;
+        if(cancelTrain) break;
 
         //create new IDXs for next iteration
         emit updateCurrently(iterString + " Creating new IDXs for training next iteration");
@@ -324,7 +399,8 @@ void Trainer::run()
         QString retrain_data = QStringLiteral("%1_data.idx").arg(retrain_base);
         QString retrain_label = QStringLiteral("%1_label.idx").arg(retrain_base);
         combineIDXs(prevData,prevLabel,loop_data,loop_label,-1,retrain_base,termout);
-        if(cancelTrain) return;
+        if(cancelTrain) break;
+
 
         /********************
          * Testing side
@@ -334,60 +410,82 @@ void Trainer::run()
         emit updateCurrently(iterString + " Running over testing mosaics");
         outloc = QStringLiteral("%1/%2_run_over_test").arg(info.outputLocation).arg(i);
         runCNN(curCNNName,info.testMosaics,stride,outloc);
-        if(cancelTrain) return;
+        if(cancelTrain) break;
 
         //blob count cnn - test mosaics
         emit updateCurrently(iterString + " Blob count on testing mosaics");
         blobName = QStringLiteral("%1/%2_blob_count_test.csv").arg(info.outputLocation).arg(i);
         blobCount(outloc, blobName);
-        if(cancelTrain) return;
+        if(cancelTrain) break;
         blob_counts.append(blobName);
+
+        //do blob comparator. Doing it every iteration lets us look at intermediate results and it runs pretty fast.
+        emit updateCurrently(iterString + " Comparing CNN Blob Counts to Users");
+        compareBlobs(blob_counts,info.trueBlobCounts,blobCompareFilename);
+        if(cancelTrain) break;
+        emit updateBlobTable(blobCompareAgg);
 
         //quantify results - test mosaics
         emit updateCurrently(iterString + " CNN to Observer comparision for testing mosaics. Getting amount misclassified BG.");
         compCNNObs(info.msiLocations, outloc, testMosaicResults);
-        if(cancelTrain) return;
+        if(cancelTrain) break;
 
-        //do blob comparator. Doing it every iteration lets us look at intermediate results and it runs pretty fast.
-        emit updateCurrently(iterString + " Comparing CNN Blob Counts to Users");
-        compareBlobs(blob_counts,true_blob_counts,blobCompareFilename);
-        if(cancelTrain) return;
+
+        /********************
+         * Setup for next iteration
+         ********************/
+        curTrainData = retrain_data;
+        curTrainLabel = retrain_label;
+        oldCNN = curCNNName;
     }
-
+    if(cancelTrain)
+        emit updateCurrently("Cancelled");
+    else
+        emit updateCurrently("Done");
     emit finished();
 }
 
 void Trainer::trainCNN(const QString& outputCNN, const QString& oldCNN, const QString &curTrainIdxData, const QString &curTrainIdxLabel, const QString &termout)
 {
     QProcess process;
-    process.setStandardOutputFile(termout, QIODevice::Append);
 
-    QString command = QStringLiteral("%1/ConvNetTrainerCL_idx %2 %3 -device=0 -trainRatio_classes=1:2:1000000 -trainRatio_amounts=5:1:0 -train_data=%4 -train_label=%5 -epochs=%6 %7 >> %8")
+    QString command = QStringLiteral("%1/ConvNetTrainerCL_idx %2 %3 -device=0 -trainRatio_classes=-1:2:1000000 -trainRatio_amounts=1:1:0 -train_data=%4 -train_label=%5 -epochs=%6 %7")
             .arg(info.buildDir.c_str())
             .arg(oldCNN)
             .arg(outputCNN)
             .arg(curTrainIdxData)
             .arg(curTrainIdxLabel)
             .arg(info.epochs)
-            .arg(info.excludes)
-            .arg(termout);
+            .arg(info.excludes);
 
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection); //this allows the cancel button to kill the process
-//    process.start(QString::fromUtf8(command.str().c_str()));
     process.start(command);
     bool finishedCorrectly = process.waitForFinished(-1);
-    std::cout << "train Finished correctly: " << std::boolalpha << finishedCorrectly<< std::endl;
+//    std::cout << "train Finished correctly: " << std::boolalpha << finishedCorrectly<< std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
+
+    //get output
+    QString out = process.readAllStandardOutput();
+
+    //send to termout
+    QFile term(termout);
+    term.open(QIODevice::Append | QIODevice::WriteOnly);
+    term.write(out.toUtf8());
+    term.close();
+
+    //give training log cnn name w/out path and best epoch stats
+    emit updateTrainingLog(outputCNN.mid(outputCNN.lastIndexOf('/')+1),getBestEpoch(out));
 }
 
 void Trainer::runCNN(const QString& cnn, const QString& imageLocation, int stride, const QString& outloc)
 {
     //make folder for prediction images
     QProcess process;
-    QString mkdir = QStringLiteral("mkdir %1").arg(outloc);
-    process.start(mkdir);
-    process.waitForFinished(-1);
+//    QString mkdir = QStringLiteral("mkdir %1").arg(outloc);
+//    process.start(mkdir);
+//    process.waitForFinished(-1);
+    QDir().mkdir(outloc);
 
     //run cnn over mosaics
     QString runcmd = QStringLiteral("%1/ConvNetFullImageDriverParallelCL %2 %3 stride=%4 -rgb -excludeDevice=1 -excludeDevice=2 -outloc=%5")
@@ -399,7 +497,7 @@ void Trainer::runCNN(const QString& cnn, const QString& imageLocation, int strid
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
     process.start(runcmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-    std::cout << "run Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+//    std::cout << "run Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 }
@@ -407,14 +505,15 @@ void Trainer::runCNN(const QString& cnn, const QString& imageLocation, int strid
 void Trainer::blobCount(const QString& inputLocation, const QString& outputFilename)
 {
     QProcess process;
-    QString cmd = QStringLiteral("%1/BlobCounter %2/* > %3")
+    process.setStandardOutputFile(outputFilename);
+    QString cmd = QStringLiteral("%1/BlobCounter %2/*")
             .arg(info.buildDir.c_str())
-            .arg(inputLocation)
-            .arg(outputFilename);
+            .arg(inputLocation);
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
+//    std::cout << cmd.toStdString() << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-    std::cout << "Blob count Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+//    std::cout << "Blob count Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 }
@@ -445,10 +544,11 @@ void Trainer::_compCNNObs(const QString& msi_locations, const QString& predImage
             .arg(idxArgs)
             .arg(msi_locations)
             .arg(predImageDir);
+//    std::cout << cmd.toStdString() << std::endl;
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-    std::cout << "CNNtoObsComp Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+//    std::cout << "CNNtoObsComp Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
 
 }
 
@@ -469,32 +569,137 @@ void Trainer::combineIDXs(const QString& prev_data, const QString& prev_label, c
             .arg(baseOutputName)
             .arg(info.excludes);
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
+//    std::cout << "CombineIDX cmd: " << cmd.toStdString() << std::endl << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-    std::cout << "CombineIDXs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+//    std::cout << "CombineIDXs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
 }
 
 void Trainer::compareBlobs(const QStringList& blob_counts, const QString& true_blob_counts, const QString& outputBaseName)
 {
     QProcess process;
-    QString cmd = QStringLiteral("python %1/Blob_comparator.py %2 %3 %4")
+    QString cmd = QStringLiteral("/usr/bin/python %1/Blob_comparator.py %2 %3 %4")
             .arg(info.buildDir.c_str())
             .arg(outputBaseName)
             .arg(true_blob_counts)
             .arg(blob_counts.join(" "));
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
+//    std::cout << cmd.toStdString() << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-    std::cout << "compareBlobs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+//    std::cout << "compareBlobs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
 }
 
 void MainWindow::on_btnCancel_clicked()
 {
-    std::cout << "cancel signal" << std::endl;
+//    std::cout << "cancel signal" << std::endl;
     cancelTrain();
 }
 
 void MainWindow::updateCurrently(QString status)
 {
+    status = QStringLiteral("Trial %1 : %2").arg(curTrial).arg(status);
     ui->txtCurrently->setText(status);
 }
+
+QString Trainer::getBestEpoch(QString output)
+{
+//    std::cout << "initial:" << output.toStdString() << std::endl;
+    int startOfEpochs = output.indexOf("Epoch:");
+    output.remove(0,startOfEpochs);
+//    std::cout << "startepochs: " << startOfEpochs << " leftover " << output.toStdString() << std::endl;
+    QStringList epochs = output.split("Epoch:",QString::SkipEmptyParts);
+    double best = 0;
+    double bestIndex = -1;
+    for(int i = 0; i < epochs.size(); i++)
+    {
+        int firstPercentSign = epochs[i].indexOf('%');
+        int startOfPercentage = epochs[i].lastIndexOf(' ',firstPercentSign) + 1; // space before percentage + 1
+        bool goodConversion;
+        double current = epochs[i].midRef(startOfPercentage,firstPercentSign-startOfPercentage).toDouble(&goodConversion);
+//        std::cout << "Good conversion: " << std::boolalpha << goodConversion << std::endl;
+        if(current > best)
+        {
+            best = current;
+            bestIndex = i;
+        }
+    }
+    if(bestIndex != -1)
+        return "Epoch: " + epochs[bestIndex].left(epochs[bestIndex].indexOf("Changed learning"));
+    return "";
+}
+
+void MainWindow::updateBlobTable(QString filename)
+{
+    if(!csvFiles.contains(filename))
+        csvFiles.append(filename);
+    int lineindex = 0;
+    QVector<QStringList> trains, test;
+//    qDebug() << csvFiles.size();
+    for(int c = 0; c < csvFiles.size(); c++)
+    {
+//        qDebug() << c << " : " << csvFiles[c];
+        QFile file(csvFiles[c]);
+        if(file.open(QIODevice::ReadOnly))
+        {
+            int lineNum = 0;
+            QTextStream in(&file);
+            while(!in.atEnd())
+            {
+                QString line = in.readLine();
+                if(lineindex == 0) //read in header as is
+                {
+                    QStringList linetoken = line.split(",",QString::SkipEmptyParts);
+                    for(int j = 0; j < linetoken.size(); j++)
+                    {
+                        QString val = linetoken.at(j);
+
+                        QStandardItem *item = new QStandardItem(val);
+                        blobModel->setItem(lineindex, j, item);
+                    }
+                    lineindex++;
+                }
+                else if(lineNum == 0); // skip the headers all files but the first
+                else // sort rest into train and test
+                {
+                    if(line.contains("blob_count_train.csv"))
+                        trains.append(line.split(",",QString::SkipEmptyParts));
+                    else
+                        test.append(line.split(",",QString::SkipEmptyParts));
+                }
+                lineNum++;
+            }
+            file.close();
+        }
+    }
+
+    for(int i = 0; i < trains.size(); i++)
+    {
+        for(int j = 0; j < trains[i].size(); j++)
+        {
+            QString val = trains[i].at(j);
+            int lastSlash = val.lastIndexOf('/');
+            if(j == 0)
+                val = val.mid(val.lastIndexOf('/',lastSlash-1)+1);
+            QStandardItem *item = new QStandardItem(val);
+            blobModel->setItem(lineindex, j, item);
+        }
+        lineindex++;
+    }
+    for(int i = 0; i < test.size(); i++)
+    {
+        for(int j = 0; j < test[i].size(); j++)
+        {
+            QString val = test[i].at(j);
+            int lastSlash = val.lastIndexOf('/');
+            if(j == 0)
+                val = val.mid(val.lastIndexOf('/',lastSlash-1)+1);
+            QStandardItem *item = new QStandardItem(val);
+            blobModel->setItem(lineindex, j, item);
+        }
+        lineindex++;
+    }
+}
+
+
+

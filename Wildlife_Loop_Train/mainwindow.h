@@ -8,6 +8,8 @@
 #include <QProcess>
 #include <QThread>
 #include <QStringList>
+#include <QStandardItemModel>
+#include <QMap>
 
 #include <string>
 
@@ -19,8 +21,9 @@ class TrainerInfo;
 
 class TrainerInfo{
 public:
-        std::string buildDir, cnnName;
-        QString netConfig, excludes = "--exclude=1000000", msiLocations, trainMosaics, testMosaics, outputLocation, trainIdxData, trainIdxLabel;
+        std::string buildDir;
+        QString netConfig, excludes = "--exclude=1000000", msiLocations, trainMosaics, rootOutputLocation,
+            testMosaics, outputLocation, trainIdxData, trainIdxLabel, trueBlobCounts, cnnName;
         unsigned int iterations, epochs;
 };
 
@@ -45,16 +48,22 @@ public slots:
     void closeEvent(QCloseEvent* event);
 
 private slots:
+    void run();
+    void endRun();
+
     void updateTrainingLog(QString cnnName, QString filename);
+    void updateBlobTable(QString filename);
     void updateCurrently(QString status);
 
+    bool fileCheckEmptyAndExists(QLineEdit* textbox);
+    bool folderCheckEmptyAndExists(QLineEdit* textbox);
+
+    bool folderExists(QLineEdit *textbox);
+    bool fileExists(QLineEdit *textbox);
+    bool isNonEmpty(QLineEdit* textbox);
 
     void filePicker(QLineEdit* textbox, const char * filter = "*");
     void folderPicker(QLineEdit* textbox);
-
-//    void trainCNN(const std::string &outputCNN, const std::string &termout);
-
-    bool isNonEmpty(QLineEdit* textbox);
 
     void on_btnTrainingData_clicked();
 
@@ -76,12 +85,18 @@ private slots:
 
     void on_btnCancel_clicked();
 
+    void on_btnTrueBlobCounts_clicked();
+
 private:
     Ui::MainWindow *ui;
-    QPalette errorPalette, standardPalette;
+    QStandardItemModel *blobModel;
+    QPalette errorPalette, standardPalette, missingPalette;
     bool currentlyRunning = false;
     Trainer *trainer;
     QThread *thr;
+    TrainerInfo info;
+    int curTrial, numTrials;
+    QStringList csvFiles;
 };
 
 class Trainer : public QObject {
@@ -99,6 +114,7 @@ signals:
     void finished();
     void error(QString error);
     void updateTrainingLog(QString cnnName, QString filename);
+    void updateBlobTable(QString filename);
     void updateCurrently(QString status);
 
 
@@ -114,6 +130,7 @@ private:
     void _compCNNObs(const QString& msi_locations, const QString& predImageDir, const QString& outputFilename, bool appendOutput, const QString& idxArgs);
     void combineIDXs(const QString& prev_data, const QString& prev_label, const QString& loop_data, const QString& loop_label, double percentFromOld, const QString& baseOutputName, const QString& terminalOutputFile, bool appendOutput = true);
     void compareBlobs(const QStringList &blob_counts, const QString& true_blob_counts, const QString &outputBaseName);
+    QString getBestEpoch(QString output);
 
 };
 

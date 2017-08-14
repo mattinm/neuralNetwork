@@ -45,7 +45,7 @@ print "True vals size = " + str(len(trueVals))
 #read in list of calculated vals
 print "\n\n\n"
 counts = []
-for i in range(2,len(sys.argv)):
+for i in range(3,len(sys.argv)):
 	with open(sys.argv[i],'rU') as f:
 		reader = csv.reader(f)
 		counts.append(CountClass())
