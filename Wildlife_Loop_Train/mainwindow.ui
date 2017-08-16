@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1058</width>
-    <height>990</height>
+    <height>1076</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -86,7 +86,7 @@
         <item>
          <widget class="QLineEdit" name="txtTrainingData">
           <property name="text">
-           <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/EScience2017/Idx_files/Final/final_expert.idx</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/expert.idx</string>
           </property>
          </widget>
         </item>
@@ -111,7 +111,7 @@
         <item>
          <widget class="QLineEdit" name="txtTrainingLabels">
           <property name="text">
-           <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/EScience2017/Idx_files/Final/final_expert_species.idx</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/species_expert.idx</string>
           </property>
          </widget>
         </item>
@@ -150,7 +150,7 @@
         <item>
          <widget class="QLineEdit" name="txtTrainMosaic">
           <property name="text">
-           <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/shortMSIs/train</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/trainShort</string>
           </property>
          </widget>
         </item>
@@ -175,7 +175,7 @@
         <item>
          <widget class="QLineEdit" name="txtTestMosaic">
           <property name="text">
-           <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/shortMSIs/test</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/testShort</string>
           </property>
          </widget>
         </item>
@@ -200,7 +200,7 @@
         <item>
          <widget class="QLineEdit" name="txtMSILocations">
           <property name="text">
-           <string>/Users/connorbowley/Development/neuralNetwork/rsrc/msi_locations.bin</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/rsrc/msi_locations_expert.bin</string>
           </property>
          </widget>
         </item>
@@ -225,7 +225,7 @@
         <item>
          <widget class="QLineEdit" name="txtTrueBlobCounts">
           <property name="text">
-           <string>/Users/connorbowley/Dropbox/SHARE/neuralNetworks/EScience2017/rsrc/msi_locations_expert.csv</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/combined_expert.csv</string>
           </property>
          </widget>
         </item>
@@ -271,7 +271,7 @@
          <number>1000</number>
         </property>
         <property name="value">
-         <number>2</number>
+         <number>1</number>
         </property>
        </widget>
       </item>

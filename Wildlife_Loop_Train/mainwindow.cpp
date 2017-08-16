@@ -257,7 +257,7 @@ void MainWindow::endRun()
     curTrial++;
 //    delete thr;
     delete trainer;
-    if(curTrial < numTrials)
+    if(curTrial < numTrials && currentlyRunning)
     {
         updateTrainingLog("","____________________________________________");
         run();
@@ -310,6 +310,8 @@ void MainWindow::on_btnRun_clicked()
 
     numTrials = ui->spnNumTrials->value();
     curTrial = 0;
+
+    ui->txtTrainingLog->setText("");
 
     run();
 }
@@ -449,7 +451,7 @@ void Trainer::trainCNN(const QString& outputCNN, const QString& oldCNN, const QS
 {
     QProcess process;
 
-    QString command = QStringLiteral("%1/ConvNetTrainerCL_idx %2 %3 -device=0 -trainRatio_classes=-1:2:1000000 -trainRatio_amounts=1:1:0 -train_data=%4 -train_label=%5 -epochs=%6 %7")
+    QString command = QStringLiteral("%1/ConvNetTrainerCL_idx %2 %3 -device=0 -trainRatio_classes=-1:2:1000000 -trainRatio_amounts=5:1:0 -train_data=%4 -train_label=%5 -epochs=%6 %7")
             .arg(info.buildDir.c_str())
             .arg(oldCNN)
             .arg(outputCNN)
@@ -506,9 +508,16 @@ void Trainer::blobCount(const QString& inputLocation, const QString& outputFilen
 {
     QProcess process;
     process.setStandardOutputFile(outputFilename);
-    QString cmd = QStringLiteral("%1/BlobCounter %2/*")
+    QDir predictions(inputLocation);
+    QStringList paths, filter;
+    filter << "*.png" << "*.jpg" << "*.jpeg";
+    predictions.setNameFilters(filter);
+    QFileInfoList files = predictions.entryInfoList();
+    for(QFileInfo file : files)
+        paths.append(file.absoluteFilePath());
+    QString cmd = QStringLiteral("%1/BlobCounter %2")
             .arg(info.buildDir.c_str())
-            .arg(inputLocation);
+            .arg(paths.join(' '));
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
 //    std::cout << cmd.toStdString() << std::endl;
     process.start(cmd);
@@ -538,17 +547,27 @@ void Trainer::_compCNNObs(const QString& msi_locations, const QString& predImage
         process.setStandardOutputFile(outputFilename, QIODevice::Append);
     else
         process.setStandardOutputFile(outputFilename);
-    QString cmd = QStringLiteral("%1/CNNtoObserver_comparator %2 %3 %4 %5/*prediction*")
+    QStringList filter;
+    filter << "*prediction*";
+    QDir predictions(predImageDir);
+    predictions.setNameFilters(filter);
+    QStringList paths;
+    QFileInfoList files = predictions.entryInfoList();
+    for(QFileInfo file : files)
+        paths.append(file.absoluteFilePath());
+    QString cmd = QStringLiteral("%1/CNNtoObserver_comparator %2 %3 %4 %5")
             .arg(info.buildDir.c_str())
             .arg(info.excludes)
             .arg(idxArgs)
             .arg(msi_locations)
-            .arg(predImageDir);
+            .arg(paths.join(' '));
 //    std::cout << cmd.toStdString() << std::endl;
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
 //    std::cout << "CNNtoObsComp Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    if(!finishedCorrectly)
+        cancelTrain = true;
 
 }
 
@@ -573,6 +592,8 @@ void Trainer::combineIDXs(const QString& prev_data, const QString& prev_label, c
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
 //    std::cout << "CombineIDXs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    if(!finishedCorrectly)
+        cancelTrain = true;
 }
 
 void Trainer::compareBlobs(const QStringList& blob_counts, const QString& true_blob_counts, const QString& outputBaseName)
@@ -584,10 +605,12 @@ void Trainer::compareBlobs(const QStringList& blob_counts, const QString& true_b
             .arg(true_blob_counts)
             .arg(blob_counts.join(" "));
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
-//    std::cout << cmd.toStdString() << std::endl;
+    std::cout << cmd.toStdString() << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
 //    std::cout << "compareBlobs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    if(!finishedCorrectly)
+        cancelTrain = true;
 }
 
 void MainWindow::on_btnCancel_clicked()
