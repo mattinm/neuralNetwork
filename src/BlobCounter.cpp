@@ -11,11 +11,17 @@ using namespace std;
 int getMSI(string filename)
 {
 	int startMSIIndex = filename.find("msi");
+	int letterLength = 3;
+	if(startMSIIndex == string::npos)
+	{
+		startMSIIndex = 0;
+		letterLength = 0;
+	}
 	int nextUnderscore = filename.find("_",startMSIIndex);
 	if(nextUnderscore == string::npos)
 		nextUnderscore = filename.find(".",startMSIIndex);
 	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
-	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
+	return stoi(filename.substr(startMSIIndex+letterLength,nextUnderscore - startMSIIndex + letterLength));
 }
 
 int main(int argc, char** argv)
