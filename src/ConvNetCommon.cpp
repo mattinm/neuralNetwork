@@ -123,6 +123,8 @@ short readShort(std::ifstream& in) { return readVariable<short>(in); }
 unsigned short readUShort(std::ifstream& in) { return readVariable<unsigned short>(in); }
 int readInt(std::ifstream& in) { return readVariable<int>(in); }
 unsigned int readUInt(std::ifstream& in) { return readVariable<unsigned int>(in); }
+int64_t readInt64(std::ifstream& in) { return readVariable<int64_t>(in); }
+uint64_t readUInt64(std::ifstream& in) { return readVariable<uint64_t>(in); }
 float readFloat(std::ifstream& in) { return readVariable<float>(in); }
 double readDouble(std::ifstream& in) { return readVariable<double>(in); }
 

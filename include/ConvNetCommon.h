@@ -95,6 +95,8 @@ int readInt(std::ifstream& in);
 unsigned int readUInt(std::ifstream& in);
 float readFloat(std::ifstream& in);
 double readDouble(std::ifstream& in);
+int64_t readInt64(std::ifstream& in);
+uint64_t readUInt64(std::ifstream& in);
 
 /**
  * \func resize3DVector

@@ -13,6 +13,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "MSILocations.h"
+
 
 // #define FLAG_SHOW_MATCHED_BOXES //when not commmented will show image of each msi showing matched and unmatched boxes
 // #define FLAG_SHOW_BLACKOUT_BOXES //when not commmented will show image of each msi showing blacked out boxes after the blackout stage
@@ -34,86 +36,6 @@ struct OutImage
 	int32_t species_id; 
 };
 
-struct Box
-{
-	int32_t species_id;
-	int x;  // top left corner x
-	int y;  // top left corner y
-	int w;  // width
-	int h;  // height
-	int cx; // center point x
-	int cy; // center point y
-	int ex; // bottom right corner x
-	int ey; // bottom right corner y
-	bool matched = false; // whether we found a matching observation
-	bool hit = false; //whether we looked at this msi at all
-
-	Box();
-	Box(int32_t species_id, int x, int y, int w, int h);
-	void load(int32_t species_id, int x, int y, int w, int h);
-	string toString();
-};
-
-Box::Box(){}
-
-Box::Box(int32_t species_id, int x, int y, int w, int h)
-{
-	load(species_id,x,y,w,h);
-}
-
-void Box::load(int32_t species_id, int x, int y, int w, int h)
-{
-	this->species_id = species_id;
-	this->x = x;
-	this->y = y;
-	this->w = w;
-	this->h = h;
-	this->cx = x + w/2;
-	this->cy = y + h/2;
-	this->ex = x + w;
-	this->ey = y + h;
-}
-
-string Box::toString()
-{
-	char buf[200];
-	sprintf(buf,"species: %7d, x: %d, y: %d, w: %d, h: %d, ex: %d, ey: %d", species_id,x,y,w,h,ex,ey);
-	return string(buf);
-}
-
-struct MSI
-{
-	int msi;
-	bool used = false;
-	vector<Box> boxes;
-
-	//bmr => background_misclassified_percentages<species_id, ratio BG classified as species_id>
-	//for the species_id != BACKGROUND, it is the misclassified ratio
-	//for the species_id == BACKGROUND, it is the correctly classified ratio
-	// unordered_map<int,float> bmr;
-	unordered_map<int,int> bmc; // <species_id, pixel count of BG classified as species_id>
-	int totalBGCount = 0;
-	int numPixels;
-	string original_image_path = "";
-
-	MSI();
-	MSI(int msi, int numBoxes);
-	void init(int msi, int numBoxes);
-};
-
-MSI::MSI(){}
-
-MSI::MSI(int msi, int numBoxes)
-{
-	init(msi,numBoxes);
-}
-
-void MSI::init(int msi, int numBoxes)
-{
-	this->msi = msi;
-	this->boxes.resize(numBoxes);
-}
-
 // map<int, vector<Box> > locations;
 map<int, MSI > locations;
 vector<OutImage> forTrainingVariable;
@@ -122,33 +44,6 @@ vector<OutImage> forTrainingFixed;
 //all species being excluded from calculations. Background is special and always in exclude.
 //value doesn't matter, just whether or not it exists in the map.
 unordered_map<int,int> exclude = {{BACKGROUND,1}}; 
-
-void readFile(const char* filename)
-{
-	ifstream in(filename,ios::binary);
-	int numMSIs = readInt(in);
-	for(int i = 0; i < numMSIs; i++)
-	{
-		int msi = readInt(in);
-		// if(msi > 5000)
-		// 	printf("found msi > 5000 - %d\n",msi);
-		int numBoxes = readInt(in);
-		// locations[msi] = vector<Box>(numBoxes);
-		locations[msi].init(msi,numBoxes);
-		for(int j = 0; j < numBoxes; j++)
-			locations[msi].boxes[j].load(readInt(in),readInt(in),readInt(in),readInt(in),readInt(in));
-	}
-}
-
-int getMSI(string filename)
-{
-	int startMSIIndex = filename.find("msi");
-	int nextUnderscore = filename.find("_",startMSIIndex);
-	if(nextUnderscore == string::npos)
-		nextUnderscore = filename.find(".",startMSIIndex);
-	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
-	return stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
-}
 
 void readInOriginalFilenames(const string& original_image_folder)
 {
@@ -350,7 +245,9 @@ int main(int argc, char** argv)
 	}
 	int a = 1;
 
-	readFile(argv[a++]);
+	readLocationsFile(argv[a++],locations);
+	// for(auto it = locations.begin(); it != locations.end(); it++)
+	// 	printf("%lu %d\n", sizeof(int), it->first);
 
 	for(; a < argc; a++)
 	{

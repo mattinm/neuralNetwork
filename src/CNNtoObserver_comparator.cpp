@@ -13,6 +13,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "MSILocations.h"
+
 
 // #define FLAG_SHOW_MATCHED_BOXES //when not commmented will show image of each msi showing matched and unmatched boxes
 // #define FLAG_SHOW_BLACKOUT_BOXES //when not commmented will show image of each msi showing blacked out boxes after the blackout stage
@@ -34,7 +36,7 @@ struct OutImage
 	int32_t species_id; 
 };
 
-struct Box
+/*struct Box
 {
 	int32_t species_id;
 	int x;  // top left corner x
@@ -112,7 +114,7 @@ void MSI::init(int msi, int numBoxes)
 {
 	this->msi = msi;
 	this->boxes.resize(numBoxes);
-}
+}*/
 
 // map<int, vector<Box> > locations;
 map<int, MSI > locations;
@@ -123,7 +125,7 @@ vector<OutImage> forTrainingFixed;
 //value doesn't matter, just whether or not it exists in the map.
 unordered_map<int,int> exclude = {{BACKGROUND,1}}; 
 
-void readFile(const char* filename)
+/*void readFile(const char* filename)
 {
 	ifstream in(filename,ios::binary);
 	if(!in.is_open())
@@ -161,7 +163,7 @@ int getMSI(string filename)
 		printf("stoi failed on input '%s' for filename '%s'\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str(),filename.c_str());
 	}
 	return ret;
-}
+}*/
 
 void readInOriginalFilenames(const string& original_image_folder)
 {
@@ -435,7 +437,7 @@ int main(int argc, char** argv)
 		printf("Need an obsfile and images.");
 		return 0;
 	}
-	readFile(argv[a++]);
+	readLocationsFile(argv[a++],locations);
 
 	//if doing output we need to get the original image locations for the MSIs
 	if(doOutput)

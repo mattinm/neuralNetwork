@@ -9,6 +9,7 @@ if (BUILD_DYNAMIC)
     add_library (ConvNetSeam SHARED ConvNetSeam.cpp ConvNetCommon.cpp)
     add_library (Seamcarver SHARED Seamcarver.cpp)
     add_library (IDX_lib SHARED IDX.cpp)
+    add_library (MSILocations SHARED MSILocations.cpp ConvNetCommon.cpp)
 else ()
     add_library (ConvNetCL STATIC ConvNetCommon.cpp ConvNetCL.cpp)
     #add_library (ConvNet STATIC ConvNet.cpp ConvNetCommon.cpp)
@@ -16,6 +17,7 @@ else ()
     add_library (ConvNetSeam STATIC ConvNetSeam.cpp ConvNetCommon.cpp)
     add_library (Seamcarver STATIC Seamcarver.cpp)
     add_library (IDX_lib STATIC IDX.cpp)
+    add_library (MSILocations STATIC MSILocations.cpp ConvNetCommon.cpp)
 endif ()
 
 ######
@@ -44,7 +46,7 @@ target_link_libraries(ConvNetFullImageDriverParallelCL ${OpenCV_LIBS} ${OpenCL_L
 #target_link_libraries(ConvNetVideoDriverParallelCL_multiNet ${OpenCV_LIBS} ${OpenCL_LIBRARIES} ConvNetCL)
 
 add_executable(CNNtoObserver_comparator CNNtoObserver_comparator.cpp)
-target_link_libraries(CNNtoObserver_comparator ConvNetEvent ${OpenCV_LIBS})
+target_link_libraries(CNNtoObserver_comparator ConvNetEvent ${OpenCV_LIBS} MSILocations)
 
 add_executable(DataVisualizer DataVisualizer.cpp)
 target_link_libraries(DataVisualizer IDX_lib ${OpenCV_LIBS})
@@ -59,7 +61,7 @@ add_executable (Overlay Overlay.cpp)
 target_link_libraries(Overlay ConvNetCL ${OpenCL_LIBRARIES} ${OpenCV_LIBS})
 
 add_executable(SeeUserObs SeeUserObs.cpp)
-target_link_libraries(SeeUserObs ${OpenCV_LIBS} ConvNetCL)
+target_link_libraries(SeeUserObs ${OpenCV_LIBS} ConvNetCL MSILocations)
 
 add_executable(SmoteIDX SmoteIDX.cpp)
 target_link_libraries(SmoteIDX ${OpenCV_LIBS})
