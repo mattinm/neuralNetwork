@@ -150,7 +150,7 @@
         <item>
          <widget class="QLineEdit" name="txtTrainMosaic">
           <property name="text">
-           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/trainShort</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/training</string>
           </property>
          </widget>
         </item>
@@ -175,7 +175,7 @@
         <item>
          <widget class="QLineEdit" name="txtTestMosaic">
           <property name="text">
-           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/testShort</string>
+           <string>/Users/connorbowley/Development/neuralNetwork/ThesisImages/testing</string>
           </property>
          </widget>
         </item>
@@ -251,7 +251,7 @@
          <number>1</number>
         </property>
         <property name="value">
-         <number>2</number>
+         <number>5</number>
         </property>
        </widget>
       </item>
@@ -271,7 +271,7 @@
          <number>1000</number>
         </property>
         <property name="value">
-         <number>1</number>
+         <number>30</number>
         </property>
        </widget>
       </item>

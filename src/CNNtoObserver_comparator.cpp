@@ -179,12 +179,12 @@ void readInOriginalFilenames(const string& original_image_folder)
 		else
 		{
 			printf("We're not sure what the file you inputted for --original_image_folder was.\nExiting\n");
-			exit(-1);
+			exit(2);
 		}
 		if(!isDirectory)
 		{
 			printf("The --original_image_folder should be a directory but it doesn't appear to be.\nExiting\n");
-			exit(-1);
+			exit(2);
 		}
 
 		DIR *directory;
@@ -247,6 +247,54 @@ void readInOriginalFilenames(const string& original_image_folder)
 	{
 		printf("Error getting status of folder for --original_image_folder.\nExiting\n");
 		exit(-1);
+	}
+}
+
+void appendFilenames(const string& folderOrImage, vector<string>& filenames)
+{
+	bool isDirectory;
+	struct stat s;
+	unordered_map<int, string> filenamesByMSI;
+	if(stat(folderOrImage.c_str(),&s) == 0)
+	{
+		if(s.st_mode & S_IFDIR) // directory
+		{
+			// isDirectory = true;
+			DIR *directory;
+			struct dirent *file;
+			if((directory = opendir(folderOrImage.c_str())))// != NULL)
+			{
+				string pathName = folderOrImage;
+				if(pathName.rfind("/") != pathName.length()-1)
+					pathName.append(1,'/');
+				char inPathandName[500];
+				while((file = readdir(directory)))// != NULL)
+				{
+					if(strcmp(file->d_name, ".") != 0 && strcmp(file->d_name, "..") != 0)
+					{
+						sprintf(inPathandName,"%s%s",pathName.c_str(),file->d_name);
+						// string ipan(inPathandName);
+						filenames.push_back(string(inPathandName));
+					}
+				}
+				closedir(directory);
+			}
+			else
+			{
+				printf("directory problems dealing with '%s'.\n",folderOrImage.c_str());
+				exit(2);
+			}
+		}
+		else if (s.st_mode & S_IFREG) // file
+		{
+			// isDirectory = false;
+			filenames.push_back(folderOrImage);
+		}
+		else
+		{
+			printf("We're not sure what the file you inputted for '%s' was.\nExiting\n",folderOrImage.c_str());
+			exit(2);
+		}
 	}
 }
 
@@ -369,7 +417,7 @@ int main(int argc, char** argv)
 {
 	if(argc < 2)
 	{
-		printf("Usage: ./CNNtoObserver_comparator obsfile image1 image2 ...\n");
+		printf("Usage: ./CNNtoObserver_comparator obsfile imageOrFolder1 imageOrFolder2...\n");
 		printf("  Optional args MUST come before required args\n");
 		printf("GROUP: All or none must exist\n");
 		printf("  --idx_name=<string>               A base name (no extension) for IDX output files. Actual files will be baseName_data.idx and baseName_label.idx\n");
@@ -455,20 +503,27 @@ int main(int argc, char** argv)
 	// namedWindow("image",WINDOW_NORMAL);
 	// resizeWindow("image",600,600);
 
-	int bgStride = idx_size / 2;
+	int bgStride = idx_size;// / 2;
 	int fgStride = 2;
 
 	bool origDoOutput = doOutput;
 
 	vector<Box> missedBoxes;
 	vector<int> missedBoxMSIs;
+	vector<string> filenames;
 
 	for(; a < argc; a++)
 	{
+		appendFilenames(argv[a],filenames);
+	}
+	// printf("filenames.size() = %lu locations.size() %lu\n", filenames.size(),locations.size());
+	for(string filename : filenames)
+	{
 		doOutput = origDoOutput; // in case we turn it off because we can't find the original image
 
-		string filename(argv[a]);
+		// string filename(argv[a]);
 		int msi = getMSI(filename); //got the msi
+		// printf("msi %d\n", msi);
 
 		//make sure we have locations for this msi
 		if(locations.find(msi) == locations.end()) // if we don't have locations for the MSI
@@ -485,7 +540,7 @@ int main(int argc, char** argv)
 
 		locations[msi].used = true;
 
-		Mat im = imread(argv[a],1); //got the image
+		Mat im = imread(filename.c_str(),1); //got the image
 		locations[msi].numPixels = im.rows * im.cols;
 		int numBoxes = locations[msi].boxes.size();
 		printf("Doing msi %5d: size %4d x %4d (w x h). Num obs: %3d\n", msi,im.cols,im.rows,numBoxes);
@@ -831,9 +886,7 @@ int main(int argc, char** argv)
 			//stride over full image and grab boxes that don't match bg or excluded species
 			// printf("Image: rows %d cols %d\n", im.rows,im.cols);
 			int size = idx_size * idx_size;
-			#ifdef FLAG_SHOW_MISSED_BACKGROUND
 			int missedBGCount = 0;
-			#endif
 			for(int y = 0; y < im.rows - idx_size; y += bgStride)
 			{
 				for(int x = 0; x < im.cols - idx_size; x += bgStride)
@@ -872,11 +925,13 @@ int main(int argc, char** argv)
 						#ifdef FLAG_SHOW_MISSED_BACKGROUND
 						rectangle(draw_missed_bg,Point(x,y),Point(x+idx_size,y+idx_size),Scalar(0,0,0),3);
 						rectangle(draw_missed_bg_orig,Point(x,y),Point(x+idx_size,y+idx_size),Scalar(0,0,0),3);
-						missedBGCount++;
 						#endif
+						missedBGCount++;
 					}
 				}
 			}
+			// printf("MSI %d: missed BG %d\n", msi, missedBGCount);
+			printf("%d,%d\n", msi,missedBGCount);
 
 			#ifdef FLAG_SHOW_MISSED_BACKGROUND
 			if(missedBGCount > 0)

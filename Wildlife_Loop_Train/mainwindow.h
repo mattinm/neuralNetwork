@@ -22,7 +22,7 @@ class TrainerInfo;
 class TrainerInfo{
 public:
         std::string buildDir;
-        QString netConfig, excludes = "--exclude=1000000", msiLocations, trainMosaics, rootOutputLocation,
+        QString netConfig, excludes = "--exclude=1000000 --exclude=999999 --exclude=21", msiLocations, trainMosaics, rootOutputLocation,
             testMosaics, outputLocation, trainIdxData, trainIdxLabel, trueBlobCounts, cnnName;
         unsigned int iterations, epochs;
 };
@@ -87,6 +87,7 @@ private slots:
 
     void on_btnTrueBlobCounts_clicked();
 
+
 private:
     Ui::MainWindow *ui;
     QStandardItemModel *blobModel;
@@ -105,6 +106,7 @@ class Trainer : public QObject {
 public:
     Trainer(MainWindow* parent, const TrainerInfo& info);
     ~Trainer();
+    bool finishedWell() const;
 
 public slots:
     void run();
@@ -122,6 +124,8 @@ private:
     MainWindow *parent;
     TrainerInfo info;
     bool cancelTrain = false;
+    bool finished_well = false;
+
     void trainCNN(const QString &outputCNN, const QString &oldCNN, const QString &curTrainIdxData, const QString &curTrainIdxLabel, const QString &termout);
     void runCNN(const QString& cnn, const QString& imageLocation, int stride, const QString& outloc);
     void blobCount(const QString& inputLocation, const QString& outputFilename);

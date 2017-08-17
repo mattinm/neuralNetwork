@@ -255,6 +255,8 @@ void MainWindow::run()
 void MainWindow::endRun()
 {
     curTrial++;
+    if(!trainer->finishedWell())
+        currentlyRunning = false;
 //    delete thr;
     delete trainer;
     if(curTrial < numTrials && currentlyRunning)
@@ -335,8 +337,14 @@ Trainer::Trainer(MainWindow* parent, const TrainerInfo& info)
 
 Trainer::~Trainer(){}
 
+bool Trainer::finishedWell() const
+{
+    return finished_well;
+}
+
 void Trainer::run()
 {
+    finished_well = false;
     connect(parent,&MainWindow::cancelSignal,this,[=](){cancelTrain = true;},Qt::DirectConnection);
 
 //    std::cout << "in run" << std::endl;
@@ -363,21 +371,22 @@ void Trainer::run()
          * Training side
          ********************/
 
+
         //train cnn
         emit updateCurrently(iterString + " Training CNN");
-        trainCNN(curCNNName,oldCNN,curTrainData,curTrainLabel,termout);
+        if(i != 0) trainCNN(curCNNName,oldCNN,curTrainData,curTrainLabel,termout);
         if(cancelTrain) break;
 
         //run cnn - train mosaics
         emit updateCurrently(iterString + " Running over training mosaics");
         outloc = QStringLiteral("%1/%2_run_over_train").arg(info.outputLocation).arg(i);
-        runCNN(curCNNName,info.trainMosaics,stride,outloc);
+        if(i != 0) runCNN(curCNNName,info.trainMosaics,stride,outloc);
         if(cancelTrain) break;
 
         //blob count cnn - train mosaics
         emit updateCurrently(iterString + " Blob count on training mosaics");
         blobName = QStringLiteral("%1/%2_blob_count_train.csv").arg(info.outputLocation).arg(i);
-        blobCount(outloc,blobName); // the outloc from runCNN is the input to this. blobName is the output of this
+        if(i != 0) blobCount(outloc,blobName); // the outloc from runCNN is the input to this. blobName is the output of this
         if(cancelTrain) break;
         blob_counts.append(blobName);
 
@@ -443,7 +452,10 @@ void Trainer::run()
     if(cancelTrain)
         emit updateCurrently("Cancelled");
     else
+    {
         emit updateCurrently("Done");
+        finished_well = true;
+    }
     emit finished();
 }
 
@@ -463,7 +475,7 @@ void Trainer::trainCNN(const QString& outputCNN, const QString& oldCNN, const QS
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection); //this allows the cancel button to kill the process
     process.start(command);
     bool finishedCorrectly = process.waitForFinished(-1);
-//    std::cout << "train Finished correctly: " << std::boolalpha << finishedCorrectly<< std::endl;
+    std::cout << "train Finished correctly: " << std::boolalpha << finishedCorrectly<< std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 
@@ -499,32 +511,46 @@ void Trainer::runCNN(const QString& cnn, const QString& imageLocation, int strid
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
     process.start(runcmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-//    std::cout << "run Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    std::cout << "run Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 }
 
 void Trainer::blobCount(const QString& inputLocation, const QString& outputFilename)
 {
+    std::cout << inputLocation.toStdString() << " : " << outputFilename.toStdString() << std::endl;
     QProcess process;
-    process.setStandardOutputFile(outputFilename);
+    process.setStandardOutputFile(outputFilename, QIODevice::Append);
     QDir predictions(inputLocation);
-    QStringList paths, filter;
+    QStringList paths, filter, smallPaths;
     filter << "*.png" << "*.jpg" << "*.jpeg";
     predictions.setNameFilters(filter);
     QFileInfoList files = predictions.entryInfoList();
     for(QFileInfo file : files)
         paths.append(file.absoluteFilePath());
-    QString cmd = QStringLiteral("%1/BlobCounter %2")
-            .arg(info.buildDir.c_str())
-            .arg(paths.join(' '));
-    connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
-//    std::cout << cmd.toStdString() << std::endl;
-    process.start(cmd);
-    bool finishedCorrectly = process.waitForFinished(-1);
-//    std::cout << "Blob count Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
-    if(!finishedCorrectly)
-        cancelTrain = true;
+    int pathsSizeMinus1 = paths.size() - 1;
+    for(int i = 0; i < paths.size(); i++)
+    {
+        smallPaths.append(paths[i]);
+        if((i % 800 == 0 && i != 0) || i == pathsSizeMinus1)
+        {
+            QString cmd = QStringLiteral("%1/BlobCounter")
+                    .arg(info.buildDir.c_str());
+                    //.arg(smallPaths.join(' '));
+            connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
+        //    std::cout << cmd.toStdString() << std::endl;
+            if(cancelTrain) break;
+            process.start(cmd, smallPaths);
+            bool finishedCorrectly = process.waitForFinished(-1);
+            std::cout << "Blob count Finished correctly: " << std::boolalpha << finishedCorrectly << ":" << paths.size() << std::endl;
+            if(!finishedCorrectly)
+            {
+                cancelTrain = true;
+                break;
+            }
+            smallPaths.clear();
+        }
+    }
 }
 
 void Trainer::compCNNObs(const QString& msi_locations, const QString& predImageDir, const QString& outputFilename, bool appendOutput)
@@ -547,25 +573,26 @@ void Trainer::_compCNNObs(const QString& msi_locations, const QString& predImage
         process.setStandardOutputFile(outputFilename, QIODevice::Append);
     else
         process.setStandardOutputFile(outputFilename);
-    QStringList filter;
-    filter << "*prediction*";
-    QDir predictions(predImageDir);
-    predictions.setNameFilters(filter);
-    QStringList paths;
-    QFileInfoList files = predictions.entryInfoList();
-    for(QFileInfo file : files)
-        paths.append(file.absoluteFilePath());
+//    QStringList filter;
+//    filter << "*prediction*";
+//    QDir predictions(predImageDir);
+//    predictions.setNameFilters(filter);
+//    QStringList paths;
+//    QFileInfoList files = predictions.entryInfoList();
+//    for(QFileInfo file : files)
+//        paths.append(file.absoluteFilePath());
     QString cmd = QStringLiteral("%1/CNNtoObserver_comparator %2 %3 %4 %5")
             .arg(info.buildDir.c_str())
             .arg(info.excludes)
             .arg(idxArgs)
             .arg(msi_locations)
-            .arg(paths.join(' '));
-//    std::cout << cmd.toStdString() << std::endl;
+            .arg(predImageDir);
+//            .arg(paths.join(' '));
+    std::cout << cmd.toStdString() << std::endl;
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-//    std::cout << "CNNtoObsComp Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    std::cout << "CNNtoObsComp Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 
@@ -591,7 +618,7 @@ void Trainer::combineIDXs(const QString& prev_data, const QString& prev_label, c
 //    std::cout << "CombineIDX cmd: " << cmd.toStdString() << std::endl << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-//    std::cout << "CombineIDXs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    std::cout << "CombineIDXs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 }
@@ -608,7 +635,7 @@ void Trainer::compareBlobs(const QStringList& blob_counts, const QString& true_b
     std::cout << cmd.toStdString() << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
-//    std::cout << "compareBlobs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
+    std::cout << "compareBlobs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
 }
