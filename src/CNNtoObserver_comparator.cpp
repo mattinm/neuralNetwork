@@ -36,87 +36,6 @@ struct OutImage
 	int32_t species_id; 
 };
 
-/*struct Box
-{
-	int32_t species_id;
-	int x;  // top left corner x
-	int y;  // top left corner y
-	int w;  // width
-	int h;  // height
-	int cx; // center point x
-	int cy; // center point y
-	int ex; // bottom right corner x
-	int ey; // bottom right corner y
-	bool matched = false; // whether we found a matching observation
-	bool hit = false; //whether we looked at this msi at all
-
-	Box();
-	Box(int32_t species_id, int x, int y, int w, int h);
-	void load(int32_t species_id, int x, int y, int w, int h);
-	string toString();
-};
-
-Box::Box(){}
-
-Box::Box(int32_t species_id, int x, int y, int w, int h)
-{
-	load(species_id,x,y,w,h);
-}
-
-void Box::load(int32_t species_id, int x, int y, int w, int h)
-{
-	this->species_id = species_id;
-	this->x = x;
-	this->y = y;
-	this->w = w;
-	this->h = h;
-	this->cx = x + w/2;
-	this->cy = y + h/2;
-	this->ex = x + w;
-	this->ey = y + h;
-}
-
-string Box::toString()
-{
-	char buf[200];
-	sprintf(buf,"species: %7d, x: %d, y: %d, w: %d, h: %d, ex: %d, ey: %d", species_id,x,y,w,h,ex,ey);
-	return string(buf);
-}
-
-struct MSI
-{
-	int msi;
-	bool used = false;
-	vector<Box> boxes;
-
-	//bmr => background_misclassified_percentages<species_id, ratio BG classified as species_id>
-	//for the species_id != BACKGROUND, it is the misclassified ratio
-	//for the species_id == BACKGROUND, it is the correctly classified ratio
-	// unordered_map<int,float> bmr;
-	unordered_map<int,int> bmc; // <species_id, pixel count of BG classified as species_id>
-	int totalBGCount = 0;
-	int numPixels;
-	string original_image_path = "";
-
-	MSI();
-	MSI(int msi, int numBoxes);
-	void init(int msi, int numBoxes);
-};
-
-MSI::MSI(){}
-
-MSI::MSI(int msi, int numBoxes)
-{
-	init(msi,numBoxes);
-}
-
-void MSI::init(int msi, int numBoxes)
-{
-	this->msi = msi;
-	this->boxes.resize(numBoxes);
-}*/
-
-// map<int, vector<Box> > locations;
 map<int, MSI > locations;
 vector<OutImage> forTrainingVariable;
 vector<OutImage> forTrainingFixed;
@@ -124,46 +43,6 @@ vector<OutImage> forTrainingFixed;
 //all species being excluded from calculations. Background is special and always in exclude.
 //value doesn't matter, just whether or not it exists in the map.
 unordered_map<int,int> exclude = {{BACKGROUND,1}}; 
-
-/*void readFile(const char* filename)
-{
-	ifstream in(filename,ios::binary);
-	if(!in.is_open())
-	{
-		printf("Error: Unable to open msi locations file '%s'.\n",filename);
-		exit(1);
-	}
-	int numMSIs = readInt(in);
-	for(int i = 0; i < numMSIs; i++)
-	{
-		int msi = readInt(in);
-		// if(msi > 5000)
-		// 	printf("found msi > 5000 - %d\n",msi);
-		int numBoxes = readInt(in);
-		// locations[msi] = vector<Box>(numBoxes);
-		locations[msi].init(msi,numBoxes);
-		for(int j = 0; j < numBoxes; j++)
-			locations[msi].boxes[j].load(readInt(in),readInt(in),readInt(in),readInt(in),readInt(in));
-	}
-}
-
-int getMSI(string filename)
-{
-	int startMSIIndex = filename.find("msi");
-	int nextUnderscore = filename.find("_",startMSIIndex);
-	if(nextUnderscore == string::npos)
-		nextUnderscore = filename.find(".",startMSIIndex);
-	// printf("%s\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str());
-	int ret = -1;
-	try{
-		ret = stoi(filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3));
-	}
-	catch(...)
-	{
-		printf("stoi failed on input '%s' for filename '%s'\n", filename.substr(startMSIIndex+3,nextUnderscore - startMSIIndex + 3).c_str(),filename.c_str());
-	}
-	return ret;
-}*/
 
 void readInOriginalFilenames(const string& original_image_folder)
 {
@@ -202,20 +81,10 @@ void readInOriginalFilenames(const string& original_image_folder)
 					sprintf(inPathandName,"%s%s",pathName.c_str(),file->d_name);
 					string ipan(inPathandName);
 					if(ipan.find("_prediction") == string::npos)
-					{
-						// cout << "Found: " << ipan << " MSI - " << getMSI(ipan) << endl;
 						filenamesByMSI[getMSI(ipan)] = ipan;
-
-						// if(getMSI(ipan) == 5605)
-						// {
-						// 	cout << "\tFrom map: " << filenamesByMSI[getMSI(ipan)] << endl;
-						// }
-					}
 				}
 			}
-			//cout << "closing directory" << endl;
 			closedir(directory);
-			//cout << "directory closed" << endl;
 		}
 		else
 		{
@@ -224,23 +93,10 @@ void readInOriginalFilenames(const string& original_image_folder)
 		}
 
 		for(auto it = locations.begin(); it != locations.end(); it++)
-		{
-			// if(it->first == 5605)
-			// 	cout << "Trying 5605" << endl;
- 
+		{ 
 			if(filenamesByMSI.find(it->first) != filenamesByMSI.end()) // if we found the MSI in filenamesByMSI
-			{
-				// cout << "Putting " << it->first << endl;
 				locations[it->first].original_image_path = filenamesByMSI[it->first];
-			}
-
 			//only worry if the original_image_path doesn't exist when looking for it
-
-			// else
-			// {
-			// 	printf("Unable to find original image for MSI %d\n", it->first);
-			// 	exit(-1);
-			// }
 		}
 	}
 	else
@@ -252,7 +108,6 @@ void readInOriginalFilenames(const string& original_image_folder)
 
 void appendFilenames(const string& folderOrImage, vector<string>& filenames)
 {
-	bool isDirectory;
 	struct stat s;
 	unordered_map<int, string> filenamesByMSI;
 	if(stat(folderOrImage.c_str(),&s) == 0)
@@ -680,7 +535,6 @@ int main(int argc, char** argv)
 					}
 					else //box is too small in x direction, need padding
 					{
-						// printf("BOX TOO SMALL!!!\n%s\n",box.toString().c_str());
 						int paddingNeeded = idx_size - box.w;
 						int leftAttempt = paddingNeeded/2; //we will attempt to put this much padding on the left
 						int rightAttempt = paddingNeeded - leftAttempt; //we will attempt to put this much padding on the right
