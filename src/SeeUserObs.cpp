@@ -268,8 +268,8 @@ int main(int argc, char** argv)
 		printf("Doing msi %5d: size %4d x %4d (w x h). Num obs: %3d\n", msi,im.cols,im.rows,numBoxes);
 
 		//calculate # obs that match (white and blue)
-		if(numBoxes != 0) // if no boxes, matching and blackout aren't needed. But background misclassify checking is
-		{
+		// if(numBoxes != 0) // if no boxes, matching and blackout aren't needed. But background misclassify checking is
+		// {
 			// printf("start box matching\n");
 			for(int i = 0; i < numBoxes; i++)
 			{
@@ -295,7 +295,7 @@ int main(int argc, char** argv)
 			imshow("image",im);
 
 			waitKey(0); // if also showing missed background, show all at once
-		}
+		// }
 	}
 
 	return 0;
