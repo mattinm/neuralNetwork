@@ -374,19 +374,19 @@ void Trainer::run()
 
         //train cnn
         emit updateCurrently(iterString + " Training CNN");
-        if(i != 0) trainCNN(curCNNName,oldCNN,curTrainData,curTrainLabel,termout);
+        trainCNN(curCNNName,oldCNN,curTrainData,curTrainLabel,termout);
         if(cancelTrain) break;
 
         //run cnn - train mosaics
         emit updateCurrently(iterString + " Running over training mosaics");
         outloc = QStringLiteral("%1/%2_run_over_train").arg(info.outputLocation).arg(i);
-        if(i != 0) runCNN(curCNNName,info.trainMosaics,stride,outloc);
+        runCNN(curCNNName,info.trainMosaics,stride,outloc);
         if(cancelTrain) break;
 
         //blob count cnn - train mosaics
         emit updateCurrently(iterString + " Blob count on training mosaics");
         blobName = QStringLiteral("%1/%2_blob_count_train.csv").arg(info.outputLocation).arg(i);
-        if(i != 0) blobCount(outloc,blobName); // the outloc from runCNN is the input to this. blobName is the output of this
+        blobCount(outloc,blobName); // the outloc from runCNN is the input to this. blobName is the output of this
         if(cancelTrain) break;
         blob_counts.append(blobName);
 
