@@ -354,8 +354,6 @@ void Trainer::run()
     QString curTrainData = info.trainIdxData;
     QString curTrainLabel = info.trainIdxLabel;
     QStringList blob_counts;
-    QString prevData = info.trainIdxData;
-    QString prevLabel = info.trainIdxLabel;
     QString oldCNN = info.netConfig;
     QString blobCompareFilename = QStringLiteral("%1/Blob_comparisons").arg(info.outputLocation);
     QString blobCompareAgg = QStringLiteral("%1_aggregate.csv").arg(blobCompareFilename);
@@ -409,7 +407,7 @@ void Trainer::run()
         QString retrain_base = QStringLiteral("%1/%2_retrain").arg(info.outputLocation).arg(i);
         QString retrain_data = QStringLiteral("%1_data.idx").arg(retrain_base);
         QString retrain_label = QStringLiteral("%1_label.idx").arg(retrain_base);
-        combineIDXs(prevData,prevLabel,loop_data,loop_label,-1,retrain_base,termout);
+        combineIDXs(curTrainData,curTrainLabel,loop_data,loop_label,-1,retrain_base,termout);
         if(cancelTrain) break;
 
 
