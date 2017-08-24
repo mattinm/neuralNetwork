@@ -206,6 +206,7 @@ void Net::destroy()
 			clReleaseKernel(updateGammaAndBetaKernel);
 
 			clReleaseProgram(CNTraining);
+			clReleaseProgram(CNKernels);
 		}
 
 		clReleaseContext(__context);
@@ -392,6 +393,22 @@ void Net::init(int inputWidth, int inputHeight, int inputDepth)
 	else
 	{
 		printf("Cannot find ConvNetForward_kernel.cl\n");
+		exit(1);
+	}
+
+	if(fileExists("ConvNetKernel.cl"))
+		CNKernelPath = "ConvNetKernel.cl";
+	else if(fileExists("../kernels/ConvNetKernel.cl"))
+		CNKernelPath = "../kernels/ConvNetKernel.cl";
+	else if(fileExists("../../kernels/ConvNetKernel.cl"))
+		CNKernelPath = "../../kernels/ConvNetKernel.cl";
+	else if(fileExists("/Users/connorbowley/Development/neuralNetwork/kernels/ConvNetKernel.cl"))
+		CNKernelPath = "/Users/connorbowley/Development/neuralNetwork/kernels/ConvNetKernel.cl";
+	else if(fileExists("..\\..\\..\\kernels\\ConvNetKernel.cl"))
+		CNKernelPath = "..\\..\\..\\kernels\\ConvNetKernel.cl";
+	else
+	{
+		printf("Cannot find ConvNetKernel.cl\n");
 		exit(1);
 	}
 }
@@ -972,11 +989,15 @@ bool Net::finalize()
 		__program_creation_mutex.lock();
 		if(!__programs_already_created)
 		{
+			CNKernels = CreateProgram(LoadKernel(CNKernelPath.c_str()), __context, COMBINED_PROGRAM);
+			CheckError(clBuildProgram(CNKernels, __deviceIds.size(), __deviceIds.data(), nullptr, nullptr, nullptr));
+
 			CNForward = CreateProgram(LoadKernel(CNForwardPath.c_str()), __context, RUNNING_PROGRAM);
 			CheckError(clBuildProgram(CNForward, 1, deviceToBuild, nullptr, nullptr, nullptr));
 			//training
 			CNTraining = CreateProgram(LoadKernel(CNTrainingPath.c_str()), __context, TRAINING_PROGRAM);
 			CheckError(clBuildProgram(CNTraining, 1, deviceToBuild, nullptr, nullptr, nullptr));
+
 			__programs_already_created = true;
 		}
 		__program_creation_mutex.unlock();
@@ -1249,7 +1270,8 @@ bool Net::set_MAX_NORM_CAP(double cap)
 *****************************/
 void Net::run()
 {
-
+	betterRun();
+	return;
 	// CheckError(-11);
  	// if(useGPU != __useGPU)
  	// {
@@ -1347,6 +1369,7 @@ void Net::run()
 					clSetKernelArg(zeroPadKernelF, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
 					clSetKernelArg(zeroPadKernelF, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
 					clSetKernelArg(zeroPadKernelF, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+					clSetKernelArg(zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
 
 					// run it for the size of the new array
 					globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
@@ -1480,6 +1503,7 @@ void Net::run()
 			clSetKernelArg(softmaxKernelF, 0, sizeof(cl_mem), prevNeurons);
 			clSetKernelArg(softmaxKernelF, 1, sizeof(cl_mem), neurons);
 			clSetKernelArg(softmaxKernelF, 2, sizeof(cl_mem), &denom);
+			clSetKernelArg(softmaxKernelF, 3, sizeof(int), &__neuronSizes.back());
 			CheckError(clEnqueueNDRangeKernel(queue, softmaxKernelF, 1,
 				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 			clFinish(queue);
@@ -1736,16 +1760,17 @@ void Net::feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, vector<vec
 			
 			if(conv->padding != 0) //if we need to do padding on the input
 			{
-				clSetKernelArg(k.zeroPadKernelF, 0, sizeof(cl_mem), *prevNeurons);
-				clSetKernelArg(k.zeroPadKernelF, 1, sizeof(cl_mem), *neurons);
-				clSetKernelArg(k.zeroPadKernelF, 2, sizeof(int), &(conv->padding)); // padding
-				clSetKernelArg(k.zeroPadKernelF, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
-				clSetKernelArg(k.zeroPadKernelF, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
-				clSetKernelArg(k.zeroPadKernelF, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+				clSetKernelArg(k.zeroPadKernel, 0, sizeof(cl_mem), *prevNeurons);
+				clSetKernelArg(k.zeroPadKernel, 1, sizeof(cl_mem), *neurons);
+				clSetKernelArg(k.zeroPadKernel, 2, sizeof(int), &(conv->padding)); // padding
+				clSetKernelArg(k.zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
+				clSetKernelArg(k.zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
+				clSetKernelArg(k.zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+				clSetKernelArg(k.zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
 
 				// run it for the size of the new array
 				globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
-				CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernelF, 1,
+				CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernel, 1,
 					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 				clFinish(queue);
 
@@ -1888,6 +1913,7 @@ void Net::feedForward_running(cl_mem** prevNeurons, cl_mem** neurons, vector<vec
 		clSetKernelArg(k.softmaxKernelF, 0, sizeof(cl_mem), *prevNeurons);
 		clSetKernelArg(k.softmaxKernelF, 1, sizeof(cl_mem), *neurons);
 		clSetKernelArg(k.softmaxKernelF, 2, sizeof(cl_mem), &denom);
+		clSetKernelArg(k.softmaxKernelF, 3, sizeof(int), &__neuronSizes.back());
 		CheckError(clEnqueueNDRangeKernel(queue, k.softmaxKernelF, 1,
 			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 		clFinish(queue);
@@ -2068,6 +2094,7 @@ void Net::feedForward(vector<cl_mem>& layerNeeds)
 				clSetKernelArg(zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
 				clSetKernelArg(zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
 				clSetKernelArg(zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+				clSetKernelArg(zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
 
 				// run it for the size of the new array
 				globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
@@ -2185,6 +2212,7 @@ void Net::softmaxForward()
 	clSetKernelArg(softmaxKernelF, 0, sizeof(cl_mem), prevNeurons);
 	clSetKernelArg(softmaxKernelF, 1, sizeof(cl_mem), neurons);
 	clSetKernelArg(softmaxKernelF, 2, sizeof(cl_mem), &denom);
+	clSetKernelArg(softmaxKernelF, 3, sizeof(int), &__neuronSizes.back());
 	CheckError(clEnqueueNDRangeKernel(queue, softmaxKernelF, 1,
 		nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 	clFinish(queue);
@@ -2219,6 +2247,7 @@ void Net::feedForward(cl_mem** prevNeurons, cl_mem** neurons, vector<vector<int>
 				clSetKernelArg(k.zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
 				clSetKernelArg(k.zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
 				clSetKernelArg(k.zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+				clSetKernelArg(k.zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
 
 				// run it for the size of the new array
 				globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
@@ -2611,6 +2640,7 @@ void Net::feedForward_BN(const int num_threads, const int minibatch_size, const 
 						clSetKernelArg(k.zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
 						clSetKernelArg(k.zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
 						clSetKernelArg(k.zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+						clSetKernelArg(k.zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
 
 						// run it for the size of the new array
 						globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
@@ -2938,16 +2968,17 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 					#ifdef _DEBUG
 					printf("Thread %d: starting padding...\n",thread_num);
 					#endif
-					clSetKernelArg(k.zeroPadKernelF, 0, sizeof(cl_mem), *prevNeurons);
-					clSetKernelArg(k.zeroPadKernelF, 1, sizeof(cl_mem), *neurons);
-					clSetKernelArg(k.zeroPadKernelF, 2, sizeof(int), &(conv->padding)); // padding
-					clSetKernelArg(k.zeroPadKernelF, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
-					clSetKernelArg(k.zeroPadKernelF, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
-					clSetKernelArg(k.zeroPadKernelF, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+					clSetKernelArg(k.zeroPadKernel, 0, sizeof(cl_mem), *prevNeurons);
+					clSetKernelArg(k.zeroPadKernel, 1, sizeof(cl_mem), *neurons);
+					clSetKernelArg(k.zeroPadKernel, 2, sizeof(int), &(conv->padding)); // padding
+					clSetKernelArg(k.zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
+					clSetKernelArg(k.zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
+					clSetKernelArg(k.zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+					clSetKernelArg(k.zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
 
 					// run it for the size of the new array
 					globalWorkSize[0] = (size_t) conv->paddedNeuronSize;
-					CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernelF, 1,
+					CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernel, 1,
 						nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 					clFinish(queue);
 
@@ -3057,6 +3088,223 @@ void Net::feedForward_BN_running(const int num_threads, const int minibatch_size
 	}
 }
 
+void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem** prevNeurons, cl_mem** neurons,
+	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k)
+{
+	// printf("Thread %d: doing items [%d,%d)\n", thread_num,start,end);
+	//do housekeeping to make sure everything is sized right
+	size_t globalWorkSize[] = {(size_t)__neuronSizes[0] * timesFit,0,0}; // initialized for copyArrayKernel
+	cl_mem* temp;
+
+		// printf("image %d: ", start + a);
+		// for(int v = 0; v < __dataPointer->at(start + a).size(); v++)
+		// 	printf("%lf, ", __dataPointer->at(start + a)[v]);
+		// printf("\n");
+
+	int curConvLayer = 0, curBNLayer = 0;
+	
+	#ifdef _DEBUG
+	printf("Thread %d: start feed\n",thread_num);
+	#endif
+	for(int i = 1; i < __layers.size(); i++) //start at 1 because 0 is input
+	{
+		#ifdef _TIMINGS
+		auto starttime = chrono::system_clock::now();
+		#endif
+		#ifdef _DEBUG
+		printf("Thread %d: layer %d, type %d\n",thread_num,i,__layers[i]->layerType);
+		#endif
+		//printf("Layer %d, type %d\n", i, __layers[i]->layerType);
+		if(__layers[i]->layerType == BATCH_NORM_LAYER)
+		{
+			BatchNormLayer *batch = (BatchNormLayer*)__layers[i];
+
+			////////////////
+			// Calculate output of BN layer on GPU
+			////////////////
+
+			#ifdef _DEBUG
+			printf("Thread %d: bn calc dneurons\n",thread_num);
+			#endif
+
+
+			int depth = batch->byFeatureMap ? __neuronDims[i][2] : 0; // number < 1 means by activation instead of by feature map. use number < 1 when previous layer is non-convLayers
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 0, sizeof(cl_mem), *prevNeurons));
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 1, sizeof(cl_mem), *neurons));
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 2, sizeof(cl_mem), &gamma.at(curBNLayer)));
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 3, sizeof(cl_mem), &beta.at(curBNLayer)));
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 4, sizeof(cl_mem), &(mu_cl.at(curBNLayer))));
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 5, sizeof(cl_mem), &(sigma_squared_cl.at(curBNLayer))));
+			CheckError(clSetKernelArg(k.batchNormRunKernel, 6, sizeof(int), &depth));
+			//other args set above
+			globalWorkSize[0] = (size_t) __neuronSizes[i] * timesFit;
+			CheckError(clEnqueueNDRangeKernel(queue, k.batchNormRunKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+			curBNLayer++;
+
+			#ifdef _DEBUG
+			printf("Thread %d: END bn\n",thread_num);
+			#endif
+			
+		}
+		else if(__layers[i]->layerType == CONV_LAYER)
+		{
+			ConvLayer* conv = (ConvLayer*)__layers[i];
+			if(conv->padding != 0) //if we need to do padding on the input
+			{
+
+				#ifdef _DEBUG
+				printf("Thread %d: starting padding...\n",thread_num);
+				#endif
+				clSetKernelArg(k.zeroPadKernel, 0, sizeof(cl_mem), *prevNeurons);
+				clSetKernelArg(k.zeroPadKernel, 1, sizeof(cl_mem), *neurons);
+				clSetKernelArg(k.zeroPadKernel, 2, sizeof(int), &(conv->padding)); // padding
+				clSetKernelArg(k.zeroPadKernel, 3, sizeof(int), &(__neuronDims[i-1][0])); // prevWidth
+				clSetKernelArg(k.zeroPadKernel, 4, sizeof(int), &(__neuronDims[i-1][1])); // prevHeight
+				clSetKernelArg(k.zeroPadKernel, 5, sizeof(int), &(__neuronDims[i-1][2])); // depth (before and after zero pad)
+				clSetKernelArg(k.zeroPadKernel, 6, sizeof(int), &(conv->paddedNeuronSize));
+
+				// run it for the size of the new array
+				globalWorkSize[0] = (size_t) conv->paddedNeuronSize * timesFit;
+				// printf("gws = %lu\n", globalWorkSize[0]);
+				CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernel, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+				clFinish(queue);
+
+				//swap the buffers so prevNeurons holds the zero padded data
+				// printf("pad swap\n");
+				temp = *neurons;
+				*neurons = *prevNeurons;
+				*prevNeurons = temp;
+				#ifdef _DEBUG
+				printf("Thread %d: padding done\n",thread_num);
+				#endif
+			}
+
+			#ifdef _DEBUG
+			printf("Thread %d: Copy layerNeeds\n",thread_num);
+			#endif
+
+			clSetKernelArg(k.convKernelF, 0, sizeof(cl_mem), *prevNeurons);
+			clSetKernelArg(k.convKernelF, 1, sizeof(cl_mem), *neurons);
+			clSetKernelArg(k.convKernelF, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
+			clSetKernelArg(k.convKernelF, 3, sizeof(cl_mem), &clBiases[curConvLayer]);
+			clSetKernelArg(k.convKernelF, 4, sizeof(int), &(conv->numBiases)); //numFilters
+			clSetKernelArg(k.convKernelF, 5, sizeof(int), &(conv->filterSize));
+			clSetKernelArg(k.convKernelF, 6, sizeof(int), &(conv->stride));
+			clSetKernelArg(k.convKernelF, 7, sizeof(int), &(conv->paddedNeuronWidth)); // prevWidth
+			clSetKernelArg(k.convKernelF, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
+
+			globalWorkSize[0] = (size_t)__neuronSizes[i] * timesFit;
+			CheckError(clEnqueueNDRangeKernel(queue, k.convKernelF, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+
+			#ifdef _DEBUG
+			printf("Thread %d: End conv layer\n",thread_num);
+			#endif
+			curConvLayer++;
+		}
+		else if(__layers[i]->layerType == MAX_POOL_LAYER)
+		{
+			MaxPoolLayer* pool = (MaxPoolLayer*)__layers[i];
+			clSetKernelArg(k.maxPoolKernelF, 0, sizeof(cl_mem), *prevNeurons);
+			clSetKernelArg(k.maxPoolKernelF, 1, sizeof(cl_mem), *neurons);
+			clSetKernelArg(k.maxPoolKernelF, 2, sizeof(int), &(__neuronDims[i-1][0])); //prevwidth
+			clSetKernelArg(k.maxPoolKernelF, 3, sizeof(int), &(__neuronDims[i-1][2])); //prevdepth
+			clSetKernelArg(k.maxPoolKernelF, 4, sizeof(int), &(pool->poolSize)); //poolsize
+			clSetKernelArg(k.maxPoolKernelF, 5, sizeof(int), &(pool->stride)); //stride
+			globalWorkSize[0] = (size_t)__neuronSizes[i] * timesFit;
+			CheckError(clEnqueueNDRangeKernel(queue, k.maxPoolKernelF, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		}
+		else if(__layers[i]->layerType == ACTIV_LAYER)
+		{
+			#ifdef _DEBUG
+			printf("Thread %d: Start ActivLayer \n",thread_num);
+			#endif
+			int type = ((ActivLayer*)__layers[i])->activationType;
+			globalWorkSize[0] = (size_t)__neuronSizes[i] * timesFit;
+			if(type == RELU)
+			{
+				#ifdef _DEBUG
+				printf("Thread %d: RELU... \n",thread_num);
+				#endif
+				clSetKernelArg(k.reluKernelF, 0, sizeof(cl_mem), *prevNeurons);
+				clSetKernelArg(k.reluKernelF, 1, sizeof(cl_mem), *neurons);
+				CheckError(clEnqueueNDRangeKernel(queue, k.reluKernelF, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			}
+			else if(type == LEAKY_RELU)
+			{
+				#ifdef _DEBUG
+				printf("Thread %d: LEAKY_RELU... \n",thread_num);
+				#endif
+				CheckError(clSetKernelArg(k.leakyReluKernelF, 0, sizeof(cl_mem), *prevNeurons));
+				CheckError(clSetKernelArg(k.leakyReluKernelF, 1, sizeof(cl_mem), *neurons));
+				CheckError(clEnqueueNDRangeKernel(queue, k.leakyReluKernelF, 1,
+					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			}
+		}
+		
+		clFinish(queue);
+
+		// printf("swap\n");
+		temp = *neurons;
+		*neurons = *prevNeurons;
+		*prevNeurons = temp;
+		#ifdef _TIMINGS
+		auto elapsed = chrono::duration_cast<chrono::microseconds>(chrono::system_clock::now() - starttime);
+		printf("Time Layer %d Type %d forward: %lld\n", i, __layers[i]->layerType, elapsed.count());
+		#endif
+		
+	}
+
+	#ifdef _DEBUG
+	printf("Thread %d: start softmax... \n",thread_num);
+	#endif
+	if(usesSoftmax)
+	{
+		// printf("max\n");
+		//max subtraction to help not overflow the numbers
+		size_t globalWorkSize[] = {timesFit, 0, 0};
+		clSetKernelArg(k.maxSubtractionKernel, 0, sizeof(cl_mem), *prevNeurons);
+		clSetKernelArg(k.maxSubtractionKernel, 1, sizeof(int), &__neuronSizes.back());
+		CheckError(clEnqueueNDRangeKernel(queue, k.maxSubtractionKernel, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		// printf("vecE\n");
+		//vectorESum. arg 1 set above
+		clSetKernelArg(k.vectorESumKernel, 0, sizeof(cl_mem), *prevNeurons);
+		clSetKernelArg(k.vectorESumKernel, 1, sizeof(int), &(__neuronSizes.back()));
+		clSetKernelArg(k.vectorESumKernel, 2, sizeof(cl_mem), &denom);
+		CheckError(clEnqueueNDRangeKernel(queue, k.vectorESumKernel, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+
+		// printf("soft\n");
+		//softmax
+		globalWorkSize[0] = (size_t)__neuronSizes.back() * timesFit;
+		clSetKernelArg(k.softmaxKernelF, 0, sizeof(cl_mem), *prevNeurons);
+		clSetKernelArg(k.softmaxKernelF, 1, sizeof(cl_mem), *neurons);
+		clSetKernelArg(k.softmaxKernelF, 2, sizeof(cl_mem), &denom);
+		clSetKernelArg(k.softmaxKernelF, 3, sizeof(cl_mem), &__neuronSizes.back());
+		CheckError(clEnqueueNDRangeKernel(queue, k.softmaxKernelF, 1,
+			nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+		clFinish(queue);
+	}
+
+	// stringstream ss;
+	// for(int c = 0; c < __confidences[start + a].size(); c++)
+	// 	ss << __confidences[start + a][c] << ", ";
+	// printf("%d.%d: conf %s\n", thread_num, a, ss.str().c_str());
+
+	#ifdef _DEBUG
+	printf("Thread %d: done feed forward \n",thread_num);
+	#endif
+}
+
 
 /*****************************
 *
@@ -3114,6 +3362,7 @@ void Net::softmaxForward(cl_mem* prevNeurons, cl_mem* neurons, const cl_command_
 	clSetKernelArg(k.softmaxKernelF, 0, sizeof(cl_mem), prevNeurons);
 	clSetKernelArg(k.softmaxKernelF, 1, sizeof(cl_mem), neurons);
 	clSetKernelArg(k.softmaxKernelF, 2, sizeof(cl_mem), &denom);
+	clSetKernelArg(k.softmaxKernelF, 3, sizeof(int), &__neuronSizes.back());
 	CheckError(clEnqueueNDRangeKernel(queue, k.softmaxKernelF, 1,
 		nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 	clFinish(queue);
@@ -4511,7 +4760,7 @@ void Net::destroyBatchNormCLMems()
 	setupBatchNormCLMems_running_done = false;
 }
 
-void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& thread_sizes)
+void Net::setupBatchNormCLMems_running()
 {
 	if(setupBatchNormCLMems_running_done)
 	{
@@ -4519,11 +4768,7 @@ void Net::setupBatchNormCLMems_running(int num_threads, const vector<int>& threa
 		return;
 	}
 	#ifdef _DEBUG
-	printf("Start setupBatchNormCLMems [");
-	printf("%d", thread_sizes[0]);
-	for(int i = 1; i < thread_sizes.size(); i++)
-		printf(",%d", thread_sizes[i]);
-	printf("]... ");
+	printf("Start setupBatchNormCLMems_running");
 	#endif
 	cl_int error;
 	int numBNLayers = 0;
@@ -4987,7 +5232,7 @@ void Net::batchNormRun()
 			printf("NO PREPROCESSING OF TRAINING DATA\n");
  	}
 	
-	setupBatchNormCLMems_running(numThreads, thread_sizes);
+	setupBatchNormCLMems_running();
 
 	if(numThreads != bnrunmems.getNumThreads())
 	{
@@ -5028,6 +5273,121 @@ void Net::batchNormRun()
 	#ifdef _DEBUG
 	printf("feedforward joined\n");
 	#endif
+}
+
+/***************************
+*
+* A batchNorm train function training does minibatch training with batch normalization.
+* Public
+*
+***************************/
+void Net::betterRun()
+{
+	setbuf(stdout, NULL);
+
+	if(!__isTraining)
+ 		__dataPointer = &__data;
+
+ 	__confidences.resize(__dataPointer->size());
+
+	int batchSize = __dataPointer->size();
+	int numThreads;
+
+	// cl_device_type devtype;
+	// CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_TYPE, sizeof(cl_device_type), &devtype, nullptr));
+	// if(devtype == CL_DEVICE_TYPE_GPU)
+	// 	numThreads = 1;
+	// else
+	// 	numThreads = 10;
+	// if(batchSize < numThreads)
+	// 	numThreads = batchSize;
+	// vector<int> thread_sizes(numThreads);
+
+	// for(int mini = 0, i = 0; mini < batchSize; mini++, i = (i+1)%numThreads)
+	// 	thread_sizes[i]++;
+
+	// #ifdef _DEBUG
+	// for(int i = 0; i < thread_sizes.size(); i++)
+	// 	printf("size %d: %d\n", i,thread_sizes[i]);
+	// printf("thread sizes set, %d\n",__isFinalized);
+	// #endif
+
+	if(!__isFinalized)
+	{
+		finalize(); // this also sets __maxNeuronSize
+	}
+
+ 	if(!__dataPreprocessed)
+ 	{
+ 		if(__preprocessType == __PREPROCESS_INDIVIDUAL)
+ 			preprocessDataIndividual();
+ 		else if(__preprocessType == __PREPROCESS_COLLECTIVE)
+ 			preprocessDataCollective();
+ 		else
+			printf("NO PREPROCESSING OF TRAINING DATA\n");
+ 	}
+
+ 	size_t maxNeuronBytes = __maxNeuronSize * sizeof(double);
+
+ 	cl_ulong global_mem_size;
+ 	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &global_mem_size, NULL));
+
+ 	size_t timesFit = (global_mem_size * 0.2) / maxNeuronBytes;
+ 	#ifdef _DEBUG
+ 	printf("timesFit = %lu\n", timesFit);
+ 	#endif
+
+	
+	setupBatchNormCLMems_running();
+
+	if(numThreads != bnrunmems.getNumThreads())
+	{
+		bnrunmems.betterLoad(timesFit, __device, this); // this takes care of creation of mem. The class destructor will destroy it.
+	}
+
+	__confidences.resize(__dataPointer->size());
+
+	size_t writeSize = __neuronSizes[0] * sizeof(double);
+	size_t readSize = __neuronSizes.back() * sizeof(double);
+
+	////////////////////////////
+	// start of run
+	////////////////////////////
+	for(int i = 0; i < __dataPointer->size();)
+	{
+		#ifdef _DEBUG
+		printf("doing items %d - ",i);
+		#endif
+		int start = i;
+		int currentFit = 0;
+		int offset = 0;
+		for(int t = 0; t < timesFit; t++)
+		{
+			if(i >= __dataPointer->size())
+				break;
+			CheckError(clEnqueueWriteBuffer(bnrunmems.queues[0], *(bnrunmems.prevNeurons[0]), CL_TRUE, offset, writeSize, 
+				__dataPointer->at(i).data(), 0, nullptr, nullptr));
+			offset += writeSize;
+			i++;
+			currentFit++;
+		}
+		#ifdef _DEBUG
+		printf("%d\n",i);
+		#endif
+
+		cl_mem **pptr = &(bnrunmems.prevNeurons[0]), **nptr = &(bnrunmems.neurons[0]);
+		better_feedForward(currentFit, 0, pptr, nptr,bnrunmems.queues[0], bnrunmems.denoms[0], bnrunmems.kernels[0]);
+
+		offset = 0;
+		for(int j = start; j < start + currentFit; j++)
+		{
+			__confidences[j].resize(__neuronSizes.back());
+			CheckError(clEnqueueReadBuffer(bnrunmems.queues[0], *(bnrunmems.neurons[0]), CL_TRUE, offset, readSize,
+				__confidences[j].data(), 0, nullptr, nullptr));
+			offset += readSize;
+		}
+	}
+
 }
 
 /*****************************
@@ -7210,7 +7570,7 @@ void Net::antTrain(uint maxIterations, uint population, int dataBatchSize)
 void Net::buildKernels(Kernels& k, int device)
 {
 	#ifdef _DEBUG
-	printf("Start buildKernels train(%s) run(%s)... ",CNTrainingPath.c_str(), CNForwardPath.c_str());
+	printf("Start buildKernels (%s)... ",CNKernelPath.c_str());//CNTrainingPath.c_str(), CNForwardPath.c_str());
 	#endif
 	cl_int error;
 	if(k.built)
@@ -7220,54 +7580,99 @@ void Net::buildKernels(Kernels& k, int device)
 	__program_creation_mutex.lock();
 	if(!__programs_already_created)
 	{
-		CNForward = CreateProgram(LoadKernel(CNForwardPath.c_str()), __context, RUNNING_PROGRAM);
-		CheckError(clBuildProgram(CNForward, __deviceIds.size(), __deviceIds.data(), nullptr, nullptr, nullptr));
-		//training
-		CNTraining = CreateProgram(LoadKernel(CNTrainingPath.c_str()), __context, TRAINING_PROGRAM);
-		CheckError(clBuildProgram(CNTraining, __deviceIds.size(), __deviceIds.data(), nullptr, nullptr, nullptr));
+		CNKernels = CreateProgram(LoadKernel(CNKernelPath.c_str()), __context, COMBINED_PROGRAM);
+		CheckError(clBuildProgram(CNKernels, __deviceIds.size(), __deviceIds.data(), nullptr, nullptr, nullptr));
+
+		// CNForward = CreateProgram(LoadKernel(CNForwardPath.c_str()), __context, RUNNING_PROGRAM);
+		// CheckError(clBuildProgram(CNForward, __deviceIds.size(), __deviceIds.data(), nullptr, nullptr, nullptr));
+		// //training
+		// CNTraining = CreateProgram(LoadKernel(CNTrainingPath.c_str()), __context, TRAINING_PROGRAM);
+		// CheckError(clBuildProgram(CNTraining, __deviceIds.size(), __deviceIds.data(), nullptr, nullptr, nullptr));
+
 		__programs_already_created = true;
 	}
+	#ifdef _DEBUG
+	printf("built program\n");
+	#endif
 	__program_creation_mutex.unlock();
 
-	k.reluKernelF = clCreateKernel(CNForward, "relu", &error); CheckError(error);
-	k.leakyReluKernelF = clCreateKernel(CNForward, "leakyRelu", &error); CheckError(error);
-	k.convKernelF = clCreateKernel(CNForward, "convolve", &error); CheckError(error);
-	k.convKernelFC = clCreateKernel(CNForward, "convolveConstant", &error); CheckError(error);
-	k.zeroPadKernelF = clCreateKernel(CNForward, "zeroPad", &error); CheckError(error);
-	k.maxPoolKernelF = clCreateKernel(CNForward, "maxPool", &error); CheckError(error);
-	k.softmaxKernelF = clCreateKernel(CNForward, "softmax_allCL", &error); CheckError(error);
-	k.reluKernel = clCreateKernel(CNTraining, "relu", &error); CheckError(error);
-	k.reluBackKernel = clCreateKernel(CNTraining, "relu_back", &error); CheckError(error);
-	k.leakyReluKernel = clCreateKernel(CNTraining, "leakyRelu", &error); CheckError(error);
-	k.leakyReluBackKernel = clCreateKernel(CNTraining, "leakyRelu_back", &error); CheckError(error);
-	k.convKernel = clCreateKernel(CNTraining, "convolve", &error); CheckError(error);
-	k.convBackNeuronsKernel = clCreateKernel(CNTraining, "convolve_back_neurons", &error); CheckError(error);
-	k.convBackBiasesKernel = clCreateKernel(CNTraining, "convolve_back_biases", &error); CheckError(error);
-	k.convBackWeightsKernel = clCreateKernel(CNTraining, "convolve_back_weights", &error); CheckError(error);
-	k.convBackWeightsMomentKernel = clCreateKernel(CNTraining, "convolve_back_weights_moment", &error); CheckError(error);
-	k.zeroPadKernel = clCreateKernel(CNTraining, "zeroPad", &error); CheckError(error);
-	k.zeroPadBackKernel = clCreateKernel(CNTraining, "zeroPad_back", &error); CheckError(error);
-	k.avgPoolKernel = clCreateKernel(CNTraining, "avgPool", &error); CheckError(error);
-	k.avgPoolBackKernel = clCreateKernel(CNTraining, "avgPool_back", &error); CheckError(error);
-	k.maxPoolKernel = clCreateKernel(CNTraining, "maxPool", &error); CheckError(error);
-	k.maxPoolBackKernel = clCreateKernel(CNTraining, "maxPool_back", &error); CheckError(error);
-	k.softmaxKernel = clCreateKernel(CNTraining, "softmax", &error); CheckError(error);
-	k.softmaxBackKernel = clCreateKernel(CNTraining, "softmax_back", &error); CheckError(error);
-	k.copyArrayKernel = clCreateKernel(CNTraining, "copyArray", &error); CheckError(error);
-	k.maxSubtractionKernel = clCreateKernel(CNTraining, "maxSubtraction", &error); CheckError(error);
-	k.vectorESumKernel = clCreateKernel(CNTraining, "vectorESum", &error); CheckError(error);
-	k.plusEqualsKernel = clCreateKernel(CNTraining, "plusEquals", &error); CheckError(error);
-	k.divideEqualsKernel = clCreateKernel(CNTraining, "divideEquals", &error); CheckError(error);
-	k.zeroMemKernel = clCreateKernel(CNTraining, "zero_out", &error); CheckError(error);
-	k.convBackWeightsNoUpdateAccumKernel = clCreateKernel(CNTraining, "convolve_back_weights_no_update_accum", &error); CheckError(error);
-	k.convBackBiasesNoUpdateAccumKernel = clCreateKernel(CNTraining, "convolve_back_biases_no_update_accum", &error); CheckError(error);
-	k.updateWeightsKernel = clCreateKernel(CNTraining, "update_weights", &error); CheckError(error);
-	k.updateWeightsMomentKernel = clCreateKernel(CNTraining, "update_weights_moment", &error); CheckError(error);
-	k.updateBiasesKernel = clCreateKernel(CNTraining, "update_biases", &error); CheckError(error);
-	k.batchNormRunKernel = clCreateKernel(CNTraining, "batch_norm_run", &error); CheckError(error);
-	k.batchNormKernel = clCreateKernel(CNTraining, "batch_norm", &error); CheckError(error);
-	k.batchNormBackKernel = clCreateKernel(CNTraining, "batch_norm_back", &error); CheckError(error);
-	k.updateGammaAndBetaKernel = clCreateKernel(CNTraining, "update_gamma_and_beta", &error); CheckError(error);
+	k.reluKernelF = clCreateKernel(CNKernels, "reluF", &error); CheckError(error);
+	k.leakyReluKernelF = clCreateKernel(CNKernels, "leakyReluF", &error); CheckError(error);
+	k.convKernelF = clCreateKernel(CNKernels, "convolveF", &error); CheckError(error);
+	k.convKernelFC = clCreateKernel(CNKernels, "convolveConstantF", &error); CheckError(error);
+	k.maxPoolKernelF = clCreateKernel(CNKernels, "maxPoolF", &error); CheckError(error);
+	k.softmaxKernelF = clCreateKernel(CNKernels, "softmax_allCL", &error); CheckError(error);
+	k.reluKernel = clCreateKernel(CNKernels, "relu", &error); CheckError(error);
+	k.reluBackKernel = clCreateKernel(CNKernels, "relu_back", &error); CheckError(error);
+	k.leakyReluKernel = clCreateKernel(CNKernels, "leakyRelu", &error); CheckError(error);
+	k.leakyReluBackKernel = clCreateKernel(CNKernels, "leakyRelu_back", &error); CheckError(error);
+	k.convKernel = clCreateKernel(CNKernels, "convolve", &error); CheckError(error);
+	k.convBackNeuronsKernel = clCreateKernel(CNKernels, "convolve_back_neurons", &error); CheckError(error);
+	k.convBackBiasesKernel = clCreateKernel(CNKernels, "convolve_back_biases", &error); CheckError(error);
+	k.convBackWeightsKernel = clCreateKernel(CNKernels, "convolve_back_weights", &error); CheckError(error);
+	k.convBackWeightsMomentKernel = clCreateKernel(CNKernels, "convolve_back_weights_moment", &error); CheckError(error);
+	k.zeroPadKernel = clCreateKernel(CNKernels, "zeroPad", &error); CheckError(error);
+	k.zeroPadBackKernel = clCreateKernel(CNKernels, "zeroPad_back", &error); CheckError(error);
+	k.avgPoolKernel = clCreateKernel(CNKernels, "avgPool", &error); CheckError(error);
+	k.avgPoolBackKernel = clCreateKernel(CNKernels, "avgPool_back", &error); CheckError(error);
+	k.maxPoolKernel = clCreateKernel(CNKernels, "maxPool", &error); CheckError(error);
+	k.maxPoolBackKernel = clCreateKernel(CNKernels, "maxPool_back", &error); CheckError(error);
+	k.softmaxBackKernel = clCreateKernel(CNKernels, "softmax_back", &error); CheckError(error);
+	k.copyArrayKernel = clCreateKernel(CNKernels, "copyArray", &error); CheckError(error);
+	k.maxSubtractionKernel = clCreateKernel(CNKernels, "maxSubtraction", &error); CheckError(error);
+	k.vectorESumKernel = clCreateKernel(CNKernels, "vectorESum", &error); CheckError(error);
+	k.plusEqualsKernel = clCreateKernel(CNKernels, "plusEquals", &error); CheckError(error);
+	k.divideEqualsKernel = clCreateKernel(CNKernels, "divideEquals", &error); CheckError(error);
+	k.zeroMemKernel = clCreateKernel(CNKernels, "zero_out", &error); CheckError(error);
+	k.convBackWeightsNoUpdateAccumKernel = clCreateKernel(CNKernels, "convolve_back_weights_no_update_accum", &error); CheckError(error);
+	k.convBackBiasesNoUpdateAccumKernel = clCreateKernel(CNKernels, "convolve_back_biases_no_update_accum", &error); CheckError(error);
+	k.updateWeightsKernel = clCreateKernel(CNKernels, "update_weights", &error); CheckError(error);
+	k.updateWeightsMomentKernel = clCreateKernel(CNKernels, "update_weights_moment", &error); CheckError(error);
+	k.updateBiasesKernel = clCreateKernel(CNKernels, "update_biases", &error); CheckError(error);
+	k.batchNormRunKernel = clCreateKernel(CNKernels, "batch_norm_run", &error); CheckError(error);
+	k.batchNormKernel = clCreateKernel(CNKernels, "batch_norm", &error); CheckError(error);
+	k.batchNormBackKernel = clCreateKernel(CNKernels, "batch_norm_back", &error); CheckError(error);
+	k.updateGammaAndBetaKernel = clCreateKernel(CNKernels, "update_gamma_and_beta", &error); CheckError(error);
+
+	// k.reluKernelF = clCreateKernel(CNForward, "relu", &error); CheckError(error);
+	// k.leakyReluKernelF = clCreateKernel(CNForward, "leakyRelu", &error); CheckError(error);
+	// k.convKernelF = clCreateKernel(CNForward, "convolve", &error); CheckError(error);
+	// k.convKernelFC = clCreateKernel(CNForward, "convolveConstant", &error); CheckError(error);
+	// // k.zeroPadKernelF = clCreateKernel(CNForward, "zeroPad", &error); CheckError(error);
+	// k.maxPoolKernelF = clCreateKernel(CNForward, "maxPool", &error); CheckError(error);
+	// k.softmaxKernelF = clCreateKernel(CNForward, "softmax_allCL", &error); CheckError(error);
+	// k.reluKernel = clCreateKernel(CNTraining, "relu", &error); CheckError(error);
+	// k.reluBackKernel = clCreateKernel(CNTraining, "relu_back", &error); CheckError(error);
+	// k.leakyReluKernel = clCreateKernel(CNTraining, "leakyRelu", &error); CheckError(error);
+	// k.leakyReluBackKernel = clCreateKernel(CNTraining, "leakyRelu_back", &error); CheckError(error);
+	// k.convKernel = clCreateKernel(CNTraining, "convolve", &error); CheckError(error);
+	// k.convBackNeuronsKernel = clCreateKernel(CNTraining, "convolve_back_neurons", &error); CheckError(error);
+	// k.convBackBiasesKernel = clCreateKernel(CNTraining, "convolve_back_biases", &error); CheckError(error);
+	// k.convBackWeightsKernel = clCreateKernel(CNTraining, "convolve_back_weights", &error); CheckError(error);
+	// k.convBackWeightsMomentKernel = clCreateKernel(CNTraining, "convolve_back_weights_moment", &error); CheckError(error);
+	// k.zeroPadKernel = clCreateKernel(CNTraining, "zeroPad", &error); CheckError(error);
+	// k.zeroPadBackKernel = clCreateKernel(CNTraining, "zeroPad_back", &error); CheckError(error);
+	// k.avgPoolKernel = clCreateKernel(CNTraining, "avgPool", &error); CheckError(error);
+	// k.avgPoolBackKernel = clCreateKernel(CNTraining, "avgPool_back", &error); CheckError(error);
+	// k.maxPoolKernel = clCreateKernel(CNTraining, "maxPool", &error); CheckError(error);
+	// k.maxPoolBackKernel = clCreateKernel(CNTraining, "maxPool_back", &error); CheckError(error);
+	// k.softmaxKernel = clCreateKernel(CNTraining, "softmax", &error); CheckError(error);
+	// k.softmaxBackKernel = clCreateKernel(CNTraining, "softmax_back", &error); CheckError(error);
+	// k.copyArrayKernel = clCreateKernel(CNTraining, "copyArray", &error); CheckError(error);
+	// k.maxSubtractionKernel = clCreateKernel(CNTraining, "maxSubtraction", &error); CheckError(error);
+	// k.vectorESumKernel = clCreateKernel(CNTraining, "vectorESum", &error); CheckError(error);
+	// k.plusEqualsKernel = clCreateKernel(CNTraining, "plusEquals", &error); CheckError(error);
+	// k.divideEqualsKernel = clCreateKernel(CNTraining, "divideEquals", &error); CheckError(error);
+	// k.zeroMemKernel = clCreateKernel(CNTraining, "zero_out", &error); CheckError(error);
+	// k.convBackWeightsNoUpdateAccumKernel = clCreateKernel(CNTraining, "convolve_back_weights_no_update_accum", &error); CheckError(error);
+	// k.convBackBiasesNoUpdateAccumKernel = clCreateKernel(CNTraining, "convolve_back_biases_no_update_accum", &error); CheckError(error);
+	// k.updateWeightsKernel = clCreateKernel(CNTraining, "update_weights", &error); CheckError(error);
+	// k.updateWeightsMomentKernel = clCreateKernel(CNTraining, "update_weights_moment", &error); CheckError(error);
+	// k.updateBiasesKernel = clCreateKernel(CNTraining, "update_biases", &error); CheckError(error);
+	// k.batchNormRunKernel = clCreateKernel(CNTraining, "batch_norm_run", &error); CheckError(error);
+	// k.batchNormKernel = clCreateKernel(CNTraining, "batch_norm", &error); CheckError(error);
+	// k.batchNormBackKernel = clCreateKernel(CNTraining, "batch_norm_back", &error); CheckError(error);
+	// k.updateGammaAndBetaKernel = clCreateKernel(CNTraining, "update_gamma_and_beta", &error); CheckError(error);
 
 	k.built = true;
 	#ifdef _DEBUG
@@ -7330,7 +7735,7 @@ Net::Kernels::~Kernels()
 	clReleaseKernel(leakyReluKernelF);
 	clReleaseKernel(convKernelF);
 	clReleaseKernel(convKernelFC);
-	clReleaseKernel(zeroPadKernelF);
+	// clReleaseKernel(zeroPadKernelF);
 	clReleaseKernel(maxPoolKernelF);
 	clReleaseKernel(softmaxKernelF);
 	clReleaseKernel(reluKernel);
@@ -7347,7 +7752,7 @@ Net::Kernels::~Kernels()
 	clReleaseKernel(avgPoolKernel);
 	clReleaseKernel(maxPoolKernel);
 	clReleaseKernel(maxPoolBackKernel);
-	clReleaseKernel(softmaxKernel);
+	// clReleaseKernel(softmaxKernel);
 	clReleaseKernel(softmaxBackKernel);
 	clReleaseKernel(copyArrayKernel);
 	clReleaseKernel(maxSubtractionKernel);
@@ -10060,7 +10465,7 @@ cl_program Net::CreateProgram (std::string source, cl_context& context, int prog
 {
 	char buf[200];
 	int location;
-	if(programNum == TRAINING_PROGRAM)
+	if(programNum == TRAINING_PROGRAM || programNum == COMBINED_PROGRAM)
 	{
 		//change defines so they match what is in the variables here
 		
@@ -10089,7 +10494,7 @@ cl_program Net::CreateProgram (std::string source, cl_context& context, int prog
 		source.insert(location + 24,buf);
 	}
 
-	if(programNum == TRAINING_PROGRAM || programNum == RUNNING_PROGRAM)
+	if(programNum == TRAINING_PROGRAM || programNum == RUNNING_PROGRAM || programNum == COMBINED_PROGRAM)
 	{
 		//RELU_CAP
 		location = source.find("#define RELU_CAP"); //should be #define RELU_CAP 5000.0
@@ -10240,6 +10645,41 @@ void Net::BNRunMems::load(int numThreads, Net* parent)
 		queues[t] = clCreateCommandQueue(parent->__context, parent->__deviceIds[parent->__device], 0, &error); CheckError(error);
 		denoms[t] = clCreateBuffer(parent->__context, CL_MEM_READ_WRITE, sizeof(double), nullptr, &error); CheckError(error);
 	}
+}
+
+void Net::BNRunMems::betterLoad(size_t timesFit, int deviceIndex, Net* parent)
+{
+	if(parent == nullptr)
+	{
+		printf("Error creating BNRunMems! Exiting\n");
+		exit(1);
+	}
+	if(alreadyLoadedBetter)
+		return;
+
+	this->numThreads = 1;
+	p.resize(1);
+	n.resize(1);
+	prevNeurons.resize(1);
+	neurons.resize(1);
+	kernels.resize(1);
+	queues.resize(1);
+	denoms.resize(1);
+
+	cl_int error;
+	for(int t = 0; t < p.size(); t++)
+	{
+		p[t] = clCreateBuffer(parent->__context, CL_MEM_READ_WRITE, sizeof(double) * parent->__maxNeuronSize * timesFit, nullptr, &error); CheckError(error);
+		n[t] = clCreateBuffer(parent->__context, CL_MEM_READ_WRITE, sizeof(double) * parent->__maxNeuronSize * timesFit, nullptr, &error); CheckError(error);
+		prevNeurons[t] = &(p[t]);
+		neurons[t] = &(n[t]);
+
+		//1D inits
+		parent->buildKernels(kernels[t],deviceIndex); // if called multiple times will only build once
+		queues[t] = clCreateCommandQueue(parent->__context, parent->__deviceIds[deviceIndex], 0, &error); CheckError(error);
+		denoms[t] = clCreateBuffer(parent->__context, CL_MEM_READ_WRITE, sizeof(double) * timesFit, nullptr, &error); CheckError(error);
+	}
+	alreadyLoadedBetter = true;
 }
 
 Net::BNRunMems::~BNRunMems()

@@ -56,6 +56,7 @@
 //defines for programs
 #define TRAINING_PROGRAM 0
 #define RUNNING_PROGRAM 1
+#define COMBINED_PROGRAM 2
 
 //defines for DE
 #define DE_RAND 0
@@ -156,7 +157,7 @@ private: 	// structs
 		cl_kernel leakyReluKernelF;
 		cl_kernel convKernelF;
 		cl_kernel convKernelFC;
-		cl_kernel zeroPadKernelF;
+		// cl_kernel zeroPadKernelF;
 		cl_kernel maxPoolKernelF;
 		cl_kernel softmaxKernelF;
 		cl_kernel reluKernel;
@@ -174,7 +175,7 @@ private: 	// structs
 		cl_kernel avgPoolBackKernel;
 		cl_kernel maxPoolKernel;
 		cl_kernel maxPoolBackKernel;
-		cl_kernel softmaxKernel;
+		// cl_kernel softmaxKernel;
 		cl_kernel softmaxBackKernel;
 		cl_kernel copyArrayKernel;
 		cl_kernel maxSubtractionKernel;
@@ -193,6 +194,7 @@ private: 	// structs
 		~BNRunMems();
 		int getNumThreads() const;
 		void load(int numThreads, Net* parent);
+		void betterLoad(size_t timesFit, int deviceIndex, Net* parent);
 		std::vector<cl_mem> p, n;
 		std::vector<cl_mem*> prevNeurons, neurons;
 		std::vector<Kernels> kernels;
@@ -202,6 +204,7 @@ private: 	// structs
 		int numThreads = -1;
 		Net* parent = nullptr;
 		void destroy();
+		bool alreadyLoadedBetter = false;
 	};
 
 	static int check_counter(int count);
@@ -347,8 +350,8 @@ private: 	// members
 	bool __useGPU = true;
 	bool __constantMem = false;
 	bool __stuffBuilt = false;
-	cl_program CNForward, CNTraining;
-	std::string CNForwardPath, CNTrainingPath;
+	cl_program CNForward, CNTraining, CNKernels;
+	std::string CNForwardPath, CNTrainingPath, CNKernelPath;
 	//running kernels
 	cl_kernel reluKernelF, leakyReluKernelF, convKernelF, convKernelFC, maxPoolKernelF, softmaxKernelF, zeroPadKernelF;
 	//training kernels
@@ -571,7 +574,7 @@ private:	// functions
 		const std::vector<std::vector<cl_mem> > &layerNeeds, const cl_command_queue& queue, const Kernels &k, spinlock_barrier* barrier,
 		const std::vector<cl_mem>& gradients_weights, const std::vector<cl_mem>& gradients_biases, const std::vector<cl_mem>& bn_x_cl);
 	void setupBatchNormCLMems(int num_threads, const std::vector<int>& thread_sizes, std::vector<std::vector<cl_mem> > &bn_x_cl);
-	void setupBatchNormCLMems_running(int num_threads, const std::vector<int>& thread_sizes);
+	void setupBatchNormCLMems_running();
 	void pullGammaAndBeta();
 	void updateGammaAndBeta();
 	int getNumBatchNormLayers();
@@ -584,6 +587,10 @@ private:	// functions
 	int getMaxNeuronSize() const;
 	void convertGreyscale(std::vector<double>& image);
 	void makeTrainingGreyscale();
+
+	void betterRun();
+	void better_feedForward(const size_t timesFit, const int thread_num, cl_mem** prevNeurons, cl_mem** neurons,
+	 const cl_command_queue& queue, const cl_mem& denom, const Kernels& k);
 
 };
 
