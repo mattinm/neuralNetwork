@@ -24,7 +24,7 @@
 #include <unordered_map>
 
 
-// #define _DEBUG 0 //uncomment for some print statements to help with debugging
+#define _DEBUG 0 //uncomment for some print statements to help with debugging
 // #define _TIMINGS 0 //uncomment for some extra timings in training and running
 
 // 	includes brought in from ConvNetCL.h
@@ -1090,6 +1090,7 @@ bool Net::finalize()
 			{
 				clWeights.push_back(clCreateBuffer(__context, CL_MEM_COPY_HOST_PTR,
 					sizeof(double) * conv->numWeights, conv->weights, &error));
+				printf("Made conv layer %d num weights %d\n", i,conv->numWeights);
 				CheckError(error);
 				clBiases.push_back(clCreateBuffer(__context, CL_MEM_COPY_HOST_PTR,
 					sizeof(double) * conv->numBiases, conv->biases, &error));
@@ -1285,8 +1286,8 @@ void Net::run()
 	//can call run no matter what for backward compatibility
  	// if(getNumBatchNormLayers() > 0)
  	// {
- 		batchNormRun(); // this runs MUCH faster
- 		return;
+ 		// batchNormRun(); // this runs MUCH faster
+ 		// return;
  	// }
 
  	if(!__isFinalized)
@@ -3138,8 +3139,8 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 			CheckError(clSetKernelArg(k.batchNormRunKernel, 6, sizeof(int), &depth));
 			//other args set above
 			globalWorkSize[0] = (size_t) __neuronSizes[i] * timesFit;
-			CheckError(clEnqueueNDRangeKernel(queue, k.batchNormRunKernel, 1,
-				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			// CheckError(clEnqueueNDRangeKernel(queue, k.batchNormRunKernel, 1,
+			// 	nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 
 			curBNLayer++;
 
@@ -3186,6 +3187,7 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 			printf("Thread %d: Copy layerNeeds\n",thread_num);
 			#endif
 
+
 			clSetKernelArg(k.convKernelF, 0, sizeof(cl_mem), *prevNeurons);
 			clSetKernelArg(k.convKernelF, 1, sizeof(cl_mem), *neurons);
 			clSetKernelArg(k.convKernelF, 2, sizeof(cl_mem), &clWeights[curConvLayer]);
@@ -3197,6 +3199,7 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 			clSetKernelArg(k.convKernelF, 8, sizeof(int), &(__neuronDims[i-1][2])); // prevDepth
 
 			globalWorkSize[0] = (size_t)__neuronSizes[i] * timesFit;
+			printf("Conv global work size = %lu\n", globalWorkSize[0]);
 			CheckError(clEnqueueNDRangeKernel(queue, k.convKernelF, 1,
 				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 
@@ -3242,17 +3245,20 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 				#endif
 				CheckError(clSetKernelArg(k.leakyReluKernelF, 0, sizeof(cl_mem), *prevNeurons));
 				CheckError(clSetKernelArg(k.leakyReluKernelF, 1, sizeof(cl_mem), *neurons));
+				printf("set the args, now clEnqueueNDRangeKernel\n");
 				CheckError(clEnqueueNDRangeKernel(queue, k.leakyReluKernelF, 1,
 					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 			}
 		}
 		
 		clFinish(queue);
+		printf("post cl finish\n");
 
-		// printf("swap\n");
+		printf("swap\n");
 		temp = *neurons;
 		*neurons = *prevNeurons;
 		*prevNeurons = temp;
+		printf("done swap\n");
 		#ifdef _TIMINGS
 		auto elapsed = chrono::duration_cast<chrono::microseconds>(chrono::system_clock::now() - starttime);
 		printf("Time Layer %d Type %d forward: %lld\n", i, __layers[i]->layerType, elapsed.count());
@@ -5332,12 +5338,24 @@ void Net::betterRun()
  	cl_ulong global_mem_size;
  	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &global_mem_size, NULL));
 
- 	size_t timesFit = (global_mem_size * 0.2) / maxNeuronBytes;
- 	#ifdef _DEBUG
- 	printf("timesFit = %lu\n", timesFit);
- 	#endif
-
-	
+ 	size_t timesFit = (global_mem_size * 0.4) / maxNeuronBytes;
+ 	static bool firstTime = true;
+ 	if(firstTime)
+ 	{
+ 		firstTime = false;
+ 		printf("Times fit device %d is %lu\n", __device, timesFit);
+ 		printf("Max neuron size is %d * %lu = %lu\n", __maxNeuronSize, timesFit, __maxNeuronSize * timesFit);
+ 		for(int q = 0; q < __neuronSizes.size(); q++)
+ 		{
+ 			printf("Layer %d: size %d\n", q,__neuronSizes[q]);
+ 			if(__layers[q]->layerType == CONV_LAYER)
+ 			{
+ 				ConvLayer* conv = (ConvLayer*)__layers[q];
+ 				printf("\tNumWeights = %d\n", conv->numWeights);
+ 			}
+ 		}
+ 	}
+	getchar();
 	setupBatchNormCLMems_running();
 
 	if(numThreads != bnrunmems.getNumThreads())

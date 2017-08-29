@@ -21,6 +21,8 @@
 
 #define iterations 50        //iterations for exact_exp
 
+#define MAX_NEURON 429494400
+
 double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell
     bool is_negative = z < 0;
     if (is_negative) z = -z;
@@ -52,6 +54,8 @@ double exact_exp(double z) { //from the EXACT CNN builder from Travis Desell
 __kernel void reluF(__global double* prevNeurons, __global double* neurons)
 {
 	const int i = get_global_id(0);
+	if(i >= MAX_NEURON)
+		printf("broke max in relu");
 	// neurons[i] = clamp(prevNeurons[i], -RELU_CAP, RELU_CAP);
 	if(prevNeurons[i] >= 0 && prevNeurons[i] <= RELU_CAP)
 		neurons[i] = prevNeurons[i];
@@ -91,6 +95,8 @@ __kernel void relu_back(__global double* prevdNeurons, __global double* dneurons
 __kernel void leakyReluF(__global double* prevNeurons, __global double* neurons)
 {
 	const int i = get_global_id(0);
+	if(i >= MAX_NEURON)
+		printf("broke max in leaky relu");
 	//double newVal = prevNeurons[i] > 0 ? prevNeurons[i] : prevNeurons[i] * .01; 
 	double newVal;
 	if(prevNeurons[i] >= 0) 
@@ -98,7 +104,7 @@ __kernel void leakyReluF(__global double* prevNeurons, __global double* neurons)
 	else 
 		newVal = prevNeurons[i] * LEAKY_RELU_CONST;
 
-	// neurons[i] = clamp(newVal, -RELU_CAP, RELU_CAP);
+	neurons[i] = clamp(newVal, -RELU_CAP, RELU_CAP);
 
 	if(-RELU_CAP <= newVal && newVal <= RELU_CAP)
 		neurons[i] = newVal;
@@ -154,6 +160,8 @@ __kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
 {
 	//getting the start index of a flattened 3d array for maxPool
 	int x = get_global_id(0);
+	if(x >= MAX_NEURON)
+		printf("broke max in max pool with x");
 	int i = x;
 	int strxdep = stride * prevdepth;
 	int i_div_dep = i / prevdepth;
@@ -165,13 +173,16 @@ __kernel void maxPoolF(__global double* prevNeurons, __global double* neurons,
 	//i = ourRowStartIndex + ourRowShift;
 
 	i = (i_div_dep/numBlocksPerRow * prevwidth * strxdep + i%prevdepth) + (((i_div_dep)%numBlocksPerRow) * strxdep);
-	
+	if(i >= MAX_NEURON)
+		printf("broke max in max pool with first i");
 	int amountToNextLayer = (prevwidth - poolsize) * prevdepth;
 	double maxVal = prevNeurons[i];
 	for(int row = 0; row < poolsize; row++)
 	{
 		for(int col = 0; col < poolsize; col++)
 		{
+			if(i >= MAX_NEURON)
+				printf("broke max in max pool with i of %d\n", i);
 			if(prevNeurons[i] > maxVal)
 				maxVal = prevNeurons[i];
 			i += prevdepth;
@@ -309,7 +320,8 @@ __kernel void avgPool_back(__global double* prevdNeurons, __global double* dneur
 __kernel void convolveF(__global double* prevNeurons, __global double* neurons,
 	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
 {
-	int i = get_global_id(0);
+	// printf("?");
+	const int i = get_global_id(0);
 	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	
 	int myFilter = i%numFilters;
@@ -325,16 +337,30 @@ __kernel void convolveF(__global double* prevNeurons, __global double* neurons,
 	//can I do the pointer arithmetic better?
 
 	double result = 0;
-	__global double* curWeight = &(weights[j]);
+	if(i == 0)
+		printf("max %d\n", filterSize * filterLayerSize * numFilters);
+	// __global double* curWeight = &(weights[j]);
+	// printf("j = %d - %d\n", j, j + filterLayerSize * filterSize);
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
 		{
-			//result += weights[j++] * prevNeurons[h++];
-			result += *(curWeight++) * prevNeurons[h++];
+			if(h >= MAX_NEURON)
+				printf("broke max in conv with h");
+			if(j >= filterSize * filterLayerSize * numFilters)
+				printf("\n\n\nbroke weights with j of %d max %d\n", j, filterSize * filterLayerSize * numFilters);
+			// j++;
+			// result += 1.0; //works 1 time
+			result += weights[j++] * prevNeurons[h++]; //breaks
+			// result += weights[j++]; // broke
+
+			// result += *(curWeight++) * prevNeurons[h++];
+			// result += prevNeurons[h++]; //worked 2 times
 		}
 		h += amountToNextLayer;
 	}
+	if(i >= MAX_NEURON)
+		printf("broke max in conv with i of %d",i);
 	
 	neurons[i] = result + biases[myFilter];
 }
@@ -374,7 +400,6 @@ __kernel void convolveConstantF(__global double* prevNeurons, __global double* n
 		{
 			//result += weights[j++] * prevNeurons[h++];
 			result += *(curWeight++) * prevNeurons[h++];
-			// result = mad(*(curWeight++),prevNeurons[h++],result);
 		}
 		h += amountToNextLayer;
 	}
@@ -704,6 +729,8 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 	int prevheight, int depth, int newSize)
 {
 	const int i = get_global_id(0);
+	if(i >= MAX_NEURON)
+		printf("broke max in zeropad with i\n");
 	const int ourImage = i / newSize;
 	int x = i - newSize * ourImage; // make x the number it would be if there was only one image in neurons
 	const int nw = prevwidth + 2*pad;
@@ -718,7 +745,7 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 	int ourRealRow = ((i-ourDepth)/depth) / nw;
 
 	if(ourRow < pad || ourRow >= nh-pad || ourCol < pad || ourCol >= nw-pad)
-		neurons[x] = 0;
+		neurons[i] = 0;
 	else
 	{
 		int i = ourRealRow - pad - ourImage * 2 * pad;
@@ -726,6 +753,8 @@ __kernel void zeroPad(__global double *prevNeurons, __global double *neurons, in
 		int k = ourRealDepth;
 		int oldIndex = (i * prevwidth * depth) + (j * depth) + k;
 
+		if(i >= MAX_NEURON)
+			printf("broke max in zeropad with oldIndex of %d\n", oldIndex);
 		neurons[i] = prevNeurons[oldIndex];
 	}
 }
@@ -763,6 +792,8 @@ __kernel void softmax_allCL(__global double *prevNeurons, __global double *neuro
 	__global double* denominator, int size)
 {
 	int i = get_global_id(0);
+	if(i >= MAX_NEURON)
+		printf("broke max in softmax with i");
 	int d = i / size;
 	neurons[i] = exp(prevNeurons[i])/(denominator[d]);
 	// printf("CNN Output - Class %d: conf %lf\n", i, neurons[i],*denominator);
@@ -790,6 +821,8 @@ __kernel void maxSubtraction(__global double* source, int size)
 	const int x = get_global_id(0);
 	int start = size * x;
 	int end = start + size;
+	if(end >= MAX_NEURON)
+		printf("broke max in max sub with end");
 	if(size <= 0)
 		return;
 	double max = source[start];
@@ -807,8 +840,12 @@ __kernel void maxSubtraction(__global double* source, int size)
 __kernel void vectorESum(__global double* source, int size, __global double* denom)
 {
 	const int x = get_global_id(0);
+	if(x >= MAX_NEURON)
+		printf("broke max in vec e sum with x");
 	int start = size * x;
 	int end = start + size;
+	if(end >= MAX_NEURON)
+		printf("broke max in vec e sum with end");
 	if(size <= 0)
 		return;
 	double sum = 0;
@@ -835,6 +872,8 @@ __kernel void batch_norm_run(__global double* prevNeurons, __global double* neur
 	double front = gam * prevNeurons[x] / rootVarPlusEps;
 	double back = beta[k] - gam * e[k] / rootVarPlusEps;
 
+	if(x >= MAX_NEURON)
+		printf("broke max in batch norm with x");
 	neurons[x] = front + back;
 }
 
