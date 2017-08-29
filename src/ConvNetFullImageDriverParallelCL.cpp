@@ -1,6 +1,3 @@
-/**
- * TODO: Convert to <thread> from <pthread.h> and then refactor
- */
 
 #include <string>
 #include "opencv2/imgproc/imgproc.hpp"
@@ -17,7 +14,6 @@
 #include <time.h>
 #include <chrono>
 #include <thread>
-#include <pthread.h>
 #include <unordered_map>
 #include <cassert>
 #include <random>
@@ -41,6 +37,9 @@ using namespace std::chrono;
 
 mutex rowMutex;
 
+vector<string> filenames(0);
+
+int curFile = 0;
 int curFrame = 0;
 int curRow = 0;
 int curSubmittedFrame = 0;
@@ -174,6 +173,12 @@ int getNextRow()
 
 }
 
+int getNextIndex()
+{
+	lock_guard<mutex> guard(rowMutex);
+	return curFile >= filenames.size() ? -1 : curFile++;
+}
+
 bool allElementsEquals(vector<double>& array)
 {
 	if(array.size() < 1)
@@ -274,7 +279,6 @@ void breakUpRow(const int row, const int device)
 	#endif
 	const int i = row;
 	vector<Mat> imageRow(0);
-	vector<int> calcedClasses(0);
 	vector<vector<double> > confidences(0);//for the confidence for each category for each image
 		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
 
@@ -336,6 +340,7 @@ void __parallelImageRowProcessor(const int device)
 		breakUpRow(row, device);
 	}while(true);
 }
+
 
 string getNameForVal(int trueVal)
 {
@@ -509,6 +514,223 @@ void breakUpImage(const char* imageName)
 	#endif
 }
 
+void breakUpImageWhole(const char* imageName, int device)
+{
+	/******************************
+	 *
+	 * read in Mat
+	 *
+	 ******************************/
+	Mat fullMat = imread(imageName,1);
+	if(fullMat.empty())
+	{
+		printf("File '%s' was unable to open\n", imageName);
+		return;
+	}
+	if(rgb)
+		cvtColor(fullMat,fullMat,CV_BGR2RGB);
+
+	// int __rows = fullMat.rows;
+	// int __cols = fullMat.cols;
+	int numrowsmin = fullMat.rows - inputHeight;
+	int numcolsmin = fullMat.cols - inputWidth;
+
+	resize3DVector(fullImages[device],fullMat.rows,fullMat.cols,numClasses);
+	setAll3DVector(fullImages[device],0);
+
+	//process the data
+	vector<Mat> images(0);
+	vector<vector<double> > confidences(0);//for the confidence for each category for each image
+		//the outer vector is the image, the inner vector is the category, the double is output(confidence) of the softmax
+
+	/******************************
+	 *
+	 * get all subimages from a row
+	 * and run them through the CNN
+	 *
+	 ******************************/
+	#ifdef _CNFIDPCL_DEBUG
+	printf("get subimages. numrowsmin %d numcolsmin %d filename %s\n",numrowsmin, numcolsmin, imageName);
+	#endif
+	for(int i = 0; i <= numrowsmin; i += stride)
+	{
+		for(int j = 0; j <= numcolsmin; j += stride) //NOTE: each j is a different subimage
+		{
+			assert(i + inputHeight <= fullMat.rows);
+			assert(j + inputWidth <= fullMat.cols);
+			images.push_back((fullMat)(Range(i,i+inputHeight),Range(j,j+inputWidth)));
+		}
+	}
+	//set them as the data in the net
+	#ifdef _CNFIDPCL_DEBUG
+	printf("set data. size %lu\n",images.size());
+	#endif
+	nets[device]->setData(images);
+	#ifdef _CNFIDPCL_DEBUG
+	printf("run\n");
+	#endif
+	// auto starttime = system_clock::now();
+	nets[device]->run();
+	// auto endtime = system_clock::now();
+	// cnn_time += duration_cast<chrono::microseconds>(endtime - starttime).count();
+	#ifdef _CNFIDPCL_DEBUG
+	printf("get confidences\n");
+	#endif
+	nets[device]->getConfidences(confidences); //gets the confidence for each category for each image
+	assert(confidences.size() == images.size());
+
+	#ifdef _CNFIDPCL_DEBUG
+	printf("add confidences into fullImages[%d]\n",device);
+	#endif
+	int curImage = 0;
+	for(int i = 0; i <= numrowsmin; i += stride)
+	{
+		for(int j=0; j <= numcolsmin; j += stride) //NOTE: each iteration of this loop is a different subimage
+		{
+			for(int ii=i; ii < i+inputHeight /*&& ii < __rows*/; ii++)
+				for(int jj=j; jj < j+inputWidth /*&& jj < __cols*/; jj++)
+					for(int cat = 0; cat < confidences[curImage].size(); cat++)
+					{
+						fullImages[device][ii][jj][cat] += confidences[curImage][cat];
+						// printf("ii %d jj %d cat %d curImage %d\n", ii,jj,cat,curImage);
+					}
+			curImage++;
+		}
+	}
+	assert(curImage == confidences.size());
+	#ifdef _CNFIDPCL_DEBUG
+	printf("end break up image whole\n");
+	#endif
+
+	/******************************
+	 *
+	 * make output image
+	 *
+	 ******************************/
+
+	 //process the data
+	double sumsq;
+	squareElements(fullImages[0]);
+	for(int i=0; i < fullMat.rows; i++)
+	{
+		for(int j=0; j < fullMat.cols; j++)
+		{
+			sumsq = vectorSum(fullImages[device][i][j]);
+			// assert(sumsq != 0);
+			if(sumsq != 0)
+				for (int k = 0; k < numClasses; k++)
+					fullImages[device][i][j][k] /= sumsq;
+		}
+	}
+
+	 printf("\33[2K\r");
+	if(__separate_outputs)
+	{
+		//make the output Mats
+		vector<Mat*> outputMats(numClasses);
+		for(int k = 0; k < numClasses; k++)
+		{
+			outputMats[k] = new Mat(fullMat.rows,fullMat.cols,CV_8UC3);
+		}
+		//calculate what output images should look like
+		for(int k = 0; k < numClasses; k++)
+		{
+			for(int i=0; i < fullMat.rows; i++)
+			{
+				for(int j=0; j < fullMat.cols; j++)
+				{
+					//write the pixel
+					Vec3b& outPix = outputMats[k]->at<Vec3b>(i,j);
+
+					double pix = 255 * fullImages[device][i][j][k];
+					outPix[0] = pix;  // blue
+					outPix[1] = pix;  //green
+					outPix[2] = pix;  // red
+				}
+			}
+		}
+
+		//output the mats
+		char outName[500];
+		string origName(imageName);
+		size_t dot = origName.rfind('.');
+		// const string noExtension = origName.substr(0,dot);
+		const char *noExtension = outputBaseName(origName).c_str();
+		const string extension = origName.substr(dot+1);
+
+		
+		for(int k = 0; k < numClasses; k++)
+		{
+			sprintf(outName,"%s_prediction_%s.%s",noExtension, getNameForVal(k).c_str(), extension.c_str());
+			// if(infos.size() > k)
+			// 	sprintf(outName,"%s_prediction_%s.%s",noExtension.c_str(), getNameForVal(k).c_str(), extension.c_str());
+			// else
+			// 	sprintf(outName,"%s_prediction_class%d.%s",noExtension.c_str(),k,extension.c_str());
+
+			printf("Writing %s\n", outName);
+			imwrite(outName,*(outputMats[k]));
+		}
+
+		//cleanup memory
+		for(int m = 0; m < numClasses; m++)
+			delete outputMats[m];
+	}
+	else
+	{
+		unsigned long depth = fullImages[device][0][0].size();
+		Mat outputMat(fullMat.rows, fullMat.cols, CV_8UC3);
+		for(int k = 0; k < numClasses; k++)
+		{
+			for(int i=0; i < fullMat.rows; i++)
+			{
+				for(int j=0; j < fullMat.cols; j++)
+				{
+					//write the pixel
+					Vec3b& outPix = outputMat.at<Vec3b>(i,j);
+
+					outPix[0] = 255 * fullImages[device][i][j][0];  // blue
+					outPix[2] = 255 * fullImages[device][i][j][1];  // red
+
+					if(depth > 2)
+						outPix[1] = 255 * fullImages[device][i][j][2];
+					else
+						outPix[1] = 0;
+				}
+			}
+		}
+
+		char outName[500];
+		string origName(imageName);
+		size_t dot = origName.rfind('.');
+		// const char *noExtension = origName.substr(0,dot).c_str();
+		const char *noExtension = outputBaseName(origName).c_str();
+		const char *extension = origName.substr(dot).c_str();
+
+		sprintf(outName,"%s_prediction%s",noExtension,extension);
+		printf("Writing %s\n", outName);
+		imwrite(outName, outputMat);
+	}
+	#ifdef _CNFIDPCL_DEBUG
+	printf("end breakUpImage\n");
+	#endif
+}
+
+void __parallelWholeImageProcessor(const int device)
+{
+	if(!deviceActive[device])
+		return;
+	time_t starttime;
+	do
+	{
+		int index = getNextIndex();
+		if(index < 0)
+			break;
+		starttime = time(NULL);
+		breakUpImageWhole(filenames[index].c_str(), device);
+		printf("%s\n\t- Time %s\n", filenames[index].c_str(), secondsToString(time(NULL) - starttime).c_str());
+	}while(true);
+}
+
 int checkExtensions(char* filename)
 {
 	string name = filename;
@@ -568,14 +790,7 @@ int main(int argc, char** argv)
 
 	assert(stride > 0);
 
-	// printf("jump %d stride %d\n", jump, stride);
-
 	__netName = argv[1];
-	//set up net
-	//Net net(argv[1]);
-	//if(!net.isActive())
-		//return 0;
-
 
 	//go through all images in the folder
 	bool isDirectory;
@@ -598,7 +813,7 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	vector<string> filenames(0);
+	
 	
 	if(isDirectory)
 	{
@@ -660,7 +875,6 @@ int main(int argc, char** argv)
 		Net** loc = &(nets[i]);
 		thr[i] = thread([=] { *loc = new Net(__netName); });
 		deviceActive[i] = true;
-		// nets[i] = new Net(__netName);
 	}
 	for(int i = 0; i < thr.size(); i++)
 		if(deviceActive[i])
@@ -707,27 +921,42 @@ int main(int argc, char** argv)
 		}
 	}
 
+	int numUsableNets = 0;
 	usable = -1;
 	for(int i = 0; i < nets.size(); i++)
 		if(deviceActive[i])
+		{
+			numUsableNets++;
 			usable = i;
+		}
 	if(usable == -1)
 	{
 		printf("No usable nets were able to be made and finalized on non-excluded devices\n");
 		return 0;
 	}
 
-	for(int i=0; i < filenames.size(); i++)
+	if(filenames.size() < 5 * numUsableNets && numUsableNets > 1) // old way. parallel execution by row
 	{
-		starttime = time(NULL);
-		// starttime = chrono::system_clock::now();
-		cout << filenames[i] << " (" << i + 1 << " of " << filenames.size() << ")" << endl;
-		breakUpImage(filenames[i].c_str());
-		endtime = time(NULL);
-		// endtime = chrono::system_clock::now();
-		cout << " - Time for image: " << secondsToString(endtime - starttime) << endl;
-		// cout << " - Time for image: " << (chrono::duration_cast<chrono::milliseconds>(endtime - starttime).count()) / 1000.0 << " seconds" << endl;
-		// cout << "\t" << cnn_time / 1000000.0 << " seconds was in the CNN" << endl;
+		for(int i=0; i < filenames.size(); i++)
+		{
+			starttime = time(NULL);
+			cout << filenames[i] << " (" << i + 1 << " of " << filenames.size() << ")" << endl;
+			breakUpImage(filenames[i].c_str());
+			endtime = time(NULL);
+			cout << " - Time for image: " << secondsToString(endtime - starttime) << endl;
+		}
+	}
+	else
+	{
+		vector<thread> t(nets.size());
+		curFile = 0;
+		for(int i = 0; i < nets.size(); i++)
+			if(deviceActive[i])
+				t[i] = thread(__parallelWholeImageProcessor, i);
+
+		for(int i = 0; i < nets.size(); i++)
+			if(deviceActive[i])
+				t[i].join();
 	}
 
 	return 0;
