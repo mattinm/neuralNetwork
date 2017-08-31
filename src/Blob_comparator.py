@@ -117,13 +117,13 @@ with open(basename+"_individuals.csv","wb") as oi, open(basename+"_aggregate.csv
 		outAgg.writerow([cnn.name,
 			totalCalc[0],                      # calc white
 			totalActual[0],                    # actual white
-			totalActual[0]-totalCalc[0],       # error white
+			totalCalc[0]-totalActual[0],       # error white
 			abs(totalActual[0]-totalCalc[0]),  # abs error white
 			totalAbsError[0],                  # total indiv absolute error white
 			perError[0],                       # % error white
 			totalCalc[1],                      # calc blue
 			totalActual[1],                    # actual blue
-			totalActual[1]-totalCalc[1],       # error blue
+			totalCalc[1]-totalActual[1],       # error blue
 			abs(totalActual[1]-totalCalc[1]),  # abs error blue
 			totalAbsError[1],                  # total indiv absolute error blue
 			perError[1],                       # % error blue
