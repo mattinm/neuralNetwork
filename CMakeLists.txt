@@ -1,6 +1,8 @@
 cmake_minimum_required (VERSION 2.8)
 project (NeuralNetwork)
 
+# set(CMAKE_CXX_COMPILER "")
+
 if (${CMAKE_BINARY_DIR} EQUAL ${CMAKE_SOURCE_DIR})
     message (FATAL_ERROR "Building in source is not allowed. Create a build
     directory.")
@@ -28,6 +30,8 @@ else()
     CHECK_CXX_COMPILER_FLAG(-std=c++11 COMPILER_SUPPORTS_CXX11)
     CHECK_CXX_COMPILER_FLAG(-std=c++0x COMPILER_SUPPORTS_CXX0x)
 endif()
+
+# set(CMAKE_CXX_FLAGS "-Wall -g -O1 -fsanitize=address -fno-omit-frame-pointer -DNAN_CHECK")
 
 # require CXX11
 if (COMPILER_SUPPORTS_CXX11)

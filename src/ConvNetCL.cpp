@@ -3139,8 +3139,8 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 			CheckError(clSetKernelArg(k.batchNormRunKernel, 6, sizeof(int), &depth));
 			//other args set above
 			globalWorkSize[0] = (size_t) __neuronSizes[i] * timesFit;
-			// CheckError(clEnqueueNDRangeKernel(queue, k.batchNormRunKernel, 1,
-			// 	nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
+			CheckError(clEnqueueNDRangeKernel(queue, k.batchNormRunKernel, 1,
+				nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
 
 			curBNLayer++;
 
@@ -3171,7 +3171,7 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 				// printf("gws = %lu\n", globalWorkSize[0]);
 				CheckError(clEnqueueNDRangeKernel(queue, k.zeroPadKernel, 1,
 					nullptr, globalWorkSize, nullptr, 0, nullptr, nullptr));
-				clFinish(queue);
+				CheckError(clFinish(queue));
 
 				//swap the buffers so prevNeurons holds the zero padded data
 				// printf("pad swap\n");
@@ -3251,7 +3251,8 @@ void Net::better_feedForward(const size_t timesFit, const int thread_num, cl_mem
 			}
 		}
 		
-		clFinish(queue);
+		printf("pre cl finish\n");
+		CheckError(clFinish(queue));
 		printf("post cl finish\n");
 
 		printf("swap\n");
@@ -5336,9 +5337,22 @@ void Net::betterRun()
  	size_t maxNeuronBytes = __maxNeuronSize * sizeof(double);
 
  	cl_ulong global_mem_size;
+ 	cl_device_type device_type;
+ 	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_TYPE, sizeof(cl_device_type), &device_type, NULL));
  	CheckError(clGetDeviceInfo(__deviceIds[__device], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &global_mem_size, NULL));
 
- 	size_t timesFit = (global_mem_size * 0.4) / maxNeuronBytes;
+ 	size_t timesFit = 1;
+ 	if(device_type == CL_DEVICE_TYPE_GPU)
+ 	{
+ 		timesFit = (global_mem_size * 0.4) / maxNeuronBytes;
+ 		printf("Device Type GPU\nTimesFit is %lu\n",timesFit);
+ 	}
+ 	else if(device_type == CL_DEVICE_TYPE_CPU)
+ 	{
+ 		timesFit = 1;
+ 		printf("Device Type CPU\nTimes Fit shortened to 6.\n");
+ 	}
+ 	cout << "Global mem size: " << global_mem_size << endl;
  	static bool firstTime = true;
  	if(firstTime)
  	{
@@ -5381,6 +5395,7 @@ void Net::betterRun()
 		int offset = 0;
 		for(int t = 0; t < timesFit; t++)
 		{
+			// printf("putting in index %d timefit %d offset %d\n",i, t,offset);
 			if(i >= __dataPointer->size())
 				break;
 			CheckError(clEnqueueWriteBuffer(bnrunmems.queues[0], *(bnrunmems.prevNeurons[0]), CL_TRUE, offset, writeSize, 

@@ -320,7 +320,6 @@ __kernel void avgPool_back(__global double* prevdNeurons, __global double* dneur
 __kernel void convolveF(__global double* prevNeurons, __global double* neurons,
 	__global double* weights, __global double* biases, int numFilters, int filterSize, int stride, int prevwidth, int prevdepth)
 {
-	// printf("?");
 	const int i = get_global_id(0);
 	int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
 	
@@ -337,32 +336,65 @@ __kernel void convolveF(__global double* prevNeurons, __global double* neurons,
 	//can I do the pointer arithmetic better?
 
 	double result = 0;
-	if(i == 0)
-		printf("max %d\n", filterSize * filterLayerSize * numFilters);
-	// __global double* curWeight = &(weights[j]);
-	// printf("j = %d - %d\n", j, j + filterLayerSize * filterSize);
+	__global double* curWeight = &(weights[j]);
 	for(int a = 0; a < filterSize; a++) //for each layer in the filter
 	{
 		for(int b = 0; b < filterLayerSize; b++)
 		{
-			if(h >= MAX_NEURON)
-				printf("broke max in conv with h");
-			if(j >= filterSize * filterLayerSize * numFilters)
-				printf("\n\n\nbroke weights with j of %d max %d\n", j, filterSize * filterLayerSize * numFilters);
-			// j++;
-			// result += 1.0; //works 1 time
-			result += weights[j++] * prevNeurons[h++]; //breaks
-			// result += weights[j++]; // broke
-
-			// result += *(curWeight++) * prevNeurons[h++];
-			// result += prevNeurons[h++]; //worked 2 times
+			//result += weights[j++] * prevNeurons[h++];
+			result += *(curWeight++) * prevNeurons[h++];
 		}
 		h += amountToNextLayer;
 	}
-	if(i >= MAX_NEURON)
-		printf("broke max in conv with i of %d",i);
 	
 	neurons[i] = result + biases[myFilter];
+	// printf("?");
+	// const int i = get_global_id(0);
+	// int numBlocksPerRow = (prevwidth - filterSize)/stride + 1;
+	
+	// int myFilter = i%numFilters;
+	// int filterLayerSize = filterSize * prevdepth;
+	// int j = myFilter * filterSize * filterLayerSize; // myFilterStartIndex
+	// int myBlock = (i/numFilters) % (numBlocksPerRow*numBlocksPerRow);//numBlocksCanFitInSource;
+	
+	// int strxdep = stride * prevdepth;
+	// int h = ((myBlock/numBlocksPerRow) * prevwidth * strxdep) + ((myBlock%numBlocksPerRow) * strxdep);
+
+	// int amountToNextLayer = (prevwidth - filterSize) * prevdepth;
+
+	// //can I do the pointer arithmetic better?
+
+	// double result = 0;
+	// if(i == 0)
+	// {
+	// 	printf("max %d\n", filterSize * filterLayerSize * numFilters);
+	// 	// if(prevdepth == 3)
+	// 	// 	printf("prevNeurons[0] = %lf\n", prevNeurons[i]); //prevneurons[0] are different for the first layer, so different input images - good
+	// }
+	// // __global double* curWeight = &(weights[j]);
+	// // printf("j = %d - %d\n", j, j + filterLayerSize * filterSize);
+	// for(int a = 0; a < filterSize; a++) //for each layer in the filter
+	// {
+	// 	for(int b = 0; b < filterLayerSize; b++)
+	// 	{
+	// 		if(h >= MAX_NEURON)
+	// 			printf("broke max in conv with h");
+	// 		if(j >= filterSize * filterLayerSize * numFilters)
+	// 			printf("\n\n\nbroke weights with j of %d max %d\n", j, filterSize * filterLayerSize * numFilters);
+	// 		// j++;
+	// 		// result += 1.0; //works 1 time
+	// 		result += weights[j++] * prevNeurons[h++]; //breaks
+	// 		// result += weights[j++]; // broke
+
+	// 		// result += *(curWeight++) * prevNeurons[h++];
+	// 		// result += prevNeurons[h++]; //worked 2 times
+	// 	}
+	// 	h += amountToNextLayer;
+	// }
+	// if(i >= MAX_NEURON)
+	// 	printf("broke max in conv with i of %d",i);
+	
+	// neurons[i] = result + biases[myFilter];
 }
 
 __kernel void convolveConstantF(__global double* prevNeurons, __global double* neurons,
