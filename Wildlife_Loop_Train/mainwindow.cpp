@@ -298,7 +298,6 @@ bool MainWindow::run()
     //    std::cout << "non empty good: " << std::boolalpha << good << std::endl;
         if(!good)
         {
-            std::cout << not
             currentlyRunning = false;
             return false;
         }
