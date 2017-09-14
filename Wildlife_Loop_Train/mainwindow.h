@@ -42,13 +42,27 @@ signals:
     void cancelSignal();
 
 public slots:
-    void disableInput();
-    void enableInput();
+    bool run();
     void cancelTrain();
     void closeEvent(QCloseEvent* event);
 
+    void setNumTrials(int num_trials);
+    void setStartingNet(const QString& filepath);
+    void setTrainData(const QString& filepath);
+    void setTrainLabel(const QString& filepath);
+    void setOutputCNN(const QString& filepath);
+    void setTrainMosaic(const QString& filepath);
+    void setTestMosaic(const QString& filepath);
+    void setMSILocations(const QString& filepath);
+    void setTrueBlobCount(const QString& filepath);
+    void setIterationsRetrain(int num_trials);
+    void setEpochs(int num_trials);
+    void setOutputLocation(const QString& filepath);
+    void setBuildDir(const QString& filepath);
+
 private slots:
-    void run();
+    void disableInput();
+    void enableInput();
     void endRun();
 
     void updateTrainingLog(QString cnnName, QString filename);
@@ -86,6 +100,7 @@ private slots:
     void on_btnCancel_clicked();
 
     void on_btnTrueBlobCounts_clicked();
+
 
 
 private:

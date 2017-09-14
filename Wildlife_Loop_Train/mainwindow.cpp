@@ -37,6 +37,61 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->tblBlobResults->setModel(blobModel);
 }
 
+void MainWindow::setNumTrials(int num_trials)
+{
+    ui->spnNumTrials->setValue(num_trials);
+}
+
+void MainWindow::setStartingNet(const QString &filepath)
+{
+    ui->txtNetConfig->setText(filepath);
+}
+void MainWindow::setTrainData(const QString &filepath)
+{
+    ui->txtTrainingData->setText(filepath);
+}
+void MainWindow::setTrainLabel(const QString &filepath)
+{
+    ui->txtTrainingLabels->setText(filepath);
+}
+void MainWindow::setOutputCNN(const QString &filepath)
+{
+    ui->txtCNNName->setText(filepath);
+}
+void MainWindow::setTrainMosaic(const QString &folderpath)
+{
+    ui->txtTrainMosaic->setText(folderpath);
+}
+void MainWindow::setTestMosaic(const QString &folderpath)
+{
+    ui->txtTestMosaic->setText(folderpath);
+}
+void MainWindow::setMSILocations(const QString &filepath)
+{
+    ui->txtMSILocations->setText(filepath);
+}
+void MainWindow::setTrueBlobCount(const QString &filepath)
+{
+    ui->txtTrueBlobCounts->setText(filepath);
+}
+void MainWindow::setIterationsRetrain(int iterations)
+{
+    ui->spnIterations->setValue(iterations);
+}
+void MainWindow::setEpochs(int epochs)
+{
+    ui->spnEpochs->setValue(epochs);
+}
+void MainWindow::setOutputLocation(const QString &folderpath)
+{
+    ui->txtOutputLocation->setText(folderpath);
+}
+void MainWindow::setBuildDir(const QString &folderpath)
+{
+    ui->txtBuildDir->setText(folderpath);
+}
+
+
 void MainWindow::filePicker(QLineEdit* textbox, const char * filter)
 {
     QString filename = QFileDialog::getOpenFileName(this, tr("Open File"),"~/",tr(filter));
@@ -222,8 +277,51 @@ void MainWindow::closeEvent(QCloseEvent *event)
     event->accept();
 }
 
-void MainWindow::run()
+bool MainWindow::run()
 {
+//    std::cout << "clicked" << std::endl;
+    if(!currentlyRunning)
+    {
+        currentlyRunning = true;
+        bool good =
+            fileCheckEmptyAndExists(ui->txtTrainingData) * //&& this is a non-shortcircuit AND
+            fileCheckEmptyAndExists(ui->txtTrainingLabels) * //&&
+            isNonEmpty(ui->txtCNNName) * //&&
+            folderCheckEmptyAndExists(ui->txtTrainMosaic) * //&&
+            folderCheckEmptyAndExists(ui->txtTestMosaic) * //&&
+            fileCheckEmptyAndExists(ui->txtMSILocations) * //&&
+            folderCheckEmptyAndExists(ui->txtOutputLocation) * //&&
+            folderCheckEmptyAndExists(ui->txtBuildDir) * //&&
+            fileCheckEmptyAndExists(ui->txtNetConfig) * //&&
+            fileCheckEmptyAndExists(ui->txtTrueBlobCounts)
+        ;
+    //    std::cout << "non empty good: " << std::boolalpha << good << std::endl;
+        if(!good)
+        {
+            std::cout << not
+            currentlyRunning = false;
+            return false;
+        }
+        disableInput();
+
+        info.trainIdxData = ui->txtTrainingData->text();
+        info.trainIdxLabel = ui->txtTrainingLabels->text();
+        info.trainMosaics = ui->txtTrainMosaic->text();
+        info.testMosaics = ui->txtTestMosaic->text();
+        info.msiLocations = ui->txtMSILocations->text();
+        info.iterations = ui->spnIterations->value();
+        info.buildDir = ui->txtBuildDir->text().toStdString();
+        info.netConfig = ui->txtNetConfig->text();
+        info.epochs = ui->spnEpochs->value();
+        info.trueBlobCounts = ui->txtTrueBlobCounts->text();
+        info.rootOutputLocation = ui->txtOutputLocation->text();
+
+        numTrials = ui->spnNumTrials->value();
+        curTrial = 0;
+
+        ui->txtTrainingLog->setText("");
+    }
+
     QString dir = QStringLiteral("%1/trial%2").arg(ui->txtOutputLocation->text()).arg(curTrial);
     info.outputLocation = dir;
     QDir().mkdir(dir);
@@ -250,6 +348,7 @@ void MainWindow::run()
 //    connect(trainer,SIGNAL(finished()), trainer, SLOT(deleteLater()));
     connect(thr,SIGNAL(finished()), thr, SLOT(deleteLater()));
     thr->start();
+    return true;
 }
 
 void MainWindow::endRun()
@@ -274,47 +373,6 @@ void MainWindow::endRun()
 
 void MainWindow::on_btnRun_clicked()
 {
-//    std::cout << "clicked" << std::endl;
-    if(currentlyRunning)
-        return;
-    currentlyRunning = true;
-    bool good =
-        fileCheckEmptyAndExists(ui->txtTrainingData) * //&& this is a non-shortcircuit AND
-        fileCheckEmptyAndExists(ui->txtTrainingLabels) * //&&
-        isNonEmpty(ui->txtCNNName) * //&&
-        folderCheckEmptyAndExists(ui->txtTrainMosaic) * //&&
-        folderCheckEmptyAndExists(ui->txtTestMosaic) * //&&
-        fileCheckEmptyAndExists(ui->txtMSILocations) * //&&
-        folderCheckEmptyAndExists(ui->txtOutputLocation) * //&&
-        folderCheckEmptyAndExists(ui->txtBuildDir) * //&&
-        fileCheckEmptyAndExists(ui->txtNetConfig) * //&&
-        fileCheckEmptyAndExists(ui->txtTrueBlobCounts)
-    ;
-//    std::cout << "non empty good: " << std::boolalpha << good << std::endl;
-    if(!good)
-    {
-        currentlyRunning = false;
-        return;
-    }
-    disableInput();
-
-    info.trainIdxData = ui->txtTrainingData->text();
-    info.trainIdxLabel = ui->txtTrainingLabels->text();
-    info.trainMosaics = ui->txtTrainMosaic->text();
-    info.testMosaics = ui->txtTestMosaic->text();
-    info.msiLocations = ui->txtMSILocations->text();
-    info.iterations = ui->spnIterations->value();
-    info.buildDir = ui->txtBuildDir->text().toStdString();
-    info.netConfig = ui->txtNetConfig->text();
-    info.epochs = ui->spnEpochs->value();
-    info.trueBlobCounts = ui->txtTrueBlobCounts->text();
-    info.rootOutputLocation = ui->txtOutputLocation->text();
-
-    numTrials = ui->spnNumTrials->value();
-    curTrial = 0;
-
-    ui->txtTrainingLog->setText("");
-
     run();
 }
 
