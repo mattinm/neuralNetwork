@@ -9,9 +9,11 @@
 #include <QThread>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileInfoList>
 #include <QFileDialog>
 #include <QByteArray>
 #include <QDir>
+#include <QTime>
 
 
 //C++ stuff
@@ -414,7 +416,20 @@ void Trainer::run()
     QString oldCNN = info.netConfig;
     QString blobCompareFilename = QStringLiteral("%1/Blob_comparisons").arg(info.outputLocation);
     QString blobCompareAgg = QStringLiteral("%1_aggregate.csv").arg(blobCompareFilename);
+    QString blobCompareIndiv = QStringLiteral("%1_individuals.csv").arg(blobCompareFilename);
     int stride = 9;
+
+    qsrand((uint)QTime::currentTime().msec());
+    //make soft links to all the training mosaic files and use them for runCNN
+    QString shortTrainMosaics = QStringLiteral("%1/shortTrainMosaics").arg(info.outputLocation);
+    QDir().mkdir(shortTrainMosaics);
+    QDir tmDir(info.trainMosaics);
+    QStringList filter;
+    filter << "*.png" << "*.jpg" << "*.jpeg";
+    tmDir.setNameFilters(filter);
+    QFileInfoList files = tmDir.entryInfoList();
+    for(QFileInfo file : files)
+        QFile::link(file.absoluteFilePath(),QStringLiteral("%1/%2").arg(shortTrainMosaics).arg(file.fileName()));
 
     QString outloc, blobName;
     for(unsigned int i = 0; i < info.iterations; i++)
@@ -435,7 +450,7 @@ void Trainer::run()
         //run cnn - train mosaics
         emit updateCurrently(iterString + " Running over training mosaics");
         outloc = QStringLiteral("%1/%2_run_over_train").arg(info.outputLocation).arg(i);
-        runCNN(curCNNName,info.trainMosaics,stride,outloc);
+        runCNN(curCNNName,shortTrainMosaics,stride,outloc);
         if(cancelTrain) break;
 
         //blob count cnn - train mosaics
@@ -450,6 +465,17 @@ void Trainer::run()
         compareBlobs(blob_counts,info.trueBlobCounts,blobCompareFilename);
         if(cancelTrain) break;
         emit updateBlobTable(blobCompareAgg);
+
+        //Determine images to be trained on next iteration
+        emit updateCurrently(iterString + " Determining training mosaics for next iteration");
+        QDir shortTrainDir(shortTrainMosaics);
+        shortTrainDir.setNameFilters(filter);
+        for(QFileInfo file : shortTrainDir.entryInfoList())
+            QFile(file.absoluteFilePath()).remove();
+        QFileInfoList nextMosaics;
+        determineNextMosaics(blobCompareIndiv, i, info.trainMosaics, nextMosaics);
+        for(QFileInfo file : nextMosaics)
+            QFile::link(file.absoluteFilePath(),QStringLiteral("%1/%2").arg(shortTrainMosaics).arg(file.fileName()));
 
         //quantify results - train mosaics
         emit updateCurrently(iterString + " CNN to Observer comparision for training mosaics. Getting amount misclassified BG.");
@@ -573,7 +599,7 @@ void Trainer::runCNN(const QString& cnn, const QString& imageLocation, int strid
 
 void Trainer::blobCount(const QString& inputLocation, const QString& outputFilename)
 {
-    std::cout << inputLocation.toStdString() << " : " << outputFilename.toStdString() << std::endl;
+//    std::cout << inputLocation.toStdString() << " : " << outputFilename.toStdString() << std::endl;
     QProcess process;
     process.setStandardOutputFile(outputFilename, QIODevice::Append);
     QDir predictions(inputLocation);
@@ -643,7 +669,7 @@ void Trainer::_compCNNObs(const QString& msi_locations, const QString& predImage
             .arg(msi_locations)
             .arg(predImageDir);
 //            .arg(paths.join(' '));
-    std::cout << cmd.toStdString() << std::endl;
+//    std::cout << cmd.toStdString() << std::endl;
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
@@ -687,12 +713,64 @@ void Trainer::compareBlobs(const QStringList& blob_counts, const QString& true_b
             .arg(true_blob_counts)
             .arg(blob_counts.join(" "));
     connect(parent,SIGNAL(cancelSignal()),&process,SLOT(kill()),Qt::DirectConnection);
-    std::cout << cmd.toStdString() << std::endl;
+//    std::cout << cmd.toStdString() << std::endl;
     process.start(cmd);
     bool finishedCorrectly = process.waitForFinished(-1);
     std::cout << "compareBlobs Finished correctly: " << std::boolalpha << finishedCorrectly << std::endl;
     if(!finishedCorrectly)
         cancelTrain = true;
+}
+
+void Trainer::determineNextMosaics(const QString &blob_indiv_path, const int iteration, const QString &trainMosaicFolder, QFileInfoList &dest)
+{
+    dest.clear();
+    std::cout << "determineNextMosaics" << std::endl;
+    QFile file(blob_indiv_path);
+    if(!file.open(QIODevice::ReadOnly))
+    {
+       std::cout << file.errorString().toStdString() << std::endl;
+       exit(1);
+    }
+    QStringList msisToKeep;
+    while(!file.atEnd())
+    {
+        QString line = file.readLine();
+        if(line.contains(QStringLiteral("%1_blob_count_train.csv").arg(iteration)))
+        {
+            QStringList parts = line.split(',');
+            //cnn, msi, calc white, actual white, err white, abs err white, ...
+
+            std::cout << "msi: " << parts[1].toInt() << " abs err: " << parts[5].toInt() << std::endl;
+            if(parts[5].toInt() != 0) // if there is error keep, if there is no error keep at 30% chance
+                msisToKeep.append(parts[1]);
+
+        }
+    }
+
+
+    QDir tmDir(trainMosaicFolder);
+    for(QFileInfo info : tmDir.entryInfoList())
+    {
+        bool found = false;
+        for(int i = 0; i < msisToKeep.size(); i++)
+        {
+            if(info.fileName().contains(msisToKeep[i]))
+            {
+                std::cout << "Keeping " << msisToKeep[i].toStdString() << " because of errors" << std::endl;
+                dest.append(info);
+                msisToKeep.removeAt(i);
+                found = true;
+                break;
+            }
+        }
+        if(!found && qrand() % 10 < 3)
+        {
+            dest.append(info);
+            std::cout << "Keeping " << info.fileName().toStdString() << " because of random" << std::endl;
+        }
+    }
+
+    std::cout << "Using " << dest.size() << " training images for next iteration" << std::endl;
 }
 
 void MainWindow::on_btnCancel_clicked()

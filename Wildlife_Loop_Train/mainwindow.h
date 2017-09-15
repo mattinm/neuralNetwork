@@ -10,6 +10,7 @@
 #include <QStringList>
 #include <QStandardItemModel>
 #include <QMap>
+#include <QFileInfoList>
 
 #include <string>
 
@@ -150,6 +151,7 @@ private:
     void combineIDXs(const QString& prev_data, const QString& prev_label, const QString& loop_data, const QString& loop_label, double percentFromOld, const QString& baseOutputName, const QString& terminalOutputFile, bool appendOutput = true);
     void compareBlobs(const QStringList &blob_counts, const QString& true_blob_counts, const QString &outputBaseName);
     QString getBestEpoch(QString output);
+    void determineNextMosaics(const QString& blob_indiv_path, const int iteration, const QString &trainMosaicFolder, QFileInfoList& dest);
 
 };
 
