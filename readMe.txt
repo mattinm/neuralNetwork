@@ -4,6 +4,8 @@ The primary file format used to hold the training data is the IDX file format. F
 
 IMPORTANT NOTE: The programs in this repository read in the data dimensions as Big Endian Int, while all data of any type is read in as Little Endian. This allows easier use on Intel machines for reading in the data while still being compatible with the MNIST dataset.
 
+Wildlife_Loop_Train is written in Qt and has an interface where many parameters can be changed. It is the program that runs the feedback loop. It uses the other executables so they will have to be built in some directory.
+
 Overview of source files:
 Python:
 	Blob_comparator.py - Wildlife@Home specific? Yes - Used to compare blob counts made by using BlobCounter.cpp over prediction images made by ConvNetFullImageDriverParallelCL to the actual blob counts given in a csv.
