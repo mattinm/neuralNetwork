@@ -544,7 +544,7 @@ void Trainer::trainCNN(const QString& outputCNN, const QString& oldCNN, const QS
 {
     QProcess process;
 
-    QString command = QStringLiteral("%1/ConvNetTrainerCL_idx %2 %3 -device=0 -trainRatio_classes=-1:2:1000000 -trainRatio_amounts=5:1:0 -train_data=%4 -train_label=%5 -epochs=%6 %7")
+    QString command = QStringLiteral("%1/ConvNetTrainerCL_idx %2 %3 -device=0 -trainRatio_classes=-1:2:1000000 -trainRatio_amounts=1:1:0 -train_data=%4 -train_label=%5 -epochs=%6 %7")
             .arg(info.buildDir.c_str())
             .arg(oldCNN)
             .arg(outputCNN)
@@ -749,7 +749,8 @@ void Trainer::determineNextMosaics(const QString &blob_indiv_path, const int ite
 
 
     QDir tmDir(trainMosaicFolder);
-    for(QFileInfo info : tmDir.entryInfoList())
+    std::cout << "Size of tmf " << tmDir.entryInfoList(QDir::NoDotAndDotDot | QDir::Files).size() << std::endl;
+    for(QFileInfo info : tmDir.entryInfoList(QDir::NoDotAndDotDot | QDir::Files))
     {
         bool found = false;
         for(int i = 0; i < msisToKeep.size(); i++)
